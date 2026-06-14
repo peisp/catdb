@@ -1,0 +1,544 @@
+// Package services — TransferService streams large query results to disk
+// (CSV / JSON / SQL dump / Excel) without holding everything in memory or
+// crossing IPC with bulk row payloads.
+//
+// Why path-based, not response-based:
+//   - 500k-row Excel exports easily exceed the IPC 2MB body limit (even with
+//     v3 auto-chunking, base64 in/out is wasteful).
+//   - The front-end picks the path with the native SaveFile dialog (see
+//     wailsbridge); the Service opens that path and writes directly.
+//
+// Cancellation: every loop checks ctx.Err() between row batches so the front-
+// end's promise cancel propagates to the file writer.
+
+package services
+
+import (
+	"context"
+	"encoding/csv"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/xuri/excelize/v2"
+
+	"catdb/internal/core/session"
+	"catdb/internal/dbdriver"
+	"catdb/internal/registry"
+	"catdb/wailsbridge"
+)
+
+// TransferFormat enumerates the supported file types. Strings match
+// front-end identifiers and the file extension we expect.
+type TransferFormat string
+
+const (
+	FormatCSV  TransferFormat = "csv"
+	FormatJSON TransferFormat = "json"
+	FormatSQL  TransferFormat = "sql"
+	FormatXLSX TransferFormat = "xlsx"
+)
+
+// ExportOptions is what the front-end sends to ExportQuery.
+type ExportOptions struct {
+	Format        TransferFormat `json:"format"`
+	Path          string         `json:"path"`
+	BatchSize     int            `json:"batchSize,omitempty"`
+	IncludeHeader bool           `json:"includeHeader,omitempty"` // CSV: write column row
+	IncludeDDL    bool           `json:"includeDDL,omitempty"`    // SQL: include CREATE TABLE (single-table exports only)
+	TableName     string         `json:"tableName,omitempty"`     // SQL: target table name for INSERTs
+}
+
+// ExportResult is the synchronous return — progress events still fire during.
+type ExportResult struct {
+	TransferID string `json:"transferId"`
+	Path       string `json:"path"`
+	RowsTotal  int64  `json:"rowsTotal"`
+	BytesTotal int64  `json:"bytesTotal"`
+	ElapsedMs  int64  `json:"elapsedMs"`
+}
+
+// TransferService wraps export + import. It owns no streaming state itself —
+// each call opens, writes, and closes — so multiple concurrent exports are
+// safe as long as ctx for each is independent.
+type TransferService struct {
+	mgr *session.Manager
+}
+
+// NewTransferService wires the session manager.
+func NewTransferService(mgr *session.Manager) *TransferService {
+	return &TransferService{mgr: mgr}
+}
+
+func (s *TransferService) ServiceName() string { return "TransferService" }
+
+// progressEvent is the Emit payload.
+type progressEvent struct {
+	TransferID string `json:"transferId"`
+	Rows       int64  `json:"rows"`
+	Done       bool   `json:"done"`
+	Error      string `json:"error,omitempty"`
+}
+
+func emitProgress(transferID string, rows int64, done bool, errMsg string) {
+	wailsbridge.Emit("transfer:progress", progressEvent{
+		TransferID: transferID,
+		Rows:       rows,
+		Done:       done,
+		Error:      errMsg,
+	})
+}
+
+// ExportQuery runs sqlText and streams every row through the chosen format
+// into opts.Path. Returns when EOF (or ctx cancel / error).
+//
+// For Excel: uses excelize NewStreamWriter — rows are flushed to disk as we
+// go; memory stays bounded.
+// For CSV/JSON: encoding/csv + json.Encoder with newline framing (JSON Lines).
+// For SQL: per-row INSERT (lightweight, easy to import anywhere).
+func (s *TransferService) ExportQuery(ctx context.Context, connID, sqlText string, opts ExportOptions) (ExportResult, error) {
+	return s.exportStreaming(ctx, connID, sqlText, opts, "")
+}
+
+func (s *TransferService) exportStreaming(ctx context.Context, connID, sqlText string, opts ExportOptions, ddlPrefix string) (ExportResult, error) {
+	var empty ExportResult
+	if connID == "" {
+		return empty, fmt.Errorf("TransferService: connID is required")
+	}
+	if strings.TrimSpace(sqlText) == "" {
+		return empty, fmt.Errorf("TransferService: sql is empty")
+	}
+	if opts.Path == "" {
+		return empty, fmt.Errorf("TransferService: path is required")
+	}
+	if opts.Format == "" {
+		return empty, fmt.Errorf("TransferService: format is required")
+	}
+	if opts.BatchSize <= 0 {
+		opts.BatchSize = 500
+	}
+
+	conn, err := s.mgr.Get(connID)
+	if err != nil {
+		conn, err = s.mgr.Open(ctx, connID)
+		if err != nil {
+			return empty, err
+		}
+	}
+	q := conn.Querier()
+	if q == nil {
+		return empty, fmt.Errorf("TransferService: connection has no querier")
+	}
+
+	transferID := "x-" + uuid.NewString()
+	start := time.Now()
+
+	rs, err := q.Query(ctx, sqlText)
+	if err != nil {
+		return empty, err
+	}
+	defer rs.Close()
+	cols := rs.Columns()
+
+	if err := os.MkdirAll(filepath.Dir(opts.Path), 0o755); err != nil {
+		return empty, fmt.Errorf("TransferService: prepare dir: %w", err)
+	}
+
+	var writer rowWriter
+	switch opts.Format {
+	case FormatCSV:
+		writer, err = newCSVWriter(opts.Path, cols, opts.IncludeHeader)
+	case FormatJSON:
+		writer, err = newJSONLWriter(opts.Path, cols)
+	case FormatSQL:
+		writer, err = newSQLWriter(opts.Path, cols, opts, ddlPrefix)
+	case FormatXLSX:
+		writer, err = newXLSXWriter(opts.Path, cols)
+	default:
+		return empty, fmt.Errorf("TransferService: unsupported format %q", opts.Format)
+	}
+	if err != nil {
+		return empty, err
+	}
+	defer writer.Close()
+
+	var rowsTotal int64
+	for {
+		if err := ctx.Err(); err != nil {
+			emitProgress(transferID, rowsTotal, true, err.Error())
+			return empty, err
+		}
+		batch, done, err := rs.Next(opts.BatchSize)
+		if err != nil {
+			emitProgress(transferID, rowsTotal, true, err.Error())
+			return empty, err
+		}
+		for _, row := range batch {
+			if err := writer.WriteRow(row); err != nil {
+				emitProgress(transferID, rowsTotal, true, err.Error())
+				return empty, err
+			}
+			rowsTotal++
+		}
+		if len(batch) > 0 {
+			emitProgress(transferID, rowsTotal, false, "")
+		}
+		if done {
+			break
+		}
+	}
+
+	if err := writer.Close(); err != nil {
+		emitProgress(transferID, rowsTotal, true, err.Error())
+		return empty, err
+	}
+
+	var size int64
+	if st, err := os.Stat(opts.Path); err == nil {
+		size = st.Size()
+	}
+
+	emitProgress(transferID, rowsTotal, true, "")
+	return ExportResult{
+		TransferID: transferID,
+		Path:       opts.Path,
+		RowsTotal:  rowsTotal,
+		BytesTotal: size,
+		ElapsedMs:  time.Since(start).Milliseconds(),
+	}, nil
+}
+
+// ExportTable is a convenience wrapper around ExportQuery for "dump this
+// whole table". When IncludeDDL is true the resulting SQL file gets a
+// CREATE TABLE prefix from the driver's metadata layer.
+func (s *TransferService) ExportTable(ctx context.Context, connID, db, table string, opts ExportOptions) (ExportResult, error) {
+	if db == "" || table == "" {
+		return ExportResult{}, fmt.Errorf("TransferService: db and table required")
+	}
+	dia, err := s.dialect(ctx, connID)
+	if err != nil {
+		return ExportResult{}, err
+	}
+	sqlText := fmt.Sprintf("SELECT * FROM %s.%s", dia.QuoteIdentifier(db), dia.QuoteIdentifier(table))
+	// Carry the table name through so the SQL writer can produce real
+	// INSERT INTO <table> statements rather than INSERT INTO query_results.
+	opts.TableName = table
+
+	// For SQL+IncludeDDL we prepend SHOW CREATE TABLE before the data dump.
+	var ddlPrefix string
+	if opts.Format == FormatSQL && opts.IncludeDDL {
+		conn, err := s.mgr.Get(connID)
+		if err != nil {
+			conn, err = s.mgr.Open(ctx, connID)
+			if err != nil {
+				return ExportResult{}, err
+			}
+		}
+		m := conn.Metadata()
+		if m == nil {
+			return ExportResult{}, fmt.Errorf("TransferService: metadata adapter missing")
+		}
+		ddl, err := m.GetCreateTable(ctx, db, "", table)
+		if err != nil {
+			return ExportResult{}, fmt.Errorf("TransferService: get DDL: %w", err)
+		}
+		ddlPrefix = ddl + ";\n\n"
+	}
+	return s.exportStreaming(ctx, connID, sqlText, opts, ddlPrefix)
+}
+
+func (s *TransferService) dialect(ctx context.Context, connID string) (dbdriver.Dialect, error) {
+	name, err := s.mgr.DriverName(ctx, connID)
+	if err != nil {
+		return nil, err
+	}
+	d, err := registry.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	return d.Dialect(), nil
+}
+
+// rowWriter is the minimal contract every format implements.
+type rowWriter interface {
+	WriteRow(row []any) error
+	Close() error
+}
+
+// --- CSV writer -----------------------------------------------------------
+
+type csvWriter struct {
+	f *os.File
+	w *csv.Writer
+}
+
+func newCSVWriter(path string, cols []dbdriver.ColumnMeta, includeHeader bool) (*csvWriter, error) {
+	f, err := os.Create(path)
+	if err != nil {
+		return nil, fmt.Errorf("TransferService: create %s: %w", path, err)
+	}
+	w := csv.NewWriter(f)
+	if includeHeader {
+		names := make([]string, len(cols))
+		for i, c := range cols {
+			names[i] = c.Name
+		}
+		if err := w.Write(names); err != nil {
+			_ = f.Close()
+			return nil, err
+		}
+	}
+	return &csvWriter{f: f, w: w}, nil
+}
+
+func (c *csvWriter) WriteRow(row []any) error {
+	rec := make([]string, len(row))
+	for i, v := range row {
+		rec[i] = cellToString(v)
+	}
+	return c.w.Write(rec)
+}
+
+func (c *csvWriter) Close() error {
+	if c.w != nil {
+		c.w.Flush()
+		if err := c.w.Error(); err != nil {
+			_ = c.f.Close()
+			c.f = nil
+			return err
+		}
+	}
+	if c.f != nil {
+		err := c.f.Close()
+		c.f = nil
+		return err
+	}
+	return nil
+}
+
+// --- JSON Lines writer ----------------------------------------------------
+
+type jsonlWriter struct {
+	f       *os.File
+	enc     *json.Encoder
+	colKeys []string
+}
+
+func newJSONLWriter(path string, cols []dbdriver.ColumnMeta) (*jsonlWriter, error) {
+	f, err := os.Create(path)
+	if err != nil {
+		return nil, fmt.Errorf("TransferService: create %s: %w", path, err)
+	}
+	keys := make([]string, len(cols))
+	for i, c := range cols {
+		keys[i] = c.Name
+	}
+	enc := json.NewEncoder(f)
+	enc.SetEscapeHTML(false)
+	return &jsonlWriter{f: f, enc: enc, colKeys: keys}, nil
+}
+
+func (j *jsonlWriter) WriteRow(row []any) error {
+	m := make(map[string]any, len(j.colKeys))
+	for i, k := range j.colKeys {
+		if i < len(row) {
+			m[k] = row[i]
+		}
+	}
+	return j.enc.Encode(m)
+}
+
+func (j *jsonlWriter) Close() error {
+	if j.f == nil {
+		return nil
+	}
+	err := j.f.Close()
+	j.f = nil
+	return err
+}
+
+// --- SQL dump writer ------------------------------------------------------
+
+type sqlWriter struct {
+	f       *os.File
+	cols    []string
+	tblName string
+	prefix  string
+}
+
+func newSQLWriter(path string, cols []dbdriver.ColumnMeta, opts ExportOptions, ddlPrefix string) (*sqlWriter, error) {
+	f, err := os.Create(path)
+	if err != nil {
+		return nil, fmt.Errorf("TransferService: create %s: %w", path, err)
+	}
+	names := make([]string, len(cols))
+	for i, c := range cols {
+		names[i] = c.Name
+	}
+	tbl := opts.TableName
+	if tbl == "" {
+		tbl = "exported"
+	}
+	w := &sqlWriter{f: f, cols: names, tblName: tbl, prefix: ddlPrefix}
+	if w.prefix != "" {
+		if _, err := f.WriteString(w.prefix); err != nil {
+			_ = f.Close()
+			return nil, err
+		}
+	}
+	return w, nil
+}
+
+func (w *sqlWriter) WriteRow(row []any) error {
+	var b strings.Builder
+	b.WriteString("INSERT INTO `")
+	b.WriteString(w.tblName)
+	b.WriteString("` (")
+	for i, c := range w.cols {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString("`")
+		b.WriteString(strings.ReplaceAll(c, "`", "``"))
+		b.WriteString("`")
+	}
+	b.WriteString(") VALUES (")
+	for i, v := range row {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(sqlLiteral(v))
+	}
+	b.WriteString(");\n")
+	_, err := w.f.WriteString(b.String())
+	return err
+}
+
+func (w *sqlWriter) Close() error {
+	if w.f == nil {
+		return nil
+	}
+	err := w.f.Close()
+	w.f = nil
+	return err
+}
+
+func sqlLiteral(v any) string {
+	if v == nil {
+		return "NULL"
+	}
+	switch x := v.(type) {
+	case bool:
+		if x {
+			return "1"
+		}
+		return "0"
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return fmt.Sprintf("%v", x)
+	case string:
+		return "'" + strings.ReplaceAll(x, "'", "''") + "'"
+	default:
+		// Fall back to JSON for marker types (bytes / bigint markers).
+		raw, _ := json.Marshal(x)
+		s := string(raw)
+		s = strings.ReplaceAll(s, "'", "''")
+		return "'" + s + "'"
+	}
+}
+
+// --- XLSX writer (streaming) ---------------------------------------------
+
+type xlsxWriter struct {
+	f       *excelize.File
+	stream  *excelize.StreamWriter
+	path    string
+	rowIdx  int
+}
+
+func newXLSXWriter(path string, cols []dbdriver.ColumnMeta) (*xlsxWriter, error) {
+	f := excelize.NewFile()
+	stream, err := f.NewStreamWriter("Sheet1")
+	if err != nil {
+		_ = f.Close()
+		return nil, fmt.Errorf("TransferService: NewStreamWriter: %w", err)
+	}
+	// Header row.
+	header := make([]any, len(cols))
+	for i, c := range cols {
+		header[i] = c.Name
+	}
+	cell, _ := excelize.CoordinatesToCellName(1, 1)
+	if err := stream.SetRow(cell, header); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	return &xlsxWriter{f: f, stream: stream, path: path, rowIdx: 1}, nil
+}
+
+func (x *xlsxWriter) WriteRow(row []any) error {
+	x.rowIdx++
+	cell, _ := excelize.CoordinatesToCellName(1, x.rowIdx)
+	cells := make([]any, len(row))
+	for i, v := range row {
+		cells[i] = cellExcelValue(v)
+	}
+	return x.stream.SetRow(cell, cells)
+}
+
+func (x *xlsxWriter) Close() error {
+	if x.stream == nil {
+		return nil
+	}
+	if err := x.stream.Flush(); err != nil {
+		_ = x.f.Close()
+		x.stream = nil
+		return err
+	}
+	x.stream = nil
+	if err := x.f.SaveAs(x.path); err != nil {
+		_ = x.f.Close()
+		return err
+	}
+	return x.f.Close()
+}
+
+// --- helpers --------------------------------------------------------------
+
+func cellToString(v any) string {
+	if v == nil {
+		return ""
+	}
+	switch x := v.(type) {
+	case string:
+		return x
+	case bool:
+		if x {
+			return "true"
+		}
+		return "false"
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return fmt.Sprintf("%v", x)
+	default:
+		raw, _ := json.Marshal(x)
+		return string(raw)
+	}
+}
+
+// cellExcelValue keeps native numeric/bool types as-is so Excel formats them
+// correctly; strings and complex objects become text.
+func cellExcelValue(v any) any {
+	if v == nil {
+		return ""
+	}
+	switch x := v.(type) {
+	case bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, string:
+		return x
+	default:
+		raw, _ := json.Marshal(x)
+		return string(raw)
+	}
+}

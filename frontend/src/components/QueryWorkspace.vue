@@ -1,0 +1,131 @@
+<script setup lang="ts">
+// QueryWorkspace — per-connection tab container. Each tab is one of:
+//   - query  (SQL editor + result table)
+//   - table  (TableBrowser)
+//   - structure (TableStructure)
+import { computed, onMounted, watch } from 'vue'
+import { NTabPane, NTabs } from 'naive-ui'
+import QueryTab from './QueryTab.vue'
+import TableBrowser from './TableBrowser.vue'
+import TableStructure from './TableStructure.vue'
+import type { ConnectionProfile } from '../api/connections'
+import { useQueryStore } from '../stores/query'
+
+const props = defineProps<{
+  connection: ConnectionProfile
+  tabCommand?: { tabId: string; cmd: string; nonce: number } | null
+}>()
+const store = useQueryStore()
+
+const tabs = computed(() => store.tabsForConn(props.connection.id))
+const activeId = computed({
+  get() {
+    return store.activeTab(props.connection.id)?.id ?? ''
+  },
+  set(v: string) {
+    store.setActive(props.connection.id, v)
+  },
+})
+
+function ensureTab() {
+  if (!tabs.value.length) {
+    store.addTab(props.connection.id, { title: 'Query 1', kind: 'query' })
+  }
+}
+
+onMounted(ensureTab)
+watch(() => props.connection.id, ensureTab)
+
+function addTab() {
+  const n = tabs.value.filter((t) => t.kind === 'query').length + 1
+  store.addTab(props.connection.id, { title: `Query ${n}`, kind: 'query' })
+}
+
+async function closeTab(id: string) {
+  await store.closeTab(id)
+  if (tabs.value.length === 0) ensureTab()
+}
+</script>
+
+<template>
+  <div class="ws">
+    <n-tabs
+      v-model:value="activeId"
+      type="card"
+      closable
+      addable
+      size="small"
+      tab-style="min-width: 80px;"
+      pane-class="ws-pane"
+      pane-wrapper-class="ws-pane-wrapper"
+      @close="closeTab"
+      @add="addTab"
+    >
+      <n-tab-pane
+        v-for="t in tabs"
+        :key="t.id"
+        :name="t.id"
+        :tab="t.title"
+        display-directive="show:lazy"
+      >
+        <QueryTab
+          v-if="t.kind === 'query'"
+          :tab-id="t.id"
+          :driver="connection.driver"
+          :command="tabCommand && tabCommand.tabId === t.id ? tabCommand : null"
+        />
+        <TableBrowser
+          v-else-if="t.kind === 'table' && t.db && t.table"
+          :conn-id="t.connId"
+          :db="t.db"
+          :table="t.table"
+        />
+        <TableStructure
+          v-else-if="t.kind === 'structure' && t.db && t.table"
+          :conn-id="t.connId"
+          :db="t.db"
+          :table="t.table"
+        />
+      </n-tab-pane>
+    </n-tabs>
+  </div>
+</template>
+
+<style scoped>
+/* The chain below uses `flex: 1 1 0` (basis: 0) — NOT `flex: 1 1 auto`.
+   With basis: auto in a column flex container, the basis becomes the
+   intrinsic content height; a tall result table would then propagate up
+   through `.n-tabs-pane-wrapper` (which Naive UI ships without an
+   explicit height) and push the tab body out of the viewport. Basis: 0
+   means the slot's height is determined ENTIRELY by grow distribution
+   against the definite parent height — content size has no influence. */
+.ws { display: flex; flex-direction: column; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
+.ws :deep(.n-tabs) {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.ws :deep(.n-tabs-tab-pad), .ws :deep(.n-tabs-tab) { padding: 4px 10px; }
+.ws :deep(.n-tabs-nav) { background: var(--n-color); flex: 0 0 auto; }
+/* Pane wrapper is the actual culprit when broken — give it explicit
+   flex: 1 1 0 so the wrapper has a definite height equal to (n-tabs height
+   - nav height). With overflow: hidden anything taller inside is clipped. */
+.ws :deep(.ws-pane-wrapper) {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+.ws :deep(.ws-pane) {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.ws :deep(.ws-pane > *) { flex: 1 1 0; min-width: 0; min-height: 0; }
+</style>

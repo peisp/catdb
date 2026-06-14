@@ -1,0 +1,19 @@
+.task
+bin
+frontend/dist
+frontend/node_modules
+frontend/.bindings-tmp-*
+build/linux/appimage/build
+build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+
+# OS / IDE
+.DS_Store
+**/.DS_Store
+.idea/workspace.xml
+.idea/shelf/
+
+# Claude Code local settings (user-specific)
+.claude/settings.local.json
+
+# wails generated bindings — uncomment if you prefer regenerating fresh each build
+# frontend/bindings/

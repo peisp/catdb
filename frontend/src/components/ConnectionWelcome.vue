@@ -1,0 +1,42 @@
+<script setup lang="ts">
+// ConnectionWelcome — empty-state for the main pane while no connection is
+// active. Keeps the desktop-spec density (UI_SPEC §3) — no big hero card.
+import { computed } from 'vue'
+import { NButton, NSpace } from 'naive-ui'
+import { useConnectionsStore } from '../stores/connections'
+
+const emit = defineEmits<{ (e: 'new'): void }>()
+const store = useConnectionsStore()
+
+const hasConnections = computed(() => store.connections.length > 0)
+</script>
+
+<template>
+  <div class="welcome">
+    <h2>catdb</h2>
+    <p class="hint">
+      <template v-if="hasConnections">
+        Double-click a connection in the sidebar to open it. Right-click for more actions.
+      </template>
+      <template v-else>
+        No connections yet. Create one to get started.
+      </template>
+    </p>
+    <n-space :size="8">
+      <n-button size="small" type="primary" @click="emit('new')">
+        新建连接
+      </n-button>
+    </n-space>
+  </div>
+</template>
+
+<style scoped>
+.welcome {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 520px;
+}
+.welcome h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.hint { font-size: 12px; opacity: 0.7; margin: 0; line-height: 1.5; }
+</style>

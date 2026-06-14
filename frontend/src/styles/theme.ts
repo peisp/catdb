@@ -1,0 +1,63 @@
+// UI theme overrides — implements UI_SPEC.md §2,§3,§9 (desktop scale, system
+// font, hairline borders, 3–4px radius). DO NOT loosen these numbers without
+// updating UI_SPEC.md — they're the difference between "looks native" and
+// "looks like a web page".
+import type { GlobalThemeOverrides } from 'naive-ui'
+
+const fontFamily =
+  'system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif'
+
+const fontFamilyMono =
+  'ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace'
+
+const common = {
+  fontFamily,
+  fontFamilyMono,
+  fontSize: '13px',
+  fontSizeSmall: '12px',
+  fontSizeMedium: '13px',
+  fontSizeLarge: '14px',
+  borderRadius: '3px',
+  borderRadiusSmall: '2px',
+  heightTiny: '20px',
+  heightSmall: '24px',
+  heightMedium: '28px',
+  heightLarge: '32px',
+  heightHuge: '36px',
+}
+
+export const themeOverrides: GlobalThemeOverrides = {
+  common,
+  Button: {
+    paddingMedium: '0 10px',
+    paddingSmall: '0 8px',
+  },
+  Input: {
+    heightMedium: '28px',
+    heightSmall: '24px',
+  },
+  DataTable: {
+    fontSizeSmall: '12px',
+    fontSizeMedium: '13px',
+    thPaddingSmall: '4px 8px',
+    tdPaddingSmall: '3px 8px',
+    thPaddingMedium: '6px 10px',
+    tdPaddingMedium: '4px 10px',
+  },
+  Tree: {
+    nodeHeight: '24px',
+    fontSize: '13px',
+  },
+  Tabs: {
+    tabFontSizeMedium: '13px',
+    tabPaddingMediumLine: '6px 14px',
+  },
+  Menu: {
+    itemHeight: '28px',
+  },
+  Layout: {
+    siderToggleButtonColor: 'transparent',
+  },
+}
+
+export const darkThemeOverrides: GlobalThemeOverrides = themeOverrides

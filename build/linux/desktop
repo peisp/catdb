@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=catdb
+Comment=Cross-platform database management tool
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/catdb %u
+Terminal=false
+Type=Application
+Icon=catdb
+Categories=Utility;
+StartupWMClass=catdb
+
+ 

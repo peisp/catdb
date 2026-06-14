@@ -1,0 +1,93 @@
+/* Global desktop-scale baseline. Replaces the Wails template style.css. */
+
+:root {
+    font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC",
+        "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    font-size: 13px;
+    line-height: 1.4;
+    font-weight: 400;
+    color-scheme: light dark;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-text-size-adjust: 100%;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html, body, #app {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+}
+
+body {
+    user-select: none;
+    -webkit-user-select: none;
+    background-color: transparent;
+}
+
+/* Data cells, code, SQL: monospace */
+.mono, code, pre {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono",
+        Menlo, Consolas, monospace;
+}
+
+/* Non-link cursor on buttons/clickable rows (UI_SPEC §4 — pointer is for hyperlinks only). */
+button, .clickable {
+    cursor: default;
+}
+
+/* Auto-hiding overlay-style scrollbar (UI_SPEC §6, desktop chrome rule).
+   The thumb is fully transparent at rest. It only fades in when the user
+   hovers over a scrollable element (mirrors macOS overlay-scrollbar feel).
+   The track stays transparent so the bar never claims real estate visually. */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+    background: transparent;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 5px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    transition: background-color 180ms ease-out;
+}
+/* When the scrollable container is being hovered, fade the thumb in. */
+:hover::-webkit-scrollbar-thumb {
+    background-color: rgba(127, 127, 127, 0.35);
+}
+/* Direct hover on the thumb itself — darken slightly. */
+::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(127, 127, 127, 0.55);
+}
+/* Active drag — strongest. */
+::-webkit-scrollbar-thumb:active {
+    background-color: rgba(127, 127, 127, 0.7);
+}
+/* Firefox fallback (works in Wails on Linux GTK). */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+}
+*:hover {
+    scrollbar-color: rgba(127, 127, 127, 0.4) transparent;
+}
+
+/* Wails drag region — set on the title bar in App.vue */
+.titlebar {
+    --wails-draggable: drag;
+}
+.titlebar button, .titlebar input, .titlebar .clickable {
+    --wails-draggable: no-drag;
+}
