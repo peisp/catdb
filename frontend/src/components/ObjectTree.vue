@@ -240,6 +240,6 @@ const nodeProps = ({ option }: { option: TreeOption }) => ({
   opacity: 0.7;
   border-bottom: 1px solid var(--n-border-color);
 }
-.body { flex: 1 1 auto; min-height: 0; }
+.body { flex: 1 1 auto; min-height: 0; padding: 6px; }
 .body :deep(.n-tree-node-content) { font-size: 12px; }
 </style>
