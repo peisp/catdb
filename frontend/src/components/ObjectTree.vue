@@ -201,19 +201,21 @@ const nodeProps = ({ option }: { option: TreeOption }) => ({
     <div class="header">
       <span class="title">{{ connection.name }}</span>
     </div>
-    <n-scrollbar class="body">
-      <n-spin :show="loading">
-        <n-tree
-          block-line
-          virtual-scroll
-          :data="treeData"
-          :on-load="onLoad"
-          :node-props="nodeProps"
-          :style="{ height: '100%' }"
-          :indent="14"
-        />
-      </n-spin>
-    </n-scrollbar>
+    <div class="body">
+      <n-scrollbar class="scroll">
+        <n-spin :show="loading">
+          <n-tree
+            block-line
+            virtual-scroll
+            :data="treeData"
+            :on-load="onLoad"
+            :node-props="nodeProps"
+            :style="{ height: '100%' }"
+            :indent="14"
+          />
+        </n-spin>
+      </n-scrollbar>
+    </div>
     <n-dropdown
       placement="bottom-start"
       trigger="manual"
@@ -234,12 +236,15 @@ const nodeProps = ({ option }: { option: TreeOption }) => ({
   display: flex;
   align-items: center;
   padding: 6px 10px;
-  font-size: 11px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   opacity: 0.7;
   border-bottom: 1px solid var(--n-border-color);
 }
-.body { flex: 1 1 auto; min-height: 0; padding: 6px; }
+.body { flex: 1 1 auto; min-height: 0; padding: 6px; display: flex; }
+.scroll { flex: 1 1 0; min-width: 0; min-height: 0; }
 .body :deep(.n-tree-node-content) { font-size: 12px; }
+.body :deep(.n-spin-container),
+.body :deep(.n-spin-content) { height: 100%; min-height: 0; }
 </style>

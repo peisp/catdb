@@ -98,7 +98,7 @@ const mode = computed(() => (theme.mode === 'dark' ? 'Dark' : 'Light'))
   align-items: center;
   height: 22px;
   font-size: 11px;
-  padding: 0 10px;
+  padding: 0 18px;
   gap: 8px;
   opacity: 0.9;
 }

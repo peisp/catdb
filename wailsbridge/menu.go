@@ -60,6 +60,15 @@ func BuildApplicationMenu(app *application.App) *application.Menu {
 	viewMenu := m.AddSubmenu("View")
 	emitItem(viewMenu, "Toggle Sidebar", "menu:toggle-sidebar", "CmdOrCtrl+\\")
 	viewMenu.AddSeparator()
+	devToolsItem := viewMenu.Add("Toggle DevTools")
+	devToolsItem.SetAccelerator("CmdOrCtrl+Shift+I")
+	devToolsItem.OnClick(func(_ *application.Context) {
+		win := app.Window.Current()
+		if win != nil {
+			win.OpenDevTools()
+		}
+	})
+	viewMenu.AddSeparator()
 	viewMenu.AddRole(application.Reload)
 	viewMenu.AddRole(application.ToggleFullscreen)
 
