@@ -32,7 +32,6 @@ func resolveDB(db, schema string) string {
 func (m metadata) ListDatabases(ctx context.Context) ([]string, error) {
 	const q = `SELECT SCHEMA_NAME
 	             FROM information_schema.SCHEMATA
-	            WHERE SCHEMA_NAME NOT IN ('mysql','information_schema','performance_schema','sys')
 	            ORDER BY SCHEMA_NAME`
 	rows, err := m.db.QueryContext(ctx, q)
 	if err != nil {

@@ -14,6 +14,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as dbdriver$0 from "../dbdriver/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as storage$0 from "../storage/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -69,6 +72,16 @@ export function GetConnection(id: string): $CancellablePromise<storage$0.Connect
 }
 
 /**
+ * GetServerInfo returns runtime metadata (version, current user) for a live
+ * Connection. Returns ErrNotOpen if the connection is not active.
+ */
+export function GetServerInfo(id: string): $CancellablePromise<dbdriver$0.ServerInfo> {
+    return $Call.ByID(771640052, id).then(($result: any) => {
+        return $$createType2($result);
+    });
+}
+
+/**
  * IsConnected reports whether a Connection is live.
  */
 export function IsConnected(id: string): $CancellablePromise<boolean> {
@@ -80,7 +93,7 @@ export function IsConnected(id: string): $CancellablePromise<boolean> {
  */
 export function ListConnections(): $CancellablePromise<storage$0.ConnectionProfile[]> {
     return $Call.ByID(3446961070).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType3($result);
     });
 }
 
@@ -91,7 +104,7 @@ export function ListConnections(): $CancellablePromise<storage$0.ConnectionProfi
  */
 export function ListDrivers(): $CancellablePromise<$models.DriverInfo[]> {
     return $Call.ByID(783635796).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType5($result);
     });
 }
 
@@ -100,7 +113,7 @@ export function ListDrivers(): $CancellablePromise<$models.DriverInfo[]> {
  */
 export function ListGroups(): $CancellablePromise<storage$0.Group[]> {
     return $Call.ByID(4163085149).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType7($result);
     });
 }
 
@@ -127,7 +140,7 @@ export function SaveConnection(d: $models.ConnectionDraft): $CancellablePromise<
  */
 export function SaveGroup(g: storage$0.Group): $CancellablePromise<storage$0.Group> {
     return $Call.ByID(4249990095, g).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType6($result);
     });
 }
 
@@ -142,8 +155,9 @@ export function TestConnection(d: $models.ConnectionDraft): $CancellablePromise<
 // Private type creation functions
 const $$createType0 = $Create.Array($Create.Any);
 const $$createType1 = storage$0.ConnectionProfile.createFrom;
-const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = $models.DriverInfo.createFrom;
-const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = storage$0.Group.createFrom;
-const $$createType6 = $Create.Array($$createType5);
+const $$createType2 = dbdriver$0.ServerInfo.createFrom;
+const $$createType3 = $Create.Array($$createType1);
+const $$createType4 = $models.DriverInfo.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = storage$0.Group.createFrom;
+const $$createType7 = $Create.Array($$createType6);

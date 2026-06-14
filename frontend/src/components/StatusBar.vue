@@ -3,14 +3,18 @@
 // query store + connections store: active connection name, active tab's
 // rows / elapsed / kind, and a build tag on the right. Cursor position
 // requires deeper CodeMirror state hooks and is left for a later polish.
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { connections as connectionsApi } from '../api'
 import { useConnectionsStore } from '../stores/connections'
 import { useQueryStore } from '../stores/query'
 import { useThemeStore } from '../stores/theme'
+import type { ServerInfo } from '../api/connections'
 
 const conns = useConnectionsStore()
 const tabs = useQueryStore()
 const theme = useThemeStore()
+
+const serverInfo = ref<ServerInfo | null>(null)
 
 const liveConn = computed(() => {
   // Reach the first live connection — for M4 the workspace only ever shows
@@ -19,6 +23,17 @@ const liveConn = computed(() => {
   if (!id) return null
   return conns.connections.find((c) => c.id === id) ?? null
 })
+
+// Fetch server info when the active connection changes.
+watch(liveConn, async (conn) => {
+  if (!conn) { serverInfo.value = null; return }
+  try {
+    serverInfo.value = await connectionsApi.getServerInfo(conn.id)
+  } catch {
+    // connection may not be fully live yet, that's fine
+    serverInfo.value = null
+  }
+}, { immediate: true })
 
 const activeTab = computed(() => {
   if (!liveConn.value) return null
@@ -66,6 +81,10 @@ const mode = computed(() => (theme.mode === 'dark' ? 'Dark' : 'Light'))
     <span v-if="rowsLabel" class="slot mono">{{ rowsLabel }}</span>
     <span v-if="elapsedLabel" class="sep" />
     <span v-if="elapsedLabel" class="slot mono">{{ elapsedLabel }}</span>
+    <span v-if="serverInfo" class="sep" />
+    <span v-if="serverInfo" class="slot mono">{{ serverInfo.version }}</span>
+    <span v-if="serverInfo" class="sep" />
+    <span v-if="serverInfo" class="slot mono">{{ serverInfo.user }}</span>
     <span class="grow" />
     <span class="slot mono">{{ mode }}</span>
     <span class="sep" />

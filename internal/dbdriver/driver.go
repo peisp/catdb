@@ -41,6 +41,9 @@ type Connection interface {
 	Ping(ctx context.Context) error
 	Close() error
 
+	// ServerInfo returns runtime metadata (server version, current user).
+	ServerInfo(ctx context.Context) (ServerInfo, error)
+
 	Querier() Querier
 	Metadata() Metadata
 	Editor() Editor

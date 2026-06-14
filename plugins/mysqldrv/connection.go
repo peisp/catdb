@@ -26,6 +26,18 @@ func (c *connection) Ping(ctx context.Context) error {
 	return c.db.PingContext(ctx)
 }
 
+func (c *connection) ServerInfo(ctx context.Context) (dbdriver.ServerInfo, error) {
+	if c == nil || c.db == nil {
+		return dbdriver.ServerInfo{}, fmt.Errorf("mysqldrv: connection is closed")
+	}
+	var ver, usr string
+	err := c.db.QueryRowContext(ctx, "SELECT VERSION(), USER()").Scan(&ver, &usr)
+	if err != nil {
+		return dbdriver.ServerInfo{}, fmt.Errorf("mysqldrv: server info: %w", err)
+	}
+	return dbdriver.ServerInfo{Version: ver, User: usr}, nil
+}
+
 func (c *connection) Close() error {
 	if c == nil {
 		return nil

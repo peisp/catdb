@@ -12,6 +12,7 @@ export {
     RoutineInfo,
     SSHConfig,
     SSLConfig,
+    ServerInfo,
     TableInfo,
     ViewInfo
 } from "./models.js";

@@ -11,12 +11,14 @@ import type {
   ConnectionProfile as BoundProfile,
   Group as BoundGroup,
 } from '../../bindings/catdb/internal/storage/models'
+import type { ServerInfo as BoundServerInfo } from '../../bindings/catdb/internal/dbdriver/models'
 
 // Re-export the binding types so components have stable import names.
 export type DriverInfo = BoundDriverInfo
 export type ConnectionProfile = BoundProfile
 export type ConnectionDraft = BoundDraft
 export type Group = BoundGroup
+export type ServerInfo = BoundServerInfo
 
 export function listDrivers(): Promise<DriverInfo[]> {
   return ConnectionService.ListDrivers()
@@ -78,4 +80,8 @@ export function isConnected(id: string): Promise<boolean> {
 
 export function connectedIds(): Promise<string[]> {
   return ConnectionService.ConnectedIDs()
+}
+
+export function getServerInfo(id: string): Promise<ServerInfo> {
+  return ConnectionService.GetServerInfo(id)
 }

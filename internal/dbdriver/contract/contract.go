@@ -34,6 +34,7 @@ func Run(t *testing.T, ctx context.Context, d dbdriver.Driver, cfg dbdriver.Conn
 	t.Cleanup(func() { _ = conn.Close() })
 
 	t.Run("Ping", func(t *testing.T) { testPing(t, ctx, conn) })
+	t.Run("ServerInfo", func(t *testing.T) { testServerInfo(t, ctx, conn) })
 	t.Run("Query/Scalar", func(t *testing.T) { testQueryScalar(t, ctx, conn) })
 	t.Run("Query/Cancel", func(t *testing.T) { testQueryCancel(t, ctx, conn) })
 	t.Run("Metadata", func(t *testing.T) { testMetadata(t, ctx, conn) })
@@ -43,6 +44,19 @@ func Run(t *testing.T, ctx context.Context, d dbdriver.Driver, cfg dbdriver.Conn
 func testPing(t *testing.T, ctx context.Context, c dbdriver.Connection) {
 	if err := c.Ping(ctx); err != nil {
 		t.Fatalf("Ping: %v", err)
+	}
+}
+
+func testServerInfo(t *testing.T, ctx context.Context, c dbdriver.Connection) {
+	info, err := c.ServerInfo(ctx)
+	if err != nil {
+		t.Fatalf("ServerInfo: %v", err)
+	}
+	if info.Version == "" {
+		t.Fatal("ServerInfo.Version is empty")
+	}
+	if info.User == "" {
+		t.Fatal("ServerInfo.User is empty")
 	}
 }
 

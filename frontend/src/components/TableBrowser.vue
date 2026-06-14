@@ -323,7 +323,7 @@ function isNull(v: any): boolean { return v == null }
 .title { font-size: 12px; }
 .grow { flex: 1 1 auto; }
 .banner { margin: 6px 8px; flex: 0 0 auto; }
-.data-spin { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; }
+.data-spin { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; padding: 6px; }
 .data-spin :deep(.n-spin-container),
 .data-spin :deep(.n-spin-content) {
   height: 100%;

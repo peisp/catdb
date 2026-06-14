@@ -199,6 +199,16 @@ func (s *ConnectionService) Ping(ctx context.Context, id string) error {
 	return c.Ping(ctx)
 }
 
+// GetServerInfo returns runtime metadata (version, current user) for a live
+// Connection. Returns ErrNotOpen if the connection is not active.
+func (s *ConnectionService) GetServerInfo(ctx context.Context, id string) (dbdriver.ServerInfo, error) {
+	c, err := s.mgr.Get(id)
+	if err != nil {
+		return dbdriver.ServerInfo{}, err
+	}
+	return c.ServerInfo(ctx)
+}
+
 // IsConnected reports whether a Connection is live.
 func (s *ConnectionService) IsConnected(_ context.Context, id string) bool {
 	return s.mgr.IsOpen(id)

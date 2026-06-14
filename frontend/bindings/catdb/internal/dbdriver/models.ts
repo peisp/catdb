@@ -404,6 +404,43 @@ export class SSLConfig {
 }
 
 /**
+ * ServerInfo holds runtime metadata about a database server — what you get
+ * from `SELECT VERSION(), USER()` in MySQL. Populated on connect and cached
+ * by the front-end store for the status bar.
+ */
+export class ServerInfo {
+    /**
+     * e.g. "8.0.32"
+     */
+    "version": string;
+
+    /**
+     * e.g. "root@localhost"
+     */
+    "user": string;
+
+    /** Creates a new ServerInfo instance. */
+    constructor($$source: Partial<ServerInfo> = {}) {
+        if (!("version" in $$source)) {
+            this["version"] = "";
+        }
+        if (!("user" in $$source)) {
+            this["user"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ServerInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ServerInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ServerInfo($$parsedSource as Partial<ServerInfo>);
+    }
+}
+
+/**
  * TableInfo is a row in the object tree at the table level.
  */
 export class TableInfo {

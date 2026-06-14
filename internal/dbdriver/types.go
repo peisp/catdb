@@ -42,6 +42,14 @@ type SSLConfig struct {
 	ServerName string `json:"serverName,omitempty"`
 }
 
+// ServerInfo holds runtime metadata about a database server — what you get
+// from `SELECT VERSION(), USER()` in MySQL. Populated on connect and cached
+// by the front-end store for the status bar.
+type ServerInfo struct {
+	Version string `json:"version"` // e.g. "8.0.32"
+	User    string `json:"user"`    // e.g. "root@localhost"
+}
+
 // SSHConfig describes an SSH jump tunnel. Auth is mutually exclusive:
 // password OR private key OR ssh-agent.
 type SSHConfig struct {
