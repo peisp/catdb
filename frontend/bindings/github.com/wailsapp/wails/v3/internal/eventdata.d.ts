@@ -8,6 +8,7 @@ import type { Events } from "@wailsio/runtime";
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "custom:switch-english-input": { [_ in string]?: any };
             "transfer:progress": { [_ in string]?: any };
             "window:close-blocked": { [_ in string]?: any };
         }

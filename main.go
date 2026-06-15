@@ -25,6 +25,7 @@ var assets embed.FS
 func init() {
 	application.RegisterEvent[map[string]any]("transfer:progress")
 	application.RegisterEvent[map[string]any]("window:close-blocked")
+	application.RegisterEvent[map[string]any]("custom:switch-english-input")
 }
 
 func main() {
@@ -61,7 +62,7 @@ func main() {
 
 	// Listen for front-end focus events on the SQL editor — switch to English
 	// input source on macOS so SQL typing starts in the correct layout.
-	app.Event.On("system:switch-english-input", func(_ *application.CustomEvent) {
+	app.Event.On("custom:switch-english-input", func(_ *application.CustomEvent) {
 		platform.SwitchToEnglishInputSource()
 	})
 	app.Menu.SetApplicationMenu(wailsbridge.BuildApplicationMenu(app))

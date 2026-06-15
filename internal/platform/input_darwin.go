@@ -5,8 +5,11 @@ package platform
 /*
 #cgo LDFLAGS: -framework Carbon
 #include <Carbon/Carbon.h>
+#include <dispatch/dispatch.h>
+#include <pthread.h>
 
-static void switchToEnglishInput(void) {
+static void _doSwitch(void* _ctx) {
+    (void)_ctx;
     CFArrayRef sources = TISCreateInputSourceList(NULL, false);
     if (!sources) return;
 
@@ -23,6 +26,16 @@ static void switchToEnglishInput(void) {
         }
     }
     CFRelease(sources);
+}
+
+static void switchToEnglishInput(void) {
+    // Carbon TIS APIs must be called on the main thread. If we're already on
+    // it, call directly; otherwise dispatch synchronously to the main queue.
+    if (pthread_main_np()) {
+        _doSwitch(NULL);
+    } else {
+        dispatch_sync_f(dispatch_get_main_queue(), NULL, _doSwitch);
+    }
 }
 */
 import "C"
