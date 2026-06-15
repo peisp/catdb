@@ -87,11 +87,18 @@ async function onSaved(profile: ConnectionProfile) {
 function onCancel() {
   void Window.Close()
 }
+
+// Mirror the native OS gesture: double-clicking the drag strip toggles
+// between maximised and the previous size. Wails alpha-96 doesn't do this
+// for us — we have to bind it explicitly.
+function toggleMaximise() {
+  void Window.ToggleMaximise()
+}
 </script>
 
 <template>
   <div class="root">
-    <header class="titlebar">
+    <header class="titlebar" @dblclick="toggleMaximise">
       <span class="title">{{ title }}</span>
     </header>
     <main class="body">

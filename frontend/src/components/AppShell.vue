@@ -124,6 +124,13 @@ function onOpenStructure(payload: { db: string; table: string }) {
   if (!activeConn.value) return
   queryStore.openTableTab(activeConn.value.id, payload.db, payload.table, 'structure')
 }
+
+// Mirror the native OS gesture: double-clicking the drag strip toggles
+// between maximised and the previous size. Wails alpha-96 doesn't do this
+// for us — we have to bind it explicitly.
+function toggleMaximise() {
+  void Window.ToggleMaximise()
+}
 </script>
 
 <template>
@@ -140,7 +147,7 @@ function onOpenStructure(payload: { db: string; table: string }) {
         @collapse="sidebarVisible = false"
       />
       <div class="main">
-        <header class="titlebar">
+        <header class="titlebar" @dblclick.self="toggleMaximise">
           <n-button
             class="sidebar-toggle"
             size="tiny"
