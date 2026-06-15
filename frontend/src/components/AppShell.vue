@@ -9,11 +9,10 @@
 // dirty-tab counter in the Go side current.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Window } from '@wailsio/runtime'
-import { NSplit, useDialog, useMessage } from 'naive-ui'
-import ConnectionSidebar from './ConnectionSidebar.vue'
+import { useDialog, useMessage } from 'naive-ui'
+import AppSidebar from './AppSidebar.vue'
 import ConnectionEditor from './ConnectionEditor.vue'
 import ConnectionWelcome from './ConnectionWelcome.vue'
-import ObjectTree from './ObjectTree.vue'
 import QueryWorkspace from './QueryWorkspace.vue'
 import StatusBar from './StatusBar.vue'
 import type { ConnectionProfile, DriverInfo } from '../api/connections'
@@ -134,37 +133,15 @@ function onOpenStructure(payload: { db: string; table: string }) {
 <template>
   <div class="root">
     <div class="shell">
-      <aside v-if="sidebarVisible" class="sider">
-        <n-split
-          v-if="activeConn"
-          direction="vertical"
-          :max="0.7"
-          :min="0.2"
-          :default-size="0.4"
-          class="sider-split"
-        >
-          <template #1>
-            <ConnectionSidebar
-              @select="onSelectConnection"
-              @new="onNewConnection"
-              @edit="onEditConnection"
-            />
-          </template>
-          <template #2>
-            <ObjectTree
-              :connection="activeConn"
-              @open-data="onOpenData"
-              @open-structure="onOpenStructure"
-            />
-          </template>
-        </n-split>
-        <ConnectionSidebar
-          v-else
-          @select="onSelectConnection"
-          @new="onNewConnection"
-          @edit="onEditConnection"
-        />
-      </aside>
+      <AppSidebar
+        v-if="sidebarVisible"
+        :active-conn="activeConn"
+        @select="onSelectConnection"
+        @new="onNewConnection"
+        @edit="onEditConnection"
+        @open-data="onOpenData"
+        @open-structure="onOpenStructure"
+      />
       <div class="main">
         <header class="titlebar" />
         <main class="content">
@@ -175,11 +152,10 @@ function onOpenStructure(payload: { db: string; table: string }) {
           />
           <ConnectionWelcome v-else @new="pickFirstDriver" />
         </main>
+        <div class="status">
+          <StatusBar />
+        </div>
       </div>
-    </div>
-
-    <div class="status">
-      <StatusBar />
     </div>
 
     <ConnectionEditor
@@ -216,18 +192,6 @@ function onOpenStructure(payload: { db: string; table: string }) {
   display: flex;
   flex-direction: row;
 }
-.sider {
-  flex: 0 0 280px;
-  width: 280px;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  border-right: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
-  background: var(--n-color);
-  display: flex;
-  flex-direction: column;
-}
-.sider > * { flex: 1 1 0; min-width: 0; min-height: 0; }
 .main {
   flex: 1 1 0;
   min-width: 0;
@@ -252,14 +216,11 @@ function onOpenStructure(payload: { db: string; table: string }) {
 }
 .content > * { flex: 1 1 0; min-width: 0; min-height: 0; }
 
-/* Row 2: status bar. */
+/* Status bar inside main (right work area only — sidebar extends full height). */
 .status {
   flex: 0 0 22px;
   height: 22px;
   border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
   background: var(--n-color, transparent);
 }
-
-.sider-split { height: 100%; min-height: 0; }
-.sider-split :deep(.n-split-pane) { overflow: hidden; min-width: 0; min-height: 0; }
 </style>

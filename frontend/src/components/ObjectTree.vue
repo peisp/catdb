@@ -27,6 +27,7 @@ const store = useMetadataStore()
 const message = useMessage()
 
 const treeData = ref<TreeOption[]>([])
+const expandedKeys = ref<string[]>([])
 const loading = ref(false)
 
 interface TreeMeta {
@@ -187,6 +188,16 @@ function onDblclick(_: MouseEvent, node: TreeOption) {
   const m = (node as any).extra as TreeMeta
   if (m.kind === 'table' || m.kind === 'view') {
     emit('open-data', { db: m.db!, table: m.table! })
+    return
+  }
+  // Toggle expand for non-leaf nodes (databases, groups).
+  if (node.isLeaf) return
+  const key = node.key as string
+  const idx = expandedKeys.value.indexOf(key)
+  if (idx === -1) {
+    expandedKeys.value.push(key)
+  } else {
+    expandedKeys.value.splice(idx, 1)
   }
 }
 
@@ -208,10 +219,12 @@ const nodeProps = ({ option }: { option: TreeOption }) => ({
             block-line
             virtual-scroll
             :data="treeData"
+            :expanded-keys="expandedKeys"
             :on-load="onLoad"
             :node-props="nodeProps"
             :style="{ height: '100%' }"
             :indent="14"
+            @update:expanded-keys="(keys) => (expandedKeys = keys)"
           />
         </n-spin>
       </n-scrollbar>
