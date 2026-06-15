@@ -26,6 +26,7 @@ func init() {
 	application.RegisterEvent[map[string]any]("transfer:progress")
 	application.RegisterEvent[map[string]any]("window:close-blocked")
 	application.RegisterEvent[map[string]any]("custom:switch-english-input")
+	application.RegisterEvent[map[string]any]("connection:saved")
 }
 
 func main() {

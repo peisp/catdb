@@ -23,6 +23,17 @@ export function setDirtyTabs(count: number): Promise<void> {
 export function allowNextClose(): Promise<void> {
   return SystemService.AllowNextClose() as unknown as Promise<void>
 }
+export function openConnectionEditor(driver: string, connId = ''): Promise<void> {
+  return SystemService.OpenConnectionEditor(driver, connId) as unknown as Promise<void>
+}
+export function broadcastConnectionSaved(connId: string): Promise<void> {
+  return SystemService.BroadcastConnectionSaved(connId) as unknown as Promise<void>
+}
+
+export type ConnectionSavedPayload = { id: string }
+export function onConnectionSaved(cb: (p: ConnectionSavedPayload) => void): () => void {
+  return on<ConnectionSavedPayload>('connection:saved', cb)
+}
 
 export type CloseBlockedPayload = { dirtyTabs: number }
 export function onCloseBlocked(cb: (p: CloseBlockedPayload) => void): () => void {

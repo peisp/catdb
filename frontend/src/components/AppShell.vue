@@ -11,7 +11,6 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Window } from '@wailsio/runtime'
 import { useDialog, useMessage } from 'naive-ui'
 import AppSidebar from './AppSidebar.vue'
-import ConnectionEditor from './ConnectionEditor.vue'
 import ConnectionWelcome from './ConnectionWelcome.vue'
 import QueryWorkspace from './QueryWorkspace.vue'
 import StatusBar from './StatusBar.vue'
@@ -24,10 +23,6 @@ const store = useConnectionsStore()
 const queryStore = useQueryStore()
 const dialog = useDialog()
 const message = useMessage()
-
-const editorOpen = ref(false)
-const editorDriver = ref<DriverInfo | null>(null)
-const editorInitial = ref<ConnectionProfile | null>(null)
 
 const activeConn = ref<ConnectionProfile | null>(null)
 
@@ -75,6 +70,11 @@ onMounted(() => {
       },
     })
   }))
+
+  // The standalone connection-editor window broadcasts this after Save.
+  offHandlers.push(systemApi.onConnectionSaved(() => {
+    void store.refreshAll()
+  }))
 })
 
 onBeforeUnmount(() => {
@@ -102,16 +102,12 @@ watch(dirtyCount, (v) => { void systemApi.setDirtyTabs(v) }, { immediate: true }
 // --- existing wiring ---
 
 function onNewConnection(driver: DriverInfo) {
-  editorDriver.value = driver
-  editorInitial.value = null
-  editorOpen.value = true
+  void systemApi.openConnectionEditor(driver.name, '')
 }
 function onEditConnection(conn: ConnectionProfile) {
   const d = store.driverByName.get(conn.driver)
   if (!d) return
-  editorDriver.value = d
-  editorInitial.value = conn
-  editorOpen.value = true
+  void systemApi.openConnectionEditor(d.name, conn.id)
 }
 function onSelectConnection(conn: ConnectionProfile) {
   activeConn.value = conn
@@ -157,13 +153,6 @@ function onOpenStructure(payload: { db: string; table: string }) {
         </div>
       </div>
     </div>
-
-    <ConnectionEditor
-      v-model:show="editorOpen"
-      :driver="editorDriver"
-      :initial="editorInitial"
-      @saved="store.refreshAll()"
-    />
   </div>
 </template>
 

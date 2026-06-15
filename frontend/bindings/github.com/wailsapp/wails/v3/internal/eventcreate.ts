@@ -8,6 +8,7 @@ import { Create as $Create } from "@wailsio/runtime";
 
 function configure() {
     Object.freeze(Object.assign($Create.Events, {
+        "connection:saved": $$createType0,
         "custom:switch-english-input": $$createType0,
         "transfer:progress": $$createType0,
         "window:close-blocked": $$createType0,

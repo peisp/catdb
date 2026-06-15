@@ -10,7 +10,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise} from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -23,6 +23,28 @@ import * as $models from "./models.js";
  */
 export function AllowNextClose(): $CancellablePromise<void> {
     return $Call.ByID(540885912);
+}
+
+/**
+ * BroadcastConnectionSaved tells every window that a connection was saved.
+ * Used by the connection-editor child window to nudge the main window into
+ * refreshing its sidebar list.
+ */
+export function BroadcastConnectionSaved(connID: string): $CancellablePromise<void> {
+    return $Call.ByID(229827702, connID);
+}
+
+/**
+ * OpenConnectionEditor pops the connection editor as its own native window.
+ * `driver` is the driver name (e.g. "mysql") and `connID` is the profile id
+ * to edit (empty string for a new-connection flow).
+ * 
+ * The auxiliary window is keyed by name "connection-editor", so re-opening
+ * while it is already on screen just brings it forward with the new params
+ * instead of stacking duplicates.
+ */
+export function OpenConnectionEditor(driver: string, connID: string): $CancellablePromise<void> {
+    return $Call.ByID(924141369, driver, connID);
 }
 
 /**
