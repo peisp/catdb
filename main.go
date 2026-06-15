@@ -12,6 +12,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"catdb/internal/core/session"
+	"catdb/internal/platform"
 	"catdb/internal/services"
 	"catdb/internal/storage"
 	_ "catdb/plugins"
@@ -57,6 +58,12 @@ func main() {
 	})
 
 	wailsbridge.SetApp(app)
+
+	// Listen for front-end focus events on the SQL editor — switch to English
+	// input source on macOS so SQL typing starts in the correct layout.
+	app.Event.On("system:switch-english-input", func(_ *application.CustomEvent) {
+		platform.SwitchToEnglishInputSource()
+	})
 	app.Menu.SetApplicationMenu(wailsbridge.BuildApplicationMenu(app))
 
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{

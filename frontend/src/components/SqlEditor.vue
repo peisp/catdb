@@ -46,6 +46,7 @@ import {
 } from '@codemirror/commands'
 import { useThemeStore } from '../stores/theme'
 import { mysqlExtraCompletions } from '../editor/mysqlCompletions'
+import { emit as wailsEmit } from '../api/events'
 
 const props = defineProps<{
   modelValue: string
@@ -187,6 +188,12 @@ onMounted(() => {
   view.value = new EditorView({
     state: makeState(props.modelValue ?? ''),
     parent: host.value,
+  })
+  // On focus, ask the Go backend to switch to English input source so SQL
+  // typing starts in the correct layout. The user can manually switch away;
+  // only re-triggered on next focus.
+  view.value.contentDOM.addEventListener('focus', () => {
+    void wailsEmit('system:switch-english-input')
   })
 })
 

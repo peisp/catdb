@@ -13,3 +13,8 @@ export function on<T = unknown>(name: string, cb: (data: T) => void): () => void
 export function once<T = unknown>(name: string, cb: (data: T) => void): () => void {
   return Events.Once(name, (evt) => cb(evt.data as T))
 }
+
+/** Emit an event to the Go backend. Returns a promise resolved once emitted. */
+export function emit(name: string): Promise<boolean> {
+  return Events.Emit(name, null) as unknown as Promise<boolean>
+}
