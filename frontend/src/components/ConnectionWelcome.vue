@@ -32,6 +32,7 @@ const hasConnections = computed(() => store.connections.length > 0)
 
 <style scoped>
 .welcome {
+  padding: 12px 18px 10px;
   display: flex;
   flex-direction: column;
   gap: 10px;

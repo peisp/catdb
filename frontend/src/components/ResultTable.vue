@@ -240,7 +240,7 @@ function isNull(v: any): boolean { return v == null }
   top: 0;
   z-index: 2;
   display: flex;
-  height: 24px;
+  height: 26px;
   /* Fallback for browsers without light-dark(); overridden by the next line
      when supported. Both values are OPAQUE so rows can never bleed through. */
   background-color: rgb(245, 246, 247);
@@ -303,7 +303,7 @@ function isNull(v: any): boolean { return v == null }
   justify-content: center;
   font-weight: 500;
 }
-.cell.head .col-type { font-size: 10px; opacity: 0.55; line-height: 1; margin-top: 2px; }
+.cell.head .col-type { font-size: 10px; opacity: 0.55; line-height: 1;}
 .cell.head .col-name { font-size: 12px; line-height: 1.2; }
 .cell.idx-cell {
   flex: 0 0 56px;
