@@ -36,7 +36,7 @@ import {
   closeBracketsKeymap,
   completionKeymap,
 } from '@codemirror/autocomplete'
-import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
+import { searchKeymap } from '@codemirror/search'
 import { oneDark } from '@codemirror/theme-one-dark'
 import {
   defaultKeymap,
@@ -116,7 +116,6 @@ function makeState(initial: string) {
         // when the cursor is in a non-SQL node like a comment edge).
         override: undefined,
       }),
-      highlightSelectionMatches(),
       highlightActiveLine(),
       keymap.of([
         ...defaultKeymap,
