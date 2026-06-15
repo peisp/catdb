@@ -9,7 +9,7 @@
 // dirty-tab counter in the Go side current.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Window } from '@wailsio/runtime'
-import { useDialog, useMessage } from 'naive-ui'
+import { NButton, useDialog, useMessage } from 'naive-ui'
 import AppSidebar from './AppSidebar.vue'
 import ConnectionWelcome from './ConnectionWelcome.vue'
 import QueryWorkspace from './QueryWorkspace.vue'
@@ -137,9 +137,45 @@ function onOpenStructure(payload: { db: string; table: string }) {
         @edit="onEditConnection"
         @open-data="onOpenData"
         @open-structure="onOpenStructure"
+        @collapse="sidebarVisible = false"
       />
       <div class="main">
-        <header class="titlebar" />
+        <header class="titlebar">
+          <n-button
+            class="sidebar-toggle"
+            size="tiny"
+            quaternary
+            :title="sidebarVisible ? '隐藏侧边栏' : '显示侧边栏'"
+            @click="sidebarVisible = !sidebarVisible"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.2"
+              aria-hidden="true"
+            >
+              <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
+              <line :x1="sidebarVisible ? 6 : 5" :y1="2.5" :x2="sidebarVisible ? 6 : 5" :y2="13.5" />
+              <line
+                v-if="sidebarVisible"
+                x1="3"
+                y1="5"
+                x2="4.5"
+                y2="5"
+              />
+              <line
+                v-if="sidebarVisible"
+                x1="3"
+                y1="7"
+                x2="4.5"
+                y2="7"
+              />
+            </svg>
+          </n-button>
+        </header>
         <main class="content">
           <QueryWorkspace
             v-if="activeConn"
@@ -194,8 +230,19 @@ function onOpenStructure(payload: { db: string; table: string }) {
   flex: 0 0 30px;
   height: 30px;
   border-bottom: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  gap: 4px;
   --wails-draggable: drag;
 }
+/* Interactive children must opt out of the drag region or clicks get
+   swallowed by the OS window-move handler. */
+.sidebar-toggle {
+  --wails-draggable: no-drag;
+  opacity: 0.75;
+}
+.sidebar-toggle:hover { opacity: 1; }
 .content {
   flex: 1 1 0;
   min-width: 0;
