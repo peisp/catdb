@@ -3,6 +3,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type { Events } from "@wailsio/runtime";
 
 declare module "@wailsio/runtime" {
     namespace Events {
