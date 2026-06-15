@@ -28,6 +28,7 @@ import type { SelectOption } from 'naive-ui'
 import SqlEditor from './SqlEditor.vue'
 import ResultTable from './ResultTable.vue'
 import ExportDialog from './ExportDialog.vue'
+import { format } from 'sql-formatter'
 import { useQueryStore } from '../stores/query'
 import { useMetadataStore } from '../stores/metadata'
 import type { Capabilities } from '../api/query'
@@ -188,6 +189,23 @@ function onSqlUpdate(v: string) {
   tab.value.sql = v
 }
 
+function formatSql() {
+  const sql = tab.value.sql.trim()
+  if (!sql) return
+  try {
+    const formatted = format(sql, {
+      language: 'mysql',
+      tabWidth: 2,
+      useTabs: false,
+      keywordCase: 'upper',
+      linesBetweenQueries: 2,
+    })
+    editor.value?.setDoc(formatted)
+  } catch {
+    message.warning('Could not format SQL')
+  }
+}
+
 const statusBadge = computed(() => {
   const t = tab.value
   switch (t.status) {
@@ -279,6 +297,9 @@ function onSplitDown(e: PointerEvent) {
         </n-button>
         <n-button size="small" :disabled="tab.status === 'running'" @click="run">
           Run Selection
+        </n-button>
+        <n-button size="small" :disabled="tab.status === 'running'" @click="formatSql">
+          Format
         </n-button>
         <n-button v-if="caps?.explainPlan" size="small" :disabled="tab.status === 'running'" @click="explain">
           EXPLAIN

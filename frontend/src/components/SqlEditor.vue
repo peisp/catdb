@@ -241,6 +241,14 @@ defineExpose({
     if (from === to) return ''
     return v.state.sliceDoc(from, to)
   },
+  setDoc(value: string) {
+    const v = view.value
+    if (!v) return
+    const cur = v.state.doc.toString()
+    v.dispatch({
+      changes: { from: 0, to: cur.length, insert: value },
+    })
+  },
 })
 
 const containerClass = computed(() => 'sql-editor ' + (theme.mode === 'dark' ? 'dark' : 'light'))
