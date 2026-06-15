@@ -42,8 +42,13 @@ export function closeHandle(handle: string): Promise<void> {
   return QueryService.Close(handle)
 }
 
-export function explain(connId: string, sql: string, signal?: AbortSignal): Promise<QueryRunResult> {
-  const p = QueryService.Explain(connId, sql)
+export function explain(
+  connId: string,
+  sql: string,
+  opts: Partial<QueryOptions> = {},
+  signal?: AbortSignal,
+): Promise<QueryRunResult> {
+  const p = QueryService.Explain(connId, sql, opts as QueryOptions)
   return bindSignal(p, signal)
 }
 

@@ -45,8 +45,8 @@ export function Close(handle: string): $CancellablePromise<void> {
  * Gated by Capabilities.ExplainPlan (the front-end hides the button when the
  * driver doesn't support it).
  */
-export function Explain(connID: string, sqlText: string): $CancellablePromise<$models.QueryRunResult> {
-    return $Call.ByID(3956862712, connID, sqlText).then(($result: any) => {
+export function Explain(connID: string, sqlText: string, opts: $models.QueryOptions): $CancellablePromise<$models.QueryRunResult> {
+    return $Call.ByID(3956862712, connID, sqlText, opts).then(($result: any) => {
         return $$createType1($result);
     });
 }

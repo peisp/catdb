@@ -19,10 +19,12 @@ import {
   NAlert,
   NButton,
   NCheckbox,
+  NSelect,
   NSpace,
   NTag,
   useMessage,
 } from 'naive-ui'
+import type { SelectOption } from 'naive-ui'
 import SqlEditor from './SqlEditor.vue'
 import ResultTable from './ResultTable.vue'
 import ExportDialog from './ExportDialog.vue'
@@ -59,6 +61,13 @@ const schemaMap = computed<Record<string, string[]>>(() => {
   return out
 })
 
+const dbOptions = computed<SelectOption[]>(() => {
+  const connId = tab.value?.connId
+  if (!connId) return []
+  const list = metaStore.databases[connId] ?? []
+  return list.map((d) => ({ label: d, value: d }))
+})
+
 async function ensureAutocomplete() {
   const connId = tab.value?.connId
   if (!connId) return
@@ -72,6 +81,14 @@ async function ensureAutocomplete() {
     // No-op: autocomplete is a nice-to-have; query editor still works.
   }
 }
+
+// When the user picks a different schema from the toolbar dropdown, prefetch
+// its autocomplete snapshot so the editor's tab-completion catches up.
+watch(currentDb, (db) => {
+  const connId = tab.value?.connId
+  if (!connId || !db) return
+  void metaStore.ensureSnapshot(connId, db).catch(() => { /* nice-to-have */ })
+})
 
 onMounted(async () => {
   if (props.driver) {
@@ -95,6 +112,10 @@ watch(
 
 const editor = ref<InstanceType<typeof SqlEditor> | null>(null)
 
+function runOpts() {
+  return currentDb.value ? { defaultSchema: currentDb.value } : {}
+}
+
 async function run() {
   const sel = editor.value?.selectionText() ?? ''
   const sqlToRun = sel.trim() || tab.value.sql
@@ -106,14 +127,14 @@ async function run() {
   const orig = tab.value.sql
   tab.value.sql = sqlToRun
   try {
-    await store.runActive(tab.value.id)
+    await store.runActive(tab.value.id, runOpts())
   } finally {
     tab.value.sql = orig
   }
 }
 
 async function runFull() {
-  await store.runActive(tab.value.id)
+  await store.runActive(tab.value.id, runOpts())
 }
 
 async function explain() {
@@ -121,7 +142,7 @@ async function explain() {
     message.warning('Driver does not support EXPLAIN')
     return
   }
-  await store.explain(tab.value.id)
+  await store.explain(tab.value.id, runOpts())
 }
 
 function cancel() {
@@ -246,6 +267,16 @@ function onSplitDown(e: PointerEvent) {
         <n-button v-if="tab.status === 'running'" size="small" type="warning" @click="cancel">
           Cancel
         </n-button>
+        <span class="sep" />
+        <n-select
+          v-model:value="currentDb"
+          size="small"
+          filterable
+          :options="dbOptions"
+          :disabled="tab.status === 'running' || dbOptions.length === 0"
+          :placeholder="dbOptions.length ? 'Schema' : 'No schemas'"
+          class="schema-select"
+        />
         <span class="sep" />
         <n-tag size="small" :type="statusBadge.type">{{ statusBadge.label }}</n-tag>
         <span v-if="tab.elapsedMs > 0" class="mono mute">{{ tab.elapsedMs }} ms</span>
@@ -376,6 +407,9 @@ function onSplitDown(e: PointerEvent) {
 .sep { display: inline-block; width: 1px; height: 12px; background: currentColor; opacity: 0.15; }
 .mute { opacity: 0.6; font-size: 12px; }
 .hint { opacity: 0.4; font-size: 11px; }
+/* Schema dropdown — narrow enough to fit the toolbar density target without
+   truncating typical database names. */
+.schema-select { width: 160px; }
 
 /* ---- Body: 1fr of .qt's grid (i.e. all remaining vertical space) ---- */
 

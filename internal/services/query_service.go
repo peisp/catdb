@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -56,6 +57,7 @@ func (s *QueryService) ServiceShutdown() error {
 	defer s.mu.Unlock()
 	for id, h := range s.handles {
 		_ = h.rs.Close()
+		releaseTx(h.tx, nil)
 		delete(s.handles, id)
 	}
 	return nil
@@ -69,32 +71,39 @@ type openQuery struct {
 	rowsRead  int
 	done      bool
 	createdAt time.Time
+	// tx is non-nil when the query was launched against a default schema
+	// (Connection.Begin + USE). It pins the underlying connection so the
+	// streaming ResultSet sees the right current-database, and must be
+	// committed/rolled back when the handle is closed.
+	tx dbdriver.Tx
 }
 
 // QueryOptions tweaks one call's behaviour. All fields optional.
 type QueryOptions struct {
-	BatchSize    int `json:"batchSize,omitempty"`    // first-batch size (default 500)
-	TimeoutMs    int `json:"timeoutMs,omitempty"`    // per-call ctx timeout (default 60s)
-	MaxRows      int `json:"maxRows,omitempty"`      // hard cap for the open handle (default MaxPreviewRows)
+	BatchSize     int    `json:"batchSize,omitempty"`     // first-batch size (default 500)
+	TimeoutMs     int    `json:"timeoutMs,omitempty"`     // per-call ctx timeout (default 60s)
+	MaxRows       int    `json:"maxRows,omitempty"`       // hard cap for the open handle (default MaxPreviewRows)
+	DefaultSchema string `json:"defaultSchema,omitempty"` // when non-empty, the SQL is run with this database
+	// "selected" (e.g. MySQL `USE db`) so unqualified tables resolve to it.
 }
 
 // QueryRunResult is what RunQuery / Explain return to the front-end.
 //
-// - When Done=true, Handle is empty (the result fit in one batch); the
-//   front-end need not call FetchMore or Close.
-// - When Done=false, Handle is non-empty and the front-end must eventually
-//   call Close to release the cursor.
+//   - When Done=true, Handle is empty (the result fit in one batch); the
+//     front-end need not call FetchMore or Close.
+//   - When Done=false, Handle is non-empty and the front-end must eventually
+//     call Close to release the cursor.
 type QueryRunResult struct {
-	Handle    string               `json:"handle,omitempty"`
+	Handle    string                `json:"handle,omitempty"`
 	Columns   []dbdriver.ColumnMeta `json:"columns"`
-	Rows      [][]any              `json:"rows"`
-	RowsTotal int                  `json:"rowsTotal"` // running total of rows returned so far
-	Done      bool                 `json:"done"`
-	Truncated bool                 `json:"truncated"` // hit MaxRows; cursor closed
-	ElapsedMs int64                `json:"elapsedMs"`
+	Rows      [][]any               `json:"rows"`
+	RowsTotal int                   `json:"rowsTotal"` // running total of rows returned so far
+	Done      bool                  `json:"done"`
+	Truncated bool                  `json:"truncated"` // hit MaxRows; cursor closed
+	ElapsedMs int64                 `json:"elapsedMs"`
 	// IsResultSet=true means the SQL returned rows. False means it was an
 	// Exec-style statement and the caller should look at ExecResult instead.
-	IsResultSet bool                `json:"isResultSet"`
+	IsResultSet bool                 `json:"isResultSet"`
 	ExecResult  *dbdriver.ExecResult `json:"execResult,omitempty"`
 }
 
@@ -131,10 +140,6 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 			return empty, err
 		}
 	}
-	q := conn.Querier()
-	if q == nil {
-		return empty, fmt.Errorf("QueryService: connection has no querier")
-	}
 
 	timeout := time.Duration(opts.TimeoutMs) * time.Millisecond
 	if timeout <= 0 {
@@ -143,14 +148,21 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 	tctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	q, tx, err := s.acquireQuerier(tctx, conn, connID, opts.DefaultSchema)
+	if err != nil {
+		return empty, classifyErr(err, tctx)
+	}
+
 	start := time.Now()
 
 	if !looksLikeRowsQuery(sqlText) {
 		// Exec path: INSERT/UPDATE/DELETE/DDL.
 		res, err := q.Exec(tctx, sqlText)
 		if err != nil {
+			releaseTx(tx, err)
 			return empty, classifyErr(err, tctx)
 		}
+		releaseTx(tx, nil)
 		return QueryRunResult{
 			ElapsedMs:   time.Since(start).Milliseconds(),
 			IsResultSet: false,
@@ -161,6 +173,7 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 
 	rs, err := q.Query(tctx, sqlText)
 	if err != nil {
+		releaseTx(tx, err)
 		return empty, classifyErr(err, tctx)
 	}
 
@@ -176,6 +189,7 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 	rows, done, err := rs.Next(batch)
 	if err != nil {
 		_ = rs.Close()
+		releaseTx(tx, err)
 		return empty, classifyErr(err, tctx)
 	}
 
@@ -193,11 +207,13 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 		out.Truncated = true
 		out.Done = true
 		_ = rs.Close()
+		releaseTx(tx, nil)
 		return out, nil
 	}
 
 	if done {
 		_ = rs.Close()
+		releaseTx(tx, nil)
 		return out, nil
 	}
 
@@ -211,6 +227,7 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 		columns:   cols,
 		rowsRead:  len(rows),
 		createdAt: time.Now(),
+		tx:        tx,
 	}
 	s.mu.Unlock()
 	out.Handle = h
@@ -243,6 +260,7 @@ func (s *QueryService) FetchMore(ctx context.Context, handle string, batch int) 
 	rows, done, err := h.rs.Next(batch)
 	if err != nil {
 		_ = h.rs.Close()
+		releaseTx(h.tx, err)
 		s.dropHandle(handle)
 		return empty, classifyErr(err, tctx)
 	}
@@ -257,11 +275,13 @@ func (s *QueryService) FetchMore(ctx context.Context, handle string, batch int) 
 		out.Truncated = true
 		out.Done = true
 		_ = h.rs.Close()
+		releaseTx(h.tx, nil)
 		s.dropHandle(handle)
 		return out, nil
 	}
 	if done {
 		_ = h.rs.Close()
+		releaseTx(h.tx, nil)
 		s.dropHandle(handle)
 	}
 	return out, nil
@@ -278,7 +298,9 @@ func (s *QueryService) Close(_ context.Context, handle string) error {
 	if !ok {
 		return nil
 	}
-	return h.rs.Close()
+	err := h.rs.Close()
+	releaseTx(h.tx, err)
+	return err
 }
 
 // Explain runs EXPLAIN against the SQL and returns the entire plan inline.
@@ -286,7 +308,7 @@ func (s *QueryService) Close(_ context.Context, handle string) error {
 //
 // Gated by Capabilities.ExplainPlan (the front-end hides the button when the
 // driver doesn't support it).
-func (s *QueryService) Explain(ctx context.Context, connID, sqlText string) (QueryRunResult, error) {
+func (s *QueryService) Explain(ctx context.Context, connID, sqlText string, opts QueryOptions) (QueryRunResult, error) {
 	var empty QueryRunResult
 	if connID == "" {
 		return empty, fmt.Errorf("QueryService: connID is required")
@@ -302,24 +324,28 @@ func (s *QueryService) Explain(ctx context.Context, connID, sqlText string) (Que
 			return empty, err
 		}
 	}
-	q := conn.Querier()
-	if q == nil {
-		return empty, fmt.Errorf("QueryService: connection has no querier")
-	}
 
 	tctx, cancel := context.WithTimeout(ctx, DefaultQueryTimeout)
 	defer cancel()
 
+	q, tx, err := s.acquireQuerier(tctx, conn, connID, opts.DefaultSchema)
+	if err != nil {
+		return empty, classifyErr(err, tctx)
+	}
+
 	start := time.Now()
 	rs, err := q.Explain(tctx, sqlText)
 	if err != nil {
+		releaseTx(tx, err)
 		return empty, classifyErr(err, tctx)
 	}
 	defer rs.Close()
 	rows, _, err := rs.Next(DefaultBatchSize)
 	if err != nil {
+		releaseTx(tx, err)
 		return empty, classifyErr(err, tctx)
 	}
+	releaseTx(tx, nil)
 	return QueryRunResult{
 		Columns:     rs.Columns(),
 		Rows:        rows,
@@ -342,6 +368,72 @@ func (s *QueryService) CapabilitiesFor(_ context.Context, driverName string) (db
 }
 
 // --- internals ---
+
+// acquireQuerier returns the Querier the caller should run their SQL through.
+// If schema is empty it is just the pool-level Querier. Otherwise we open a
+// transaction so we hold a single physical connection, run `USE schema` on it,
+// and return the Tx as the Querier — that way unqualified table names in the
+// caller's SQL resolve against `schema`, and streaming ResultSets continue to
+// see the same default-database for the life of the handle.
+//
+// The returned Tx is nil when schema is empty. Callers MUST eventually call
+// releaseTx on it (with either nil err for commit, or non-nil for rollback)
+// so the underlying connection returns to the pool.
+func (s *QueryService) acquireQuerier(
+	ctx context.Context,
+	conn dbdriver.Connection,
+	connID, schema string,
+) (dbdriver.Querier, dbdriver.Tx, error) {
+	if schema == "" {
+		q := conn.Querier()
+		if q == nil {
+			return nil, nil, fmt.Errorf("QueryService: connection has no querier")
+		}
+		return q, nil, nil
+	}
+
+	driverName, err := s.mgr.DriverName(ctx, connID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("QueryService: resolve driver: %w", err)
+	}
+	d, err := registry.Get(driverName)
+	if err != nil {
+		return nil, nil, fmt.Errorf("QueryService: resolve driver: %w", err)
+	}
+
+	tx, err := conn.Begin(ctx, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("QueryService: begin tx for default schema: %w", err)
+	}
+	quoted := d.Dialect().QuoteIdentifier(schema)
+	if _, err := tx.Exec(ctx, "USE "+quoted); err != nil {
+		_ = tx.Rollback()
+		return nil, nil, err
+	}
+	return tx, tx, nil
+}
+
+// releaseTx commits the tx when runErr is nil and rolls back otherwise. The
+// implicit-commit a DDL statement performs in MySQL leaves the tx in a
+// finished state — sql.ErrTxDone is therefore treated as success here so
+// callers don't see spurious errors after a successful CREATE/ALTER/DROP.
+func releaseTx(tx dbdriver.Tx, runErr error) {
+	if tx == nil {
+		return
+	}
+	if runErr != nil {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			// Best-effort: rollback failure on an already-errored path is
+			// not worth surfacing.
+		}
+		return
+	}
+	if err := tx.Commit(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		// Same: commit failures on the happy path are rare and the user
+		// already has their result; logging would be the right answer
+		// once we wire up structured logging.
+	}
+}
 
 func (s *QueryService) makeHandle() string {
 	return "q-" + uuid.NewString()

@@ -266,7 +266,7 @@ export const useQueryStore = defineStore('query', () => {
     t.controller.abort()
   }
 
-  async function explain(tabId: string) {
+  async function explain(tabId: string, options: Partial<QueryOptions> = {}) {
     const t = getTab(tabId)
     if (!t) return
     if (t.status === 'running') return
@@ -275,7 +275,7 @@ export const useQueryStore = defineStore('query', () => {
     const ctrl = new AbortController()
     t.controller = ctrl
     try {
-      const res = await queryApi.explain(t.connId, t.sql, ctrl.signal)
+      const res = await queryApi.explain(t.connId, t.sql, options, ctrl.signal)
       applyRun(t, res)
     } catch (e: any) {
       if (ctrl.signal.aborted) {

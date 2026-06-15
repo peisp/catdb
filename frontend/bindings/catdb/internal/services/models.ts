@@ -503,6 +503,11 @@ export class QueryOptions {
      */
     "maxRows"?: number;
 
+    /**
+     * when non-empty, the SQL is run with this database
+     */
+    "defaultSchema"?: string;
+
     /** Creates a new QueryOptions instance. */
     constructor($$source: Partial<QueryOptions> = {}) {
 
