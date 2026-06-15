@@ -31,6 +31,7 @@ import ExportDialog from './ExportDialog.vue'
 import { useQueryStore } from '../stores/query'
 import { useMetadataStore } from '../stores/metadata'
 import type { Capabilities } from '../api/query'
+import type { SQLNamespace } from '@codemirror/lang-sql'
 
 const props = defineProps<{
   tabId: string
@@ -49,16 +50,37 @@ const tab = computed(() => store.getTab(props.tabId)!)
 const caps = ref<Capabilities | null>(null)
 
 const currentDb = ref<string | null>(null)
-const schemaMap = computed<Record<string, string[]>>(() => {
+/**
+ * Nested SQLNamespace: the current DB gets a full {table: [cols]} body so
+ * SELECT-from / qualified `table.col` lookups can complete. Other DBs are
+ * listed as empty namespaces so `dbname.` triggers a database hint even if
+ * we haven't fetched its tables yet. Falling back to a flat shape is fine —
+ * lang-sql accepts either form.
+ */
+const schemaMap = computed<SQLNamespace>(() => {
   const connId = tab.value?.connId
-  if (!connId || !currentDb.value) return {}
-  const snap = metaStore.snapshotFor(connId, currentDb.value)
-  if (!snap) return {}
-  const out: Record<string, string[]> = {}
-  for (const t of snap.tables ?? []) {
-    out[t.name] = t.columns ?? []
+  if (!connId) return {} as SQLNamespace
+  const dbs = metaStore.databases[connId] ?? []
+  // Build as a loose record then cast — SQLNamespace's recursive shape
+  // doesn't structurally infer from a plain object literal, but the
+  // runtime shape we produce matches it exactly.
+  const out: Record<string, unknown> = {}
+  for (const db of dbs) {
+    const snap = metaStore.snapshotFor(connId, db)
+    if (snap && snap.tables) {
+      const inner: Record<string, string[]> = {}
+      for (const t of snap.tables) {
+        inner[t.name] = t.columns ?? []
+      }
+      out[db] = inner
+    } else {
+      // No snapshot yet — surface the DB name so the user still gets it as
+      // a completion candidate; tables/columns will fill in once the
+      // snapshot loads (the watch on currentDb prefetches the active one).
+      out[db] = {}
+    }
   }
-  return out
+  return out as SQLNamespace
 })
 
 const dbOptions = computed<SelectOption[]>(() => {

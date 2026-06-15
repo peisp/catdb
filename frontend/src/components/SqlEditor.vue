@@ -2,25 +2,62 @@
 // SqlEditor — thin CodeMirror 6 wrapper. Each instance is independent so
 // tab state never bleeds between editors (MVP.md M2).
 //
-// M3 additions: metadata-driven autocomplete via the `schema` option on
-// @codemirror/lang-sql. The schema map is built by the parent (Workspace /
-// QueryTab) from the metadata store and passed in as a prop. A Compartment
-// lets us swap the schema without rebuilding the editor.
+// Completion stack:
+//   * @codemirror/lang-sql's keyword source (driven by MySQL dialect).
+//   * @codemirror/lang-sql's schema source (driven by the `schema` prop —
+//     a SQLNamespace describing the catalog: databases / tables / columns).
+//   * Our `mysqlExtraCompletions` source (built-in functions + snippets).
+//
+// The `autocompletion()` extension is what actually paints the popup; without
+// it the language-data sources sit registered but invisible.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { EditorState, Compartment } from '@codemirror/state'
-import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view'
-import { sql, MySQL, type SQLConfig } from '@codemirror/lang-sql'
+import {
+  EditorView,
+  drawSelection,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+  highlightSpecialChars,
+  keymap,
+  lineNumbers,
+} from '@codemirror/view'
+import { sql, MySQL, type SQLConfig, type SQLNamespace } from '@codemirror/lang-sql'
+import {
+  bracketMatching,
+  defaultHighlightStyle,
+  foldGutter,
+  foldKeymap,
+  indentOnInput,
+  syntaxHighlighting,
+} from '@codemirror/language'
+import {
+  autocompletion,
+  closeBrackets,
+  closeBracketsKeymap,
+  completionKeymap,
+} from '@codemirror/autocomplete'
+import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { oneDark } from '@codemirror/theme-one-dark'
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentWithTab,
+} from '@codemirror/commands'
 import { useThemeStore } from '../stores/theme'
+import { mysqlExtraCompletions } from '../editor/mysqlCompletions'
 
 const props = defineProps<{
   modelValue: string
   /** When the user hits Cmd/Ctrl+Enter the parent runs the query. */
   onRun?: () => void
-  /** Map of tableName -> column names. Powers schemaCompletionSource. */
-  schema?: Record<string, string[]>
-  /** Default schema name (e.g. current database). */
+  /** Catalog description for schema completion. May be either:
+   *    - flat: { tableName: ['col1', 'col2'] }                — single DB
+   *    - nested: { dbName: { tableName: ['col1', ...] } }     — multi-DB
+   *  Both shapes are valid SQLNamespace inputs to @codemirror/lang-sql. */
+  schema?: SQLNamespace
+  /** Default schema name (e.g. current database). Tables under it become
+   *  completable at the top level. */
   defaultSchema?: string
 }>()
 const emit = defineEmits<{
@@ -53,11 +90,41 @@ function makeState(initial: string) {
     doc: initial,
     extensions: [
       lineNumbers(),
+      highlightActiveLineGutter(),
+      highlightSpecialChars(),
       history(),
+      foldGutter(),
+      drawSelection(),
+      EditorState.allowMultipleSelections.of(true),
+      indentOnInput(),
+      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      bracketMatching(),
+      closeBrackets(),
+      // The autocompletion UI itself — without this the lang-sql completion
+      // sources are registered but never rendered.
+      autocompletion({
+        // Built-in keyword/schema sources fire on every word boundary; the
+        // popup auto-shows after the first identifier char. Triggering on
+        // `.` is essential for `table.column` completion.
+        activateOnTyping: true,
+        closeOnBlur: true,
+        defaultKeymap: true,
+        maxRenderedOptions: 50,
+        // Our extra source is layered alongside the language-data sources
+        // via language data, but registering it explicitly here means it
+        // is also active even if the language's data lookup fails (e.g.
+        // when the cursor is in a non-SQL node like a comment edge).
+        override: undefined,
+      }),
+      highlightSelectionMatches(),
       highlightActiveLine(),
       keymap.of([
         ...defaultKeymap,
         ...historyKeymap,
+        ...completionKeymap,
+        ...closeBracketsKeymap,
+        ...searchKeymap,
+        ...foldKeymap,
         indentWithTab,
         {
           key: 'Mod-Enter',
@@ -67,7 +134,14 @@ function makeState(initial: string) {
           },
         },
       ]),
-      sqlCompartment.of(buildSqlExt()),
+      sqlCompartment.of([
+        buildSqlExt(),
+        // Attach the function/snippet source to the SQL language so it only
+        // contributes when the cursor is inside SQL (not, say, in a string
+        // literal). language.data.of is the same hook lang-sql uses for
+        // its own keyword + schema sources.
+        MySQL.language.data.of({ autocomplete: mysqlExtraCompletions }),
+      ]),
       themeCompartment.of(theme.mode === 'dark' ? oneDark : []),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
@@ -82,6 +156,26 @@ function makeState(initial: string) {
               'ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace',
           },
           '.cm-gutters': { background: 'transparent', border: 'none' },
+          '.cm-tooltip.cm-tooltip-autocomplete': {
+            // Tighter popup — desktop density, not web-form spacing.
+            fontSize: '12px',
+            borderRadius: '4px',
+          },
+          '.cm-tooltip.cm-tooltip-autocomplete > ul > li': {
+            padding: '2px 8px',
+            lineHeight: '18px',
+          },
+          '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
+            backgroundColor: 'var(--n-primary-color, #2080f0)',
+            color: '#fff',
+          },
+          '.cm-completionLabel': { fontWeight: 500 },
+          '.cm-completionDetail': {
+            fontStyle: 'normal',
+            opacity: 0.55,
+            marginLeft: '6px',
+            fontSize: '11px',
+          },
         },
         { dark: theme.mode === 'dark' },
       ),
@@ -129,7 +223,10 @@ watch(
   () => {
     if (!view.value) return
     view.value.dispatch({
-      effects: sqlCompartment.reconfigure(buildSqlExt()),
+      effects: sqlCompartment.reconfigure([
+        buildSqlExt(),
+        MySQL.language.data.of({ autocomplete: mysqlExtraCompletions }),
+      ]),
     })
   },
   { deep: true },
