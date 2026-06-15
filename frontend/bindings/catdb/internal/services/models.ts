@@ -526,10 +526,10 @@ export class QueryOptions {
 /**
  * QueryRunResult is what RunQuery / Explain return to the front-end.
  * 
- * - When Done=true, Handle is empty (the result fit in one batch); the
- *   front-end need not call FetchMore or Close.
- * - When Done=false, Handle is non-empty and the front-end must eventually
- *   call Close to release the cursor.
+ *   - When Done=true, Handle is empty (the result fit in one batch); the
+ *     front-end need not call FetchMore or Close.
+ *   - When Done=false, Handle is non-empty and the front-end must eventually
+ *     call Close to release the cursor.
  */
 export class QueryRunResult {
     "handle"?: string;
