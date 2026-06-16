@@ -4,12 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+
+	gossh "golang.org/x/crypto/ssh"
 
 	"catdb/internal/core/session"
 	"catdb/internal/dbdriver"
 	"catdb/internal/registry"
 	"catdb/internal/storage"
+	"catdb/internal/tunnel"
+	"catdb/wailsbridge"
 )
 
 // ConnectionService is the Wails Service that owns connection profiles and
@@ -164,24 +169,30 @@ func (s *ConnectionService) TestConnection(ctx context.Context, d ConnectionDraf
 	if err := s.validateDraft(d, false); err != nil {
 		return err
 	}
-	driver, err := registry.Get(d.Driver)
-	if err != nil {
-		return err
-	}
-	cfg := s.draftToConfig(d)
-	tctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
-	conn, err := driver.Open(tctx, cfg)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-	return conn.Ping(tctx)
+	return s.openAndPing(ctx, d)
 }
 
 // Connect opens (or returns the cached) live Connection for id.
 func (s *ConnectionService) Connect(ctx context.Context, id string) error {
 	_, err := s.mgr.Open(ctx, id)
+	if err != nil {
+		// If the host key is not yet trusted, offer the user a trust dialog,
+		// write the key on acceptance, and retry.
+		var ukErr *tunnel.ErrUnknownHostKey
+		if errors.As(err, &ukErr) {
+			if acceptUnknownHostKey(ukErr) {
+				if addErr := tunnel.AddHostKey(ukErr.KnownHostsPath, ukErr.Info.Host, ukErr.PublicKey()); addErr != nil {
+					return fmt.Errorf("ConnectionService: %w", addErr)
+				}
+				_, err = s.mgr.Open(ctx, id)
+			}
+		}
+		// Show host key mismatch as a warning dialog.
+		var mmErr *tunnel.ErrHostKeyMismatch
+		if errors.As(err, &mmErr) {
+			showHostKeyMismatch(mmErr)
+		}
+	}
 	return err
 }
 
@@ -273,4 +284,82 @@ func cloneSSHWithoutSecrets(in *dbdriver.SSHConfig) *dbdriver.SSHConfig {
 	out.Password = ""
 	out.PrivateKeyPass = ""
 	return &out
+}
+
+// --- host key helpers ---------------------------------------------------------
+
+// openAndPing opens a driver connection from a draft, pings it, and closes.
+// Used by TestConnection so the host-key trust flow can retry without code
+// duplication.
+func (s *ConnectionService) openAndPing(ctx context.Context, d ConnectionDraft) error {
+	driver, err := registry.Get(d.Driver)
+	if err != nil {
+		return err
+	}
+	cfg := s.draftToConfig(d)
+	tctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	conn, err := driver.Open(tctx, cfg)
+	if err != nil {
+		// Catch unknown host key, offer trust dialog, retry once.
+		var ukErr *tunnel.ErrUnknownHostKey
+		if errors.As(err, &ukErr) {
+			if acceptUnknownHostKey(ukErr) {
+				if addErr := tunnel.AddHostKey(ukErr.KnownHostsPath, ukErr.Info.Host, ukErr.PublicKey()); addErr != nil {
+					return fmt.Errorf("ConnectionService: %w", addErr)
+				}
+				tctx2, cancel2 := context.WithTimeout(ctx, 20*time.Second)
+				defer cancel2()
+				conn, err = driver.Open(tctx2, cfg)
+				if err != nil {
+					return err
+				}
+				defer conn.Close()
+				return conn.Ping(tctx2)
+			}
+		}
+		// Show host key mismatch as a warning dialog.
+		var mmErr *tunnel.ErrHostKeyMismatch
+		if errors.As(err, &mmErr) {
+			showHostKeyMismatch(mmErr)
+		}
+		return err
+	}
+	defer conn.Close()
+	return conn.Ping(tctx)
+}
+
+// acceptUnknownHostKey shows a native confirmation dialog for the host key
+// and returns true if the user chose to trust it.
+func acceptUnknownHostKey(e *tunnel.ErrUnknownHostKey) bool {
+	msg := fmt.Sprintf(
+		"The authenticity of host '%s' can't be established.\n\n"+
+			"Key type: %s\n"+
+			"Fingerprint: %s\n\n"+
+			"Are you sure you want to continue connecting?\n\n"+
+			"(The key will be saved to known_hosts.)",
+		e.Info.Host, e.Info.KeyType, e.Info.Fingerprint,
+	)
+	return wailsbridge.Question("SSH Host Key Verification", msg)
+}
+
+// showHostKeyMismatch warns the user that the server's host key does not
+// match what is stored in known_hosts (possible MITM attack or key rotation).
+func showHostKeyMismatch(e *tunnel.ErrHostKeyMismatch) {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf(
+		"WARNING: The host key for '%s' has changed!\n\n"+
+			"Server presented: %s\n"+
+			"Fingerprint: %s\n\n"+
+			"This could mean someone is intercepting your connection (MITM attack),\n"+
+			"or the server's host key was changed legitimately.\n\n"+
+			"Known keys on file:\n",
+		e.Info.Host, e.Info.KeyType, e.Info.Fingerprint,
+	))
+	for _, kk := range e.KnownKeys {
+		b.WriteString(fmt.Sprintf("  %s:%d  %s\n",
+			kk.Filename, kk.Line, gossh.FingerprintSHA256(kk.Key)))
+	}
+	b.WriteString("\nTo trust the new key, remove the old entries from known_hosts and reconnect.")
+	wailsbridge.Error("SSH Host Key Mismatch", b.String())
 }

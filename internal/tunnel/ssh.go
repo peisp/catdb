@@ -13,10 +13,12 @@ package tunnel
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -46,6 +48,55 @@ func (t *Tunnel) Close() error {
 	t.Client = nil
 	return err
 }
+
+// --- host-key types -----------------------------------------------------------
+
+// HostKeyInfo describes an SSH host key shown to the user for trust-on-first-use
+// confirmation. Fingerprint is SHA256:Base64 (the standard OpenSSH format).
+type HostKeyInfo struct {
+	Host        string `json:"host"`
+	KeyType     string `json:"keyType"`
+	Fingerprint string `json:"fingerprint"` // e.g. "SHA256:xxxx"
+}
+
+// ErrUnknownHostKey is returned when the server's host key is not present in
+// any known_hosts file. Callers should present the Info to the user and, on
+// acceptance, call AddHostKey and retry the connection.
+type ErrUnknownHostKey struct {
+	Info           HostKeyInfo
+	KnownHostsPath string // the file that was checked; caller should write here
+	key            ssh.PublicKey
+}
+
+func (e *ErrUnknownHostKey) Error() string {
+	return fmt.Sprintf("ssh: unknown host key for %s: %s %s — add it to known_hosts to trust this host",
+		e.Info.Host, e.Info.KeyType, e.Info.Fingerprint)
+}
+
+// PublicKey returns the raw public key the server presented. Callers can pass
+// this to AddHostKey after the user accepts.
+func (e *ErrUnknownHostKey) PublicKey() ssh.PublicKey { return e.key }
+
+// ErrHostKeyMismatch is returned when the server's host key does not match the
+// key stored in known_hosts for this host. This may indicate a MITM attack or
+// a legitimate host-key change.
+type ErrHostKeyMismatch struct {
+	Info      HostKeyInfo
+	KnownKeys []knownhosts.KnownKey
+}
+
+func (e *ErrHostKeyMismatch) Error() string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("ssh: host key mismatch for %s: server presented %s %s; known keys:",
+		e.Info.Host, e.Info.KeyType, e.Info.Fingerprint))
+	for i, kk := range e.KnownKeys {
+		fmt.Fprintf(&b, "\n  [%d] %s:%d %s",
+			i, kk.Filename, kk.Line, ssh.FingerprintSHA256(kk.Key))
+	}
+	return b.String()
+}
+
+// --- public API ---------------------------------------------------------------
 
 // Open establishes an SSH connection to cfg and returns a Tunnel. The caller
 // owns the Tunnel and MUST Close it (after closing any DB connections that
@@ -86,6 +137,20 @@ func Open(ctx context.Context, cfg *dbdriver.SSHConfig) (*Tunnel, error) {
 		Auth:            auth,
 		HostKeyCallback: hostKeyCb,
 		Timeout:         15 * time.Second,
+		// Match OpenSSH preference order so we negotiate the same host key
+		// type that would be stored by `ssh` on the command line.  Without
+		// this the Go x/crypto defaults (ECDSA-first) can pick a different
+		// key than what OpenSSH (ED25519-first) stored, causing a spurious
+		// "key mismatch".
+		HostKeyAlgorithms: []string{
+			ssh.KeyAlgoED25519,
+			ssh.KeyAlgoECDSA256,
+			ssh.KeyAlgoECDSA384,
+			ssh.KeyAlgoECDSA521,
+			ssh.KeyAlgoRSASHA512,
+			ssh.KeyAlgoRSASHA256,
+			ssh.KeyAlgoRSA,
+		},
 	}
 
 	addr := net.JoinHostPort(cfg.Host, fmt.Sprintf("%d", port))
@@ -126,6 +191,52 @@ func Open(ctx context.Context, cfg *dbdriver.SSHConfig) (*Tunnel, error) {
 
 	return &Tunnel{Client: client, Dial: dial}, nil
 }
+
+// AddHostKey appends the host's public key to the known_hosts file. If path is
+// empty, ~/.ssh/known_hosts is used. The .ssh directory is created if it does
+// not exist.
+func AddHostKey(path string, host string, key ssh.PublicKey) error {
+	if path == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("ssh: resolve home dir: %w", err)
+		}
+		path = filepath.Join(home, ".ssh", "known_hosts")
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("ssh: create %s: %w", dir, err)
+	}
+
+	line := knownhosts.Line([]string{host}, key)
+
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return fmt.Errorf("ssh: open known_hosts %s: %w", path, err)
+	}
+	defer f.Close()
+
+	// Ensure the line starts on its own line if the file already has content
+	// without a trailing newline.
+	if info, err := f.Stat(); err == nil && info.Size() > 0 {
+		// Read the last byte to check for trailing newline.
+		buf := make([]byte, 1)
+		// Use os.File.ReadAt which is available; position at last byte.
+		if _, err := f.ReadAt(buf, info.Size()-1); err == nil && buf[0] != '\n' {
+			if _, err := f.WriteString("\n"); err != nil {
+				return fmt.Errorf("ssh: write known_hosts: %w", err)
+			}
+		}
+	}
+
+	if _, err := f.WriteString(line + "\n"); err != nil {
+		return fmt.Errorf("ssh: write known_hosts: %w", err)
+	}
+	return nil
+}
+
+// --- internals ----------------------------------------------------------------
 
 func buildAuth(cfg *dbdriver.SSHConfig) ([]ssh.AuthMethod, error) {
 	var auths []ssh.AuthMethod
@@ -172,12 +283,53 @@ func buildHostKeyCallback(path string) (ssh.HostKeyCallback, error) {
 		}
 		path = filepath.Join(home, ".ssh", "known_hosts")
 	}
-	if _, err := os.Stat(path); err != nil {
-		return nil, fmt.Errorf("ssh: known_hosts %s: %w (host-key verification is required — supply KnownHostsPath or accept the host into ~/.ssh/known_hosts first)", path, err)
-	}
-	cb, err := knownhosts.New(path)
+
+	resolvedPath := path
+	baseCb, err := knownhosts.New(path)
 	if err != nil {
+		// If the known_hosts file simply doesn't exist, create a callback
+		// that treats every host as unknown (triggers TOFU).  The file will
+		// be created by AddHostKey on user acceptance.
+		if os.IsNotExist(err) {
+			return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+				return &ErrUnknownHostKey{
+					Info: HostKeyInfo{
+						Host:        hostname,
+						KeyType:     key.Type(),
+						Fingerprint: ssh.FingerprintSHA256(key),
+					},
+					key:            key,
+					KnownHostsPath: resolvedPath,
+				}
+			}, nil
+		}
 		return nil, fmt.Errorf("ssh: load known_hosts %s: %w", path, err)
 	}
-	return cb, nil
+
+	// Wrap the knownhosts callback so that when verification fails we
+	// return typed errors (ErrUnknownHostKey / ErrHostKeyMismatch) that
+	// carry the presented key. Callers upstream can inspect these and
+	// offer a trust-on-first-use flow.
+	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		err := baseCb(hostname, remote, key)
+		if err == nil {
+			return nil
+		}
+
+		info := HostKeyInfo{
+			Host:        hostname,
+			KeyType:     key.Type(),
+			Fingerprint: ssh.FingerprintSHA256(key),
+		}
+
+		var keyErr *knownhosts.KeyError
+		if errors.As(err, &keyErr) {
+			if len(keyErr.Want) == 0 {
+				return &ErrUnknownHostKey{Info: info, key: key, KnownHostsPath: resolvedPath}
+			}
+			return &ErrHostKeyMismatch{Info: info, KnownKeys: keyErr.Want}
+		}
+
+		return err
+	}, nil
 }

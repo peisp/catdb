@@ -109,3 +109,39 @@ func Error(title, message string) {
 	}
 	a.Dialog.Error().SetTitle(title).SetMessage(message).Show()
 }
+
+// Question shows a native Yes/No confirmation dialog. Returns true when the
+// user clicks Yes. Defaults to false when App() is nil or the dialog is
+// dismissed without clicking any button.
+func Question(title, message string) bool {
+	a := App()
+	if a == nil {
+		return false
+	}
+	result := make(chan bool, 1)
+	d := a.Dialog.Question()
+	d.SetTitle(title).SetMessage(message)
+	yesBtn := d.AddButton("Yes")
+	yesBtn.OnClick(func() {
+		select {
+		case result <- true:
+		default:
+		}
+	})
+	noBtn := d.AddButton("No")
+	noBtn.OnClick(func() {
+		select {
+		case result <- false:
+		default:
+		}
+	})
+	noBtn.SetAsCancel()
+	yesBtn.SetAsDefault()
+	d.Show()
+	select {
+	case r := <-result:
+		return r
+	default:
+		return false
+	}
+}
