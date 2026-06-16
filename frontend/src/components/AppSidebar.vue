@@ -11,8 +11,8 @@
 //     entirely. The gap between min (150) and the collapse threshold (50)
 //     is intentional: it lets you snap to min without accidentally
 //     collapsing — you have to clearly intend to drag further.
-import { NSplit } from 'naive-ui'
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { NSplit, useThemeVars } from 'naive-ui'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import ConnectionSidebar from './ConnectionSidebar.vue'
 import ObjectTree from './ObjectTree.vue'
 import type { ConnectionProfile, DriverInfo } from '../api/connections'
@@ -29,9 +29,19 @@ const emit = defineEmits<{
 }>()
 
 const DEFAULT_WIDTH = 200
-const MIN_WIDTH = 150
+const MIN_WIDTH = 180
 const COLLAPSE_THRESHOLD = 50
 const maxWidth = () => Math.max(MIN_WIDTH, Math.floor(window.innerWidth * 0.5))
+
+// Pull real theme colors so the resize handle matches <n-split>'s trigger
+// exactly. Scoped `var(--n-border-color)` does NOT resolve here — those vars
+// are component-local in Naive UI's CSS-in-JS, so we have to bind them
+// inline from the merged theme.
+const themeVars = useThemeVars()
+const handleStyle = computed(() => ({
+  '--handle-idle': themeVars.value.borderColor,
+  '--handle-hover': themeVars.value.primaryColorHover,
+}))
 
 const width = ref(DEFAULT_WIDTH)
 const dragging = ref(false)
@@ -134,6 +144,7 @@ onBeforeUnmount(() => {
     <div
       class="resize-handle"
       :class="{ active: dragging }"
+      :style="handleStyle"
       title="拖动调整宽度，拖出最小宽度可折叠"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
@@ -150,7 +161,6 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-right: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
   background: var(--n-color);
   display: flex;
   flex-direction: column;
@@ -169,22 +179,24 @@ onBeforeUnmount(() => {
 .sider-split { height: 100%; min-height: 0; }
 .sider-split :deep(.n-split-pane) { overflow: hidden; min-width: 0; min-height: 0; }
 
-/* Handle sits flush over the right border line, 6px wide, half on each side.
-   Transparent until hover/drag so the chrome stays calm. */
+/* Mirrors <n-split>'s resize-trigger so the sidebar's right-edge drag
+   affordance feels identical to the vertical split above it: a 3px bar
+   that's always visible in border-color and transitions to
+   primary-color-hover while hovered or dragging. */
 .resize-handle {
   position: absolute;
   top: 0;
-  right: -3px;
-  width: 6px;
+  right: 0;
+  width: 3px;
   height: 100%;
   cursor: col-resize;
   z-index: 10;
   touch-action: none;
-  background: transparent;
-  transition: background-color 120ms ease;
+  background-color: var(--handle-idle);
+  transition: background-color 0.3s cubic-bezier(.4, 0, .2, 1);
 }
 .resize-handle:hover,
 .resize-handle.active {
-  background: var(--n-primary-color, rgba(100, 130, 220, 0.35));
+  background-color: var(--handle-hover);
 }
 </style>
