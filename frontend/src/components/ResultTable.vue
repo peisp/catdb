@@ -297,7 +297,7 @@ function isNull(v: any): boolean { return v == null }
             :style="{ transform: `translateY(${vr.start}px)`, width: gridWidth + 'px' }"
             :data-row-idx="vr.index"
           >
-            <div class="cell idx-cell mono mute" :class="{ selected: sel.isSelected(vr.index, -1) }" @mousedown.prevent="sel.selectRow(vr.index, columns.length)">{{ vr.index + 1 }}</div>
+            <div class="cell idx-cell mono mute" :class="{ selected: sel.isSelected(vr.index, -1) }" @mousedown.stop="sel.selectRow(vr.index, columns.length)">{{ vr.index + 1 }}</div>
             <div
               v-for="(_c, j) in columns"
               :key="j"

@@ -37,27 +37,35 @@ function renderValue(v: any): string {
 export function useTableSelection() {
   const selection = ref<SelectionRange | null>(null)
   const selecting = ref(false)
+  /** When true, dragging from the row-number column should select all columns
+   *  in every row the drag passes over. Set by selectRow(), cleared by any
+   *  normal cell selection. */
+  const wholeRow = ref(false)
 
   // ---- mouse handlers ----
 
   function startSelection(row: number, col: number) {
     selecting.value = true
+    wholeRow.value = false
     selection.value = { startRow: row, startCol: col, endRow: row, endCol: col }
   }
 
   function extendSelection(row: number, col: number) {
     if (!selecting.value || !selection.value) return
     selection.value.endRow = row
-    selection.value.endCol = col
+    // When in whole-row mode, keep the original col range (all columns).
+    if (!wholeRow.value) selection.value.endCol = col
   }
 
   function endSelection() {
     selecting.value = false
+    wholeRow.value = false
   }
 
   function clearSelection() {
     selection.value = null
     selecting.value = false
+    wholeRow.value = false
   }
 
   const minRow = computed(() =>
@@ -86,13 +94,16 @@ export function useTableSelection() {
 
   // ---- select a single cell ----
   function selectCell(row: number, col: number) {
+    wholeRow.value = false
     selection.value = { startRow: row, startCol: col, endRow: row, endCol: col }
   }
 
   /** Select all columns in a row (used when clicking the row number). Also
-   *  sets selecting=true so the user can still drag to extend the range. */
+   *  sets selecting=true so the user can still drag to extend the range.
+   *  Subsequent drags will keep all columns selected (whole-row mode). */
   function selectRow(row: number, colCount: number) {
     selecting.value = true
+    wholeRow.value = true
     selection.value = { startRow: row, startCol: 0, endRow: row, endCol: colCount - 1 }
   }
 

@@ -424,7 +424,7 @@ function isNull(v: any): boolean { return v == null }
             </div>
 
             <template v-for="(row, rowIdx) in rows" :key="rowIdx">
-              <div class="cell idx mono mute" :class="{ zebra: rowIdx % 2 === 1, 'row-hover': hoveredRow === rowIdx, selected: sel.isSelected(rowIdx, -1) }" :data-row-idx="rowIdx" @mousedown.prevent="sel.selectRow(rowIdx, columns.length)">{{ (page - 1) * pageSize + rowIdx + 1 }}</div>
+              <div class="cell idx mono mute" :class="{ zebra: rowIdx % 2 === 1, 'row-hover': hoveredRow === rowIdx, selected: sel.isSelected(rowIdx, -1) }" :data-row-idx="rowIdx" @mousedown.stop="sel.selectRow(rowIdx, columns.length)">{{ (page - 1) * pageSize + rowIdx + 1 }}</div>
               <div
                 v-for="(c, colIdx) in columns"
                 :key="colIdx"
@@ -632,8 +632,14 @@ function isNull(v: any): boolean { return v == null }
 @media (prefers-color-scheme: dark) {
   .cell.zebra { background-color: rgb(34, 34, 36); }
 }
-.cell.pk,
-.cell.pk.zebra { background-color: rgba(255, 200, 0, 0.06); }
+.cell.pk { background-color: rgba(255, 200, 0, 0.06); }
+/* PK + zebra: keep the zebra background underneath and overlay the yellow
+   tint via a transparent gradient so zebra striping is still visible. */
+.cell.pk.zebra {
+  background-color: rgb(250, 250, 251);
+  background-color: light-dark(rgb(250, 250, 251), rgb(34, 34, 36));
+  background-image: linear-gradient(rgba(255, 200, 0, 0.06), rgba(255, 200, 0, 0.06));
+}
 /* Editing cell always wins over hover. Same-specifity rules later in the
    stylesheet would normally override, so repeat .editing after .row-hover. */
 .cell.editing,
@@ -651,7 +657,10 @@ function isNull(v: any): boolean { return v == null }
 .cell.row-hover,
 .cell.row-hover.zebra,
 .cell.row-hover.pk,
-.cell.row-hover.pk.zebra { background-color: var(--hover-bg); }
+.cell.row-hover.pk.zebra {
+  background-color: var(--hover-bg);
+  background-image: none;
+}
 /* Editing cells must keep their distinct background even when hovered. */
 .cell.editing.row-hover,
 .cell.editing.zebra.row-hover,
@@ -824,10 +833,32 @@ function isNull(v: any): boolean { return v == null }
   width: 80px;
 }
 
-/* ---- selection highlight ---- */
-.cell.selected {
-  background-color: color-mix(in srgb, var(--n-primary-color, #2080f0) 18%, transparent) !important;
+/* Selection highlight — semi-transparent primary tint, no !important so that
+   .row-hover (higher specificity via combos below) can override when both
+   classes are present on the same cell. Sits after zebra/pk/editing in
+   source order so same-specificity (0,2,0) naturally wins over .cell.pk. */
+.cell.selected,
+.cell.selected.zebra,
+.cell.selected.pk,
+.cell.selected.pk.zebra {
+  background-color: color-mix(in srgb, var(--n-primary-color, #2080f0) 18%, transparent);
+  background-image: none;
 }
+/* Selected + hovered: show hover background so the user can still see which
+   row they're hovering while a selection exists. (0,3,0) beats (0,2,0).
+   Also clear background-image from .cell.pk.zebra overlay. */
+.cell.selected.row-hover,
+.cell.selected.row-hover.zebra,
+.cell.selected.row-hover.pk,
+.cell.selected.row-hover.pk.zebra {
+  background-color: var(--hover-bg);
+  background-image: none;
+}
+/* Selected + editing: editing background wins. */
+.cell.editing.selected,
+.cell.editing.zebra.selected,
+.cell.editing.pk.selected,
+.cell.editing.pk.zebra.selected { background: var(--n-color-target); }
 
 /* ---- context menu ---- */
 .ctx-backdrop {
