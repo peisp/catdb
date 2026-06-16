@@ -15,6 +15,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { useThemeVars } from 'naive-ui'
+import { useTableSelection } from '../composables/useTableSelection'
 import type { QueryColumn } from '../stores/query'
 
 const props = defineProps<{
@@ -24,6 +25,11 @@ const props = defineProps<{
   fetching: boolean
   truncated: boolean
   rowsTotal: number
+  /** Optional table name for INSERT/UPDATE generation. When omitted those
+   *  context-menu items are disabled. */
+  tableName?: string
+  /** Primary-key column names for UPDATE generation. */
+  pkColumns?: string[]
 }>()
 const emit = defineEmits<{
   (e: 'load-more'): void
@@ -43,6 +49,103 @@ const scrollerHeight = ref(0)
 // so we use useThemeVars() and bind via inline style on the result container.
 const themeVars = useThemeVars()
 const hoverBg = computed(() => themeVars.value.primaryColorHover)
+
+// ---- range selection + copy ----
+const sel = useTableSelection()
+const ctxMenu = ref<{ x: number; y: number } | null>(null)
+
+function cellRowCol(e: MouseEvent): { row: number; col: number } | null {
+  const cell = (e.target as HTMLElement).closest('[data-col-idx]')
+  if (!cell) return null
+  const rowEl = cell.closest('[data-row-idx]')
+  if (!rowEl) return null
+  const row = Number(rowEl.getAttribute('data-row-idx'))
+  const col = Number(cell.getAttribute('data-col-idx'))
+  if (isNaN(row) || isNaN(col)) return null
+  return { row, col }
+}
+
+function onCellMouseDown(e: MouseEvent) {
+  if (e.button !== 0) return
+  const rc = cellRowCol(e)
+  if (!rc) return
+  // Don't interfere with resize handle
+  if ((e.target as HTMLElement).closest('.col-resize')) return
+  sel.startSelection(rc.row, rc.col)
+}
+
+function onRowsAreaMouseMove(e: MouseEvent) {
+  if (!sel.selecting.value) return
+  const rc = cellRowCol(e)
+  if (!rc) return
+  sel.extendSelection(rc.row, rc.col)
+}
+
+function onRowsAreaMouseUp() {
+  if (sel.selecting.value) sel.endSelection()
+}
+
+// Document-level mouseup to catch releases outside the grid.
+function onDocMouseUp() {
+  if (sel.selecting.value) sel.endSelection()
+}
+onMounted(() => document.addEventListener('mouseup', onDocMouseUp))
+onBeforeUnmount(() => document.removeEventListener('mouseup', onDocMouseUp))
+
+// Cmd/Ctrl+C → copy selected range as TSV.
+function onKeyDown(e: KeyboardEvent) {
+  if (!sel.hasSelection()) return
+  if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
+    e.preventDefault()
+    e.stopPropagation()
+    copyToClipboard(sel.formatTSV(props.rows, props.columns.map((c) => c.name), false))
+  }
+}
+
+async function copyToClipboard(text: string) {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    // Fallback: select a textarea approach could be added, but Wails webview
+    // generally supports the async clipboard API.
+  }
+}
+
+function onContextMenu(e: MouseEvent) {
+  e.preventDefault()
+  e.stopPropagation()
+  ctxMenu.value = { x: e.clientX, y: e.clientY }
+}
+
+function closeCtxMenu() {
+  ctxMenu.value = null
+}
+
+function ctxCopyTSV() {
+  copyToClipboard(sel.formatTSV(props.rows, props.columns.map((c) => c.name), false))
+  closeCtxMenu()
+}
+function ctxCopyInsert() {
+  const tbl = props.tableName
+  if (!tbl) return
+  copyToClipboard(sel.formatInsert(props.rows, props.columns.map((c) => c.name), tbl))
+  closeCtxMenu()
+}
+function ctxCopyUpdate() {
+  const tbl = props.tableName
+  if (!tbl) return
+  copyToClipboard(sel.formatUpdate(props.rows, props.columns.map((c) => c.name), tbl, props.pkColumns ?? []))
+  closeCtxMenu()
+}
+function ctxCopyColumns() {
+  copyToClipboard(sel.formatColumns(props.columns.map((c) => c.name)))
+  closeCtxMenu()
+}
+function ctxCopyDataPlusColumns() {
+  copyToClipboard(sel.formatDataPlusColumns(props.rows, props.columns.map((c) => c.name)))
+  closeCtxMenu()
+}
 
 // Per-column widths in pixels. Index 0..N-1 maps to columns[0..N-1].
 // Resets on a new query (column set changes).
@@ -147,7 +250,7 @@ function isNull(v: any): boolean { return v == null }
 </script>
 
 <template>
-  <div class="result" :style="{ '--hover-bg': hoverBg }">
+  <div class="result" :style="{ '--hover-bg': hoverBg }" @keydown="onKeyDown" tabindex="-1">
     <div ref="scrollerRef" class="scroller" @scroll="onScroll">
       <div
         class="grid"
@@ -181,6 +284,10 @@ function isNull(v: any): boolean { return v == null }
             width: gridWidth + 'px',
             height: contentHeight + 'px',
           }"
+          @mousedown="onCellMouseDown"
+          @mousemove="onRowsAreaMouseMove"
+          @mouseup="onRowsAreaMouseUp"
+          @contextmenu="onContextMenu"
         >
           <div
             v-for="vr in virtualRows"
@@ -188,14 +295,19 @@ function isNull(v: any): boolean { return v == null }
             class="row"
             :class="{ zebra: vr.index % 2 === 1 }"
             :style="{ transform: `translateY(${vr.start}px)`, width: gridWidth + 'px' }"
+            :data-row-idx="vr.index"
           >
-            <div class="cell idx-cell mono mute">{{ vr.index + 1 }}</div>
+            <div class="cell idx-cell mono mute" :class="{ selected: sel.isSelected(vr.index, -1) }" @mousedown.prevent="sel.selectRow(vr.index, columns.length)">{{ vr.index + 1 }}</div>
             <div
               v-for="(_c, j) in columns"
               :key="j"
               class="cell mono"
+              :data-col-idx="j"
               :style="{ width: (colWidths[j] ?? DATA_COL) + 'px' }"
-              :class="{ 'is-null': isNull(rows[vr.index]?.[j]) }"
+              :class="{
+                'is-null': isNull(rows[vr.index]?.[j]),
+                selected: sel.isSelected(vr.index, j),
+              }"
             >
               <span v-if="isNull(rows[vr.index]?.[j])" class="null-tag">NULL</span>
               <span v-else>{{ renderCell(rows[vr.index]?.[j]) }}</span>
@@ -204,6 +316,29 @@ function isNull(v: any): boolean { return v == null }
         </div>
       </div>
     </div>
+
+    <!-- Context menu overlay -->
+    <div
+      v-if="ctxMenu"
+      class="ctx-backdrop"
+      @mousedown="closeCtxMenu"
+      @contextmenu.prevent="closeCtxMenu"
+    >
+      <div
+        class="ctx-menu"
+        :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
+        @mousedown.stop
+        @contextmenu.prevent
+      >
+        <div class="ctx-item" @click="ctxCopyTSV">Copy as TSV</div>
+        <div class="ctx-item" :class="{ disabled: !tableName }" @click="ctxCopyInsert">Copy as INSERT</div>
+        <div class="ctx-item" :class="{ disabled: !tableName }" @click="ctxCopyUpdate">Copy as UPDATE</div>
+        <div class="ctx-sep" />
+        <div class="ctx-item" @click="ctxCopyColumns">Copy column names</div>
+        <div class="ctx-item" @click="ctxCopyDataPlusColumns">Copy data + column names</div>
+      </div>
+    </div>
+
     <div class="foot mono">
       <span>{{ rowsTotal }} rows</span>
       <span v-if="!done && !truncated" class="mute">loading more on scroll…</span>
@@ -370,4 +505,46 @@ function isNull(v: any): boolean { return v == null }
   opacity: 0.85;
 }
 .truncated { color: #d0a000; }
+
+/* ---- selection highlight ---- */
+.selected {
+  background-color: color-mix(in srgb, var(--n-primary-color, #2080f0) 18%, transparent) !important;
+}
+
+/* ---- context menu ---- */
+.ctx-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+}
+.ctx-menu {
+  position: fixed;
+  background: var(--n-color, #fff);
+  border: 1px solid var(--n-border-color, #d0d0d0);
+  border-radius: 4px;
+  padding: 4px 0;
+  min-width: 180px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  font-size: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  user-select: none;
+}
+.ctx-item {
+  padding: 4px 16px;
+  cursor: default;
+  line-height: 20px;
+}
+.ctx-item:hover {
+  background: var(--n-primary-color-hover, #2080f0);
+  color: #fff;
+}
+.ctx-item.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.ctx-sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--n-divider-color, #d0d0d0);
+}
 </style>

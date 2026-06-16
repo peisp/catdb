@@ -9,7 +9,7 @@
 //   - Optimistic: the new value is applied to the local row immediately.
 //     If ApplyChange fails (network, constraint, RowsAffected==0 meaning
 //     the row was changed under us), we roll back and show the error.
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   NAlert,
   NButton,
@@ -21,6 +21,7 @@ import {
   useThemeVars,
 } from 'naive-ui'
 import { edit as editApi, metadata as metaApi } from '../api'
+import { useTableSelection } from '../composables/useTableSelection'
 import type { BrowseResult, ColumnMeta } from '../api/metadata'
 import ExportDialog from './ExportDialog.vue'
 
@@ -55,6 +56,89 @@ const readOnly = computed(() => !(browse.value?.hasUniqueKey ?? false))
 
 const themeVars = useThemeVars()
 const hoverBg = computed(() => themeVars.value.primaryColorHover)
+
+// ---- range selection + copy ----
+const sel = useTableSelection()
+const ctxMenu = ref<{ x: number; y: number } | null>(null)
+
+function cellRowColFromEvent(e: MouseEvent): { row: number; col: number } | null {
+  const cell = (e.target as HTMLElement).closest('[data-col-idx]')
+  if (!cell) return null
+  const row = Number(cell.getAttribute('data-row-idx'))
+  const col = Number(cell.getAttribute('data-col-idx'))
+  if (isNaN(row) || isNaN(col)) return null
+  return { row, col }
+}
+
+function onGridMouseDown(e: MouseEvent) {
+  if (e.button !== 0) return
+  if ((e.target as HTMLElement).closest('.col-resize')) return
+  const rc = cellRowColFromEvent(e)
+  if (!rc) return
+  sel.startSelection(rc.row, rc.col)
+}
+
+function onGridMouseMove(e: MouseEvent) {
+  if (!sel.selecting.value) return
+  const rc = cellRowColFromEvent(e)
+  if (!rc) return
+  sel.extendSelection(rc.row, rc.col)
+}
+
+function onDocMouseUp() {
+  if (sel.selecting.value) sel.endSelection()
+}
+onMounted(() => document.addEventListener('mouseup', onDocMouseUp))
+onBeforeUnmount(() => document.removeEventListener('mouseup', onDocMouseUp))
+
+function onGridContextMenu(e: MouseEvent) {
+  // Ensure the right-clicked cell is inside the selection or start a new one
+  const rc = cellRowColFromEvent(e)
+  if (rc && !sel.isSelected(rc.row, rc.col)) {
+    sel.selectCell(rc.row, rc.col)
+  }
+  ctxMenu.value = { x: e.clientX, y: e.clientY }
+}
+
+function closeCtxMenu() { ctxMenu.value = null }
+
+async function copyToClipboard(text: string) {
+  if (!text) return
+  try { await navigator.clipboard.writeText(text) } catch { /* ignore */ }
+}
+
+function ctxCopyTSV() {
+  copyToClipboard(sel.formatTSV(rows.value, columns.value.map((c) => c.name), false))
+  closeCtxMenu()
+}
+function ctxCopyInsert() {
+  const tbl = `\`${props.db}\`.\`${props.table}\``
+  copyToClipboard(sel.formatInsert(rows.value, columns.value.map((c) => c.name), tbl))
+  closeCtxMenu()
+}
+function ctxCopyUpdate() {
+  const tbl = `\`${props.db}\`.\`${props.table}\``
+  copyToClipboard(sel.formatUpdate(rows.value, columns.value.map((c) => c.name), tbl, pk.value))
+  closeCtxMenu()
+}
+function ctxCopyColumns() {
+  copyToClipboard(sel.formatColumns(columns.value.map((c) => c.name)))
+  closeCtxMenu()
+}
+function ctxCopyDataPlusColumns() {
+  copyToClipboard(sel.formatDataPlusColumns(rows.value, columns.value.map((c) => c.name)))
+  closeCtxMenu()
+}
+
+// Cmd/Ctrl+C → copy selected range as TSV.
+function onKeyDown(e: KeyboardEvent) {
+  if (!sel.hasSelection()) return
+  if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
+    e.preventDefault()
+    e.stopPropagation()
+    copyToClipboard(sel.formatTSV(rows.value, columns.value.map((c) => c.name), false))
+  }
+}
 
 // Row hover via event delegation (CSS Grid has no row containers).
 const hoveredRow = ref(-1)
@@ -292,7 +376,7 @@ function isNull(v: any): boolean { return v == null }
 </script>
 
 <template>
-  <div class="tb" :style="{ '--hover-bg': hoverBg }">
+  <div class="tb" :style="{ '--hover-bg': hoverBg }" @keydown="onKeyDown" tabindex="-1">
     <div class="toolbar">
       <span class="title mono">{{ db }}.{{ table }}</span>
       <n-tag v-if="readOnly" size="small" type="warning">read-only · no primary key</n-tag>
@@ -323,6 +407,9 @@ function isNull(v: any): boolean { return v == null }
             :style="{ 'grid-template-columns': gridTemplateColumns }"
             @mouseover="onGridHover"
             @mouseleave="onGridLeave"
+            @mousedown="onGridMouseDown"
+            @mousemove="onGridMouseMove"
+            @contextmenu.prevent="onGridContextMenu"
           >
             <div class="hd idx">#</div>
             <div
@@ -337,7 +424,7 @@ function isNull(v: any): boolean { return v == null }
             </div>
 
             <template v-for="(row, rowIdx) in rows" :key="rowIdx">
-              <div class="cell idx mono mute" :class="{ zebra: rowIdx % 2 === 1, 'row-hover': hoveredRow === rowIdx }" :data-row-idx="rowIdx">{{ (page - 1) * pageSize + rowIdx + 1 }}</div>
+              <div class="cell idx mono mute" :class="{ zebra: rowIdx % 2 === 1, 'row-hover': hoveredRow === rowIdx, selected: sel.isSelected(rowIdx, -1) }" :data-row-idx="rowIdx" @mousedown.prevent="sel.selectRow(rowIdx, columns.length)">{{ (page - 1) * pageSize + rowIdx + 1 }}</div>
               <div
                 v-for="(c, colIdx) in columns"
                 :key="colIdx"
@@ -349,8 +436,10 @@ function isNull(v: any): boolean { return v == null }
                   pk: pk.includes(c.name),
                   zebra: rowIdx % 2 === 1,
                   'row-hover': hoveredRow === rowIdx,
+                  selected: sel.isSelected(rowIdx, colIdx),
                 }"
                 :data-row-idx="rowIdx"
+                :data-col-idx="colIdx"
                 @dblclick="startEdit(rowIdx, colIdx)"
               >
                 <template v-if="editing?.rowIdx === rowIdx && editing?.colIdx === colIdx">
@@ -425,6 +514,28 @@ function isNull(v: any): boolean { return v == null }
           size="small"
           class="size-select"
         />
+      </div>
+    </div>
+
+    <!-- Context menu overlay -->
+    <div
+      v-if="ctxMenu"
+      class="ctx-backdrop"
+      @mousedown="closeCtxMenu"
+      @contextmenu.prevent="closeCtxMenu"
+    >
+      <div
+        class="ctx-menu"
+        :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
+        @mousedown.stop
+        @contextmenu.prevent
+      >
+        <div class="ctx-item" @click="ctxCopyTSV">Copy as TSV</div>
+        <div class="ctx-item" @click="ctxCopyInsert">Copy as INSERT</div>
+        <div class="ctx-item" :class="{ disabled: !pk.length }" @click="ctxCopyUpdate">Copy as UPDATE</div>
+        <div class="ctx-sep" />
+        <div class="ctx-item" @click="ctxCopyColumns">Copy column names</div>
+        <div class="ctx-item" @click="ctxCopyDataPlusColumns">Copy data + column names</div>
       </div>
     </div>
   </div>
@@ -711,5 +822,47 @@ function isNull(v: any): boolean { return v == null }
 }
 .size-select {
   width: 80px;
+}
+
+/* ---- selection highlight ---- */
+.cell.selected {
+  background-color: color-mix(in srgb, var(--n-primary-color, #2080f0) 18%, transparent) !important;
+}
+
+/* ---- context menu ---- */
+.ctx-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+}
+.ctx-menu {
+  position: fixed;
+  background: var(--n-color, #fff);
+  border: 1px solid var(--n-border-color, #d0d0d0);
+  border-radius: 4px;
+  padding: 4px 0;
+  min-width: 180px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  font-size: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  user-select: none;
+}
+.ctx-item {
+  padding: 4px 16px;
+  cursor: default;
+  line-height: 20px;
+}
+.ctx-item:hover {
+  background: var(--n-primary-color-hover, #2080f0);
+  color: #fff;
+}
+.ctx-item.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.ctx-sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--n-divider-color, #d0d0d0);
 }
 </style>
