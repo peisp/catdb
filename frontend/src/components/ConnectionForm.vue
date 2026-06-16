@@ -459,6 +459,10 @@ function selectOptions(opts: string[]) {
    bar reads like a real macOS Segmented Control rather than a stretched
    tab strip. The pane content underneath remains full-width. */
 .tabs-wrap { display: flex; flex-direction: column; min-width: 0; }
+.group-tabs :deep(.n-tabs) {
+  min-width: 0;
+  overflow: hidden;
+}
 .group-tabs :deep(.n-tabs-nav) {
   display: flex;
   justify-content: center;
@@ -468,9 +472,17 @@ function selectOptions(opts: string[]) {
   margin: 0 auto;
 }
 .group-tabs :deep(.n-tabs-tab) { padding: 3px 16px; }
-.group-tabs :deep(.n-tab-pane) { padding-top: 12px; }
+.group-tabs :deep(.n-tab-pane) {
+  padding-top: 12px;
+  min-width: 0;
+  overflow: auto;
+}
+.group-tabs :deep(.n-tabs-pane-wrapper) {
+  min-width: 0;
+}
 
 /* --- Field rows --------------------------------------------------------- */
+.pane-form { min-width: 0; }
 .pane-form :deep(.n-form-item) { margin-bottom: 8px; }
 /* When show-feedback is false the wrapper still reserves space — collapse it. */
 .pane-form :deep(.n-form-item-feedback-wrapper:empty) { min-height: 0; padding: 0; }

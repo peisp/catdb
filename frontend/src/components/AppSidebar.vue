@@ -31,7 +31,7 @@ const emit = defineEmits<{
 const DEFAULT_WIDTH = 200
 const MIN_WIDTH = 180
 const COLLAPSE_THRESHOLD = 50
-const maxWidth = () => Math.max(MIN_WIDTH, Math.floor(window.innerWidth * 0.5))
+const maxWidth = () => Math.max(MIN_WIDTH, Math.floor(window.innerWidth * 0.3))
 
 // Pull real theme colors so the resize handle matches <n-split>'s trigger
 // exactly. Scoped `var(--n-border-color)` does NOT resolve here — those vars
