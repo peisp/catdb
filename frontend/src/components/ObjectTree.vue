@@ -5,6 +5,7 @@
 // the native Wails context menu).
 import { computed, ref, watch } from 'vue'
 import {
+  NButton,
   NDropdown,
   NIcon,
   NScrollbar,
@@ -16,6 +17,7 @@ import type { TreeOption } from 'naive-ui'
 import type { ConnectionProfile } from '../api/connections'
 import { metadata as metaApi } from '../api'
 import { useMetadataStore } from '../stores/metadata'
+import { useConnectionsStore } from '../stores/connections'
 
 const props = defineProps<{ connection: ConnectionProfile }>()
 const emit = defineEmits<{
@@ -24,11 +26,18 @@ const emit = defineEmits<{
 }>()
 
 const store = useMetadataStore()
+const connStore = useConnectionsStore()
 const message = useMessage()
 
 const treeData = ref<TreeOption[]>([])
 const expandedKeys = ref<string[]>([])
 const loading = ref(false)
+// `busy` covers the in-flight period of disconnect/reconnect/refresh — we
+// disable the three action buttons while one is running so the user can't
+// stack overlapping connect/disconnect calls.
+const busy = ref(false)
+
+const isLive = computed(() => connStore.isLive(props.connection.id))
 
 interface TreeMeta {
   kind: 'database' | 'tableGroup' | 'viewGroup' | 'table' | 'view' | 'column'
@@ -205,12 +214,131 @@ const nodeProps = ({ option }: { option: TreeOption }) => ({
   onContextmenu: (e: MouseEvent) => onContextMenu(e, option),
   onDblclick: (e: MouseEvent) => onDblclick(e, option),
 })
+
+// --- header actions: disconnect / reconnect / refresh ---
+
+async function onDisconnect() {
+  if (busy.value || !isLive.value) return
+  busy.value = true
+  try {
+    await connStore.disconnect(props.connection.id)
+    // Drop cached metadata so a future reconnect refetches cleanly.
+    store.invalidate(props.connection.id)
+    treeData.value = []
+    expandedKeys.value = []
+  } catch (e) {
+    message.error(`断开失败: ${String(e)}`)
+  } finally {
+    busy.value = false
+  }
+}
+
+async function onReconnect() {
+  if (busy.value) return
+  busy.value = true
+  try {
+    if (isLive.value) await connStore.disconnect(props.connection.id)
+    await connStore.connect(props.connection.id)
+    store.invalidate(props.connection.id)
+    await loadRoot()
+  } catch (e) {
+    message.error(`重连失败: ${String(e)}`)
+  } finally {
+    busy.value = false
+  }
+}
+
+async function onRefresh() {
+  if (busy.value) return
+  busy.value = true
+  try {
+    store.invalidate(props.connection.id)
+    await loadRoot()
+  } catch (e) {
+    message.error(`刷新失败: ${String(e)}`)
+  } finally {
+    busy.value = false
+  }
+}
 </script>
 
 <template>
   <div class="tree-pane">
     <div class="header">
+      <span class="status-dot" :class="{ live: isLive }" />
       <span class="title">{{ connection.name }}</span>
+      <span class="spacer" />
+      <div class="actions">
+        <n-button
+          class="hbtn"
+          size="tiny"
+          quaternary
+          :disabled="busy || !isLive"
+          :title="isLive ? '刷新对象树' : '未连接'"
+          @click="onRefresh"
+        >
+          <svg
+            class="ico"
+            :class="{ spinning: busy }"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M13.5 3v3.5H10" />
+            <path d="M13 6.5A5.5 5.5 0 1 0 13 11" />
+          </svg>
+        </n-button>
+        <n-button
+          class="hbtn"
+          size="tiny"
+          quaternary
+          :disabled="busy"
+          :title="isLive ? '重新连接（先断开再连接）' : '连接'"
+          @click="onReconnect"
+        >
+          <svg
+            class="ico"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M7.5 9.5l-1 1a2.5 2.5 0 1 1-3.5-3.5l1-1" />
+            <path d="M8.5 6.5l1-1a2.5 2.5 0 1 1 3.5 3.5l-1 1" />
+            <line x1="6.5" y1="9.5" x2="9.5" y2="6.5" />
+          </svg>
+        </n-button>
+        <n-button
+          class="hbtn"
+          size="tiny"
+          quaternary
+          :disabled="busy || !isLive"
+          :title="isLive ? '断开连接' : '未连接'"
+          @click="onDisconnect"
+        >
+          <svg
+            class="ico"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M6.5 9l-1.5 1.5a2.5 2.5 0 0 1-3.5-3.5L3 5.5" />
+            <path d="M9.5 7L11 5.5a2.5 2.5 0 0 1 3.5 3.5L13 10.5" />
+            <line x1="2" y1="2" x2="14" y2="14" />
+          </svg>
+        </n-button>
+      </div>
     </div>
     <div class="body">
       <n-scrollbar class="scroll">
@@ -248,12 +376,41 @@ const nodeProps = ({ option }: { option: TreeOption }) => ({
 .header {
   display: flex;
   align-items: center;
-  padding: 6px 10px;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  opacity: 0.7;
   border-bottom: 1px solid var(--n-border-color);
+  min-height: 30px;
+}
+.header .title { opacity: 0.75; }
+.header .spacer { flex: 1 1 0; }
+
+/* Tiny pulse indicator — green when the connection is live, gray when not. */
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(127, 127, 127, 0.45);
+  flex: 0 0 auto;
+}
+.status-dot.live { background: #2eb872; box-shadow: 0 0 0 2px rgba(46, 184, 114, 0.18); }
+
+.actions { display: flex; align-items: center; gap: 2px; }
+.hbtn {
+  --wails-draggable: no-drag;
+  opacity: 0.65;
+}
+.hbtn:hover:not(:disabled) { opacity: 1; }
+.hbtn .ico {
+  width: 13px;
+  height: 13px;
+  display: block;
+}
+.hbtn .ico.spinning { animation: spin 0.8s linear infinite; }
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 .body { flex: 1 1 auto; min-height: 0; padding: 6px; display: flex; }
 .scroll { flex: 1 1 0; min-width: 0; min-height: 0; }
