@@ -108,6 +108,7 @@ async function closeTab(id: string) {
   min-height: 0;
 }
 .ws :deep(.n-tabs-tab-pad), .ws :deep(.n-tabs-tab) { padding: 4px 1px; }
+.ws :deep(.n-tabs-tab) { padding-left: 8px; }
 .ws :deep(.n-tabs-nav) { background: var(--n-color); flex: 0 0 auto; }
 /* Pane wrapper is the actual culprit when broken — give it explicit
    flex: 1 1 0 so the wrapper has a definite height equal to (n-tabs height
