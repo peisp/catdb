@@ -35,6 +35,9 @@ export function AutocompleteFor(connID: string, db: string): $CancellablePromise
 /**
  * BrowseTable runs `SELECT * FROM db.table LIMIT … OFFSET …` and returns the
  * rows + columns + primary-key info needed by the data browser.
+ * 
+ * Pass limit < 0 to fetch all rows (no LIMIT/OFFSET clause). limit == 0 is
+ * reserved as "use default" and resolves to 200.
  */
 export function BrowseTable(connID: string, db: string, table: string, limit: number, offset: number): $CancellablePromise<$models.BrowseResult> {
     return $Call.ByID(2868197746, connID, db, table, limit, offset).then(($result: any) => {

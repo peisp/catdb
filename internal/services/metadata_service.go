@@ -201,16 +201,23 @@ type BrowseResult struct {
 	Rows         [][]any               `json:"rows"`
 	PrimaryKey   []string              `json:"primaryKey"`
 	HasUniqueKey bool                  `json:"hasUniqueKey"`
+	// SQL is the dialect-paginated statement that actually ran. Surfaced to
+	// the UI so users can see/copy what catdb executed on their behalf.
+	SQL string `json:"sql"`
 }
 
 // BrowseTable runs `SELECT * FROM db.table LIMIT … OFFSET …` and returns the
 // rows + columns + primary-key info needed by the data browser.
+//
+// Pass limit < 0 to fetch all rows (no LIMIT/OFFSET clause). limit == 0 is
+// reserved as "use default" and resolves to 200.
 func (s *MetadataService) BrowseTable(ctx context.Context, connID, db, table string, limit, offset int) (BrowseResult, error) {
 	var empty BrowseResult
 	if connID == "" || db == "" || table == "" {
 		return empty, fmt.Errorf("MetadataService: connID, db and table are required")
 	}
-	if limit <= 0 {
+	unlimited := limit < 0
+	if limit == 0 {
 		limit = 200
 	}
 	if offset < 0 {
@@ -232,17 +239,28 @@ func (s *MetadataService) BrowseTable(ctx context.Context, connID, db, table str
 		return empty, fmt.Errorf("MetadataService: connection has no querier")
 	}
 	base := fmt.Sprintf("SELECT * FROM %s.%s", dia.QuoteIdentifier(db), dia.QuoteIdentifier(table))
-	paginated := dia.Paginate(base, limit, offset)
+	var paginated string
+	if unlimited {
+		paginated = base
+	} else {
+		paginated = dia.Paginate(base, limit, offset)
+	}
 	rs, err := q.Query(ctx, paginated)
 	if err != nil {
 		return empty, err
 	}
 	defer rs.Close()
-	rows, _, err := rs.Next(limit)
+	// Cap the in-memory fetch even when "all rows" is requested — a runaway
+	// table would otherwise blow up the renderer.
+	fetchN := limit
+	if unlimited {
+		fetchN = 1000000
+	}
+	rows, _, err := rs.Next(fetchN)
 	if err != nil {
 		return empty, err
 	}
-	out := BrowseResult{Columns: rs.Columns(), Rows: rows}
+	out := BrowseResult{Columns: rs.Columns(), Rows: rows, SQL: paginated}
 	if ed := conn.Editor(); ed != nil {
 		if pk, perr := ed.PrimaryKeys(ctx, db, "", table); perr == nil {
 			out.PrimaryKey = pk

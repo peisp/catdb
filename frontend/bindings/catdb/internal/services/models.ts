@@ -81,6 +81,12 @@ export class BrowseResult {
     "primaryKey": string[];
     "hasUniqueKey": boolean;
 
+    /**
+     * SQL is the dialect-paginated statement that actually ran. Surfaced to
+     * the UI so users can see/copy what catdb executed on their behalf.
+     */
+    "sql": string;
+
     /** Creates a new BrowseResult instance. */
     constructor($$source: Partial<BrowseResult> = {}) {
         if (!("columns" in $$source)) {
@@ -94,6 +100,9 @@ export class BrowseResult {
         }
         if (!("hasUniqueKey" in $$source)) {
             this["hasUniqueKey"] = false;
+        }
+        if (!("sql" in $$source)) {
+            this["sql"] = "";
         }
 
         Object.assign(this, $$source);

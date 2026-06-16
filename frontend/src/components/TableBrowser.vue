@@ -14,8 +14,7 @@ import {
   NAlert,
   NButton,
   NInput,
-  NInputNumber,
-  NPagination,
+  NSelect,
   NSpin,
   NTag,
   useMessage,
@@ -33,8 +32,18 @@ const props = defineProps<{
 
 const message = useMessage()
 
-const pageSize = ref(100)
+// pageSize == -1 means "all rows" (passed through to backend as a sentinel).
+const ALL_ROWS = -1
+const pageSize = ref<number>(200)
 const page = ref(1)
+// Decoupled from `page` so the user can type freely and only commit on Enter.
+const pageInput = ref<string>('1')
+const pageSizeOptions = [
+  { label: '200', value: 200 },
+  { label: '500', value: 500 },
+  { label: '1000', value: 1000 },
+  { label: '全部', value: ALL_ROWS },
+]
 
 const browse = ref<BrowseResult | null>(null)
 const loading = ref(false)
@@ -100,12 +109,15 @@ function onColResizeDown(e: PointerEvent, colIdx: number) {
 async function load() {
   loading.value = true
   try {
+    const isAll = pageSize.value === ALL_ROWS
+    const limit = isAll ? ALL_ROWS : pageSize.value
+    const offset = isAll ? 0 : (page.value - 1) * pageSize.value
     const result = await metaApi.browseTable(
       props.connId,
       props.db,
       props.table,
-      pageSize.value,
-      (page.value - 1) * pageSize.value,
+      limit,
+      offset,
     )
     browse.value = result
   } catch (e) {
@@ -120,6 +132,63 @@ watch(
   () => [props.connId, props.db, props.table, page.value, pageSize.value],
   load,
 )
+
+// Keep the editable page input synced when `page` changes from elsewhere
+// (page-size change, prev/next clicks, table reload).
+watch(page, (v) => { pageInput.value = String(v) }, { immediate: true })
+
+// Changing page size resets to page 1 — offsets computed against the old
+// size are meaningless against the new one.
+watch(pageSize, () => { page.value = 1 })
+
+// "全部" → only one logical page. Otherwise: next is enabled only when the
+// last fetch filled the page (a short page means we hit the tail).
+const isAllRows = computed(() => pageSize.value === ALL_ROWS)
+const hasPrev = computed(() => !isAllRows.value && page.value > 1)
+const hasNext = computed(() => !isAllRows.value && rows.value.length >= pageSize.value)
+
+function goPrev() {
+  if (!hasPrev.value) return
+  page.value = page.value - 1
+}
+function goNext() {
+  if (!hasNext.value) return
+  page.value = page.value + 1
+}
+function commitPageInput() {
+  const n = Math.floor(Number(pageInput.value))
+  if (!Number.isFinite(n) || n < 1) {
+    pageInput.value = String(page.value)
+    return
+  }
+  if (n === page.value) return
+  page.value = n
+}
+
+// SQL display: hover state controls the visibility of the copy button.
+const sqlHover = ref(false)
+async function copySql() {
+  const sql = browse.value?.sql
+  if (!sql) return
+  try {
+    await navigator.clipboard.writeText(sql)
+    message.success('SQL copied')
+  } catch (e) {
+    message.error(`copy failed: ${String(e)}`)
+  }
+}
+
+const rowsStart = computed(() => {
+  if (rows.value.length === 0) return 0
+  return isAllRows.value ? 1 : (page.value - 1) * pageSize.value + 1
+})
+const rowsEnd = computed(() => {
+  if (rows.value.length === 0) return 0
+  return isAllRows.value
+    ? rows.value.length
+    : (page.value - 1) * pageSize.value + rows.value.length
+})
+
 
 // Inline editing -----------------------------------------------------------
 
@@ -310,15 +379,53 @@ function isNull(v: any): boolean { return v == null }
     </n-spin>
 
     <div class="footer">
-      <n-pagination
-        v-model:page="page"
-        v-model:page-size="pageSize"
-        :item-count="-1"
-        :page-sizes="[50, 100, 200, 500]"
-        show-size-picker
-        size="small"
-      />
-      <span class="mono mute">rows {{ (page - 1) * pageSize + 1 }} – {{ (page - 1) * pageSize + rows.length }}</span>
+      <div class="pager">
+        <button
+          class="pgbtn"
+          :disabled="!hasPrev"
+          title="上一页"
+          @click="goPrev"
+        >‹</button>
+        <input
+          v-model="pageInput"
+          class="page-input mono"
+          inputmode="numeric"
+          :disabled="isAllRows"
+          @keydown.enter.prevent="commitPageInput"
+          @blur="commitPageInput"
+        />
+        <button
+          class="pgbtn"
+          :disabled="!hasNext"
+          title="下一页"
+          @click="goNext"
+        >›</button>
+      </div>
+
+      <div
+        class="sql-display"
+        @mouseenter="sqlHover = true"
+        @mouseleave="sqlHover = false"
+      >
+        <code class="sql-text mono" :title="browse?.sql || ''">{{ browse?.sql || '' }}</code>
+        <button
+          v-if="browse?.sql"
+          class="copy-btn"
+          :class="{ visible: sqlHover }"
+          title="复制 SQL"
+          @click="copySql"
+        >复制</button>
+      </div>
+
+      <div class="footer-right">
+        <span class="mono mute">rows {{ rowsStart }} – {{ rowsEnd }}</span>
+        <n-select
+          v-model:value="pageSize"
+          :options="pageSizeOptions"
+          size="small"
+          class="size-select"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -494,10 +601,115 @@ function isNull(v: any): boolean { return v == null }
 .footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 6px 10px;
+  gap: 10px;
+  padding: 4px 10px;
   border-top: 1px solid var(--n-border-color);
   background: var(--n-color);
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+/* --- pager (prev / page input / next) ---------------------------------- */
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+.pgbtn {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  font-size: 14px;
+  line-height: 1;
+  color: inherit;
+  cursor: default;
+  padding: 0;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.pgbtn:hover:not(:disabled) {
+  background: var(--n-color-target, rgba(127, 127, 127, 0.12));
+}
+.pgbtn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.page-input {
+  width: 44px;
+  height: 22px;
+  text-align: center;
+  font-size: 12px;
+  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.25));
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  padding: 0 4px;
+  outline: none;
+  transition: border-color 120ms ease;
+}
+.page-input:focus {
+  border-color: var(--n-primary-color, #18a058);
+}
+.page-input:disabled {
+  opacity: 0.4;
+}
+
+/* --- middle: executed SQL, hover-reveals copy button ------------------- */
+.sql-display {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+.sql-text {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 11px;
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+.copy-btn {
+  flex: 0 0 auto;
+  height: 20px;
+  padding: 0 8px;
+  font-size: 11px;
+  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.25));
+  border-radius: 3px;
+  background: var(--n-color, transparent);
+  color: inherit;
+  cursor: default;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, background-color 120ms ease;
+}
+.copy-btn.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.copy-btn:hover {
+  background: var(--n-color-target, rgba(127, 127, 127, 0.12));
+}
+
+/* --- right: rows range + page-size picker ------------------------------ */
+.footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.size-select {
+  width: 80px;
 }
 </style>
