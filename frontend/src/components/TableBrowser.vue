@@ -19,6 +19,7 @@ import {
   NSpin,
   NTag,
   useMessage,
+  useThemeVars,
 } from 'naive-ui'
 import { edit as editApi, metadata as metaApi } from '../api'
 import type { BrowseResult, ColumnMeta } from '../api/metadata'
@@ -42,6 +43,17 @@ const columns = computed<ColumnMeta[]>(() => browse.value?.columns ?? [])
 const rows = computed<any[][]>(() => browse.value?.rows ?? [])
 const pk = computed<string[]>(() => browse.value?.primaryKey ?? [])
 const readOnly = computed(() => !(browse.value?.hasUniqueKey ?? false))
+
+const themeVars = useThemeVars()
+const hoverBg = computed(() => themeVars.value.primaryColorHover)
+
+// Row hover via event delegation (CSS Grid has no row containers).
+const hoveredRow = ref(-1)
+function onGridHover(e: MouseEvent) {
+  const cell = (e.target as HTMLElement).closest('[data-row-idx]')
+  if (cell) hoveredRow.value = Number(cell.getAttribute('data-row-idx'))
+}
+function onGridLeave() { hoveredRow.value = -1 }
 
 // Per-column widths — reset when the column set changes.
 const DEFAULT_COL_W = 160
@@ -211,7 +223,7 @@ function isNull(v: any): boolean { return v == null }
 </script>
 
 <template>
-  <div class="tb">
+  <div class="tb" :style="{ '--hover-bg': hoverBg }">
     <div class="toolbar">
       <span class="title mono">{{ db }}.{{ table }}</span>
       <n-tag v-if="readOnly" size="small" type="warning">read-only · no primary key</n-tag>
@@ -240,6 +252,8 @@ function isNull(v: any): boolean { return v == null }
           <div
             class="grid"
             :style="{ 'grid-template-columns': gridTemplateColumns }"
+            @mouseover="onGridHover"
+            @mouseleave="onGridLeave"
           >
             <div class="hd idx">#</div>
             <div
@@ -254,7 +268,7 @@ function isNull(v: any): boolean { return v == null }
             </div>
 
             <template v-for="(row, rowIdx) in rows" :key="rowIdx">
-              <div class="cell idx mono mute" :class="{ zebra: rowIdx % 2 === 1 }">{{ (page - 1) * pageSize + rowIdx + 1 }}</div>
+              <div class="cell idx mono mute" :class="{ zebra: rowIdx % 2 === 1, 'row-hover': hoveredRow === rowIdx }" :data-row-idx="rowIdx">{{ (page - 1) * pageSize + rowIdx + 1 }}</div>
               <div
                 v-for="(c, colIdx) in columns"
                 :key="colIdx"
@@ -265,7 +279,9 @@ function isNull(v: any): boolean { return v == null }
                   'is-null': isNull(row[colIdx]),
                   pk: pk.includes(c.name),
                   zebra: rowIdx % 2 === 1,
+                  'row-hover': hoveredRow === rowIdx,
                 }"
+                :data-row-idx="rowIdx"
                 @dblclick="startEdit(rowIdx, colIdx)"
               >
                 <template v-if="editing?.rowIdx === rowIdx && editing?.colIdx === colIdx">
@@ -400,6 +416,8 @@ function isNull(v: any): boolean { return v == null }
 }
 .cell.pk,
 .cell.pk.zebra { background-color: rgba(255, 200, 0, 0.06); }
+/* Editing cell always wins over hover. Same-specifity rules later in the
+   stylesheet would normally override, so repeat .editing after .row-hover. */
 .cell.editing,
 .cell.editing.zebra,
 .cell.editing.pk,
@@ -408,6 +426,19 @@ function isNull(v: any): boolean { return v == null }
   padding: 0;
   overflow: visible;
 }
+
+/* Row hover — event delegation sets hoveredRow, all cells with
+   .row-hover get the highlight background. This correctly highlights an
+   entire row in a CSS Grid layout that has no row wrapper elements. */
+.cell.row-hover,
+.cell.row-hover.zebra,
+.cell.row-hover.pk,
+.cell.row-hover.pk.zebra { background-color: var(--hover-bg); }
+/* Editing cells must keep their distinct background even when hovered. */
+.cell.editing.row-hover,
+.cell.editing.zebra.row-hover,
+.cell.editing.pk.row-hover,
+.cell.editing.pk.zebra.row-hover { background: var(--n-color-target); }
 
 /* Column resize handle on the right edge of each header cell. */
 .col-resize {

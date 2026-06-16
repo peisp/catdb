@@ -14,6 +14,7 @@
 //     bottom we emit 'load-more' for the parent to call FetchMore.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
+import { useThemeVars } from 'naive-ui'
 import type { QueryColumn } from '../stores/query'
 
 const props = defineProps<{
@@ -36,6 +37,12 @@ const PREFETCH_PX = 400
 
 const scrollerRef = ref<HTMLDivElement | null>(null)
 const scrollerHeight = ref(0)
+
+// Pull theme color for row hover — matches sidebar drag handle color.
+// Naive UI's --n-* CSS vars aren't available in scoped styles on plain divs,
+// so we use useThemeVars() and bind via inline style on the result container.
+const themeVars = useThemeVars()
+const hoverBg = computed(() => themeVars.value.primaryColorHover)
 
 // Per-column widths in pixels. Index 0..N-1 maps to columns[0..N-1].
 // Resets on a new query (column set changes).
@@ -140,7 +147,7 @@ function isNull(v: any): boolean { return v == null }
 </script>
 
 <template>
-  <div class="result">
+  <div class="result" :style="{ '--hover-bg': hoverBg }">
     <div ref="scrollerRef" class="scroller" @scroll="onScroll">
       <div
         class="grid"
@@ -280,7 +287,7 @@ function isNull(v: any): boolean { return v == null }
 @media (prefers-color-scheme: dark) {
   .row.zebra { background-color: rgb(34, 34, 36); }
 }
-.row:hover { background-color: var(--n-color-target); }
+.row:hover { background-color: var(--hover-bg); }
 
 .cell {
   flex: 0 0 auto;
