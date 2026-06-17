@@ -19,12 +19,10 @@ import {
   NAlert,
   NButton,
   NCheckbox,
-  NSelect,
   NSpace,
   NTag,
   useMessage,
 } from 'naive-ui'
-import type { SelectOption } from 'naive-ui'
 import SqlEditor from './SqlEditor.vue'
 import ResultTable from './ResultTable.vue'
 import ExportDialog from './ExportDialog.vue'
@@ -84,7 +82,7 @@ const schemaMap = computed<SQLNamespace>(() => {
   return out as SQLNamespace
 })
 
-const dbOptions = computed<SelectOption[]>(() => {
+const dbOptions = computed(() => {
   const connId = tab.value?.connId
   if (!connId) return []
   const list = metaStore.databases[connId] ?? []
@@ -311,15 +309,16 @@ function onSplitDown(e: PointerEvent) {
           Cancel
         </n-button>
         <span class="sep" />
-        <n-select
-          v-model:value="currentDb"
-          size="small"
-          filterable
-          :options="dbOptions"
+        <select
+          v-model="currentDb"
           :disabled="tab.status === 'running' || dbOptions.length === 0"
-          :placeholder="dbOptions.length ? 'Schema' : 'No schemas'"
           class="schema-select"
-        />
+        >
+          <option value="" disabled>{{ dbOptions.length ? 'Schema' : 'No schemas' }}</option>
+          <option v-for="opt in dbOptions" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
+        </select>
         <span class="sep" />
         <n-tag size="small" :type="statusBadge.type">{{ statusBadge.label }}</n-tag>
         <span v-if="tab.elapsedMs > 0" class="mono mute">{{ tab.elapsedMs }} ms</span>
@@ -450,9 +449,27 @@ function onSplitDown(e: PointerEvent) {
 .sep { display: inline-block; width: 1px; height: 12px; background: currentColor; opacity: 0.15; }
 .mute { opacity: 0.6; font-size: 12px; }
 .hint { opacity: 0.4; font-size: 11px; }
-/* Schema dropdown — narrow enough to fit the toolbar density target without
-   truncating typical database names. */
-.schema-select { width: 160px; }
+/* Schema dropdown — native select styled to match toolbar density. */
+.schema-select {
+  width: 160px;
+  font-size: 12px;
+  padding: 1px 6px;
+  border: 1px solid var(--n-border-color);
+  border-radius: 3px;
+  background: var(--n-color);
+  color: var(--n-text-color);
+  height: 26px;
+  outline: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.schema-select:focus {
+  border-color: var(--n-primary-color);
+}
+.schema-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 /* ---- Body: 1fr of .qt's grid (i.e. all remaining vertical space) ---- */
 
