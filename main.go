@@ -67,6 +67,7 @@ func main() {
 		platform.SwitchToEnglishInputSource()
 	})
 	app.Menu.SetApplicationMenu(wailsbridge.BuildApplicationMenu(app))
+	wailsbridge.RegisterContextMenus(app)
 
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "catdb",

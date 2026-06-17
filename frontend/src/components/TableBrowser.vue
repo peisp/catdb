@@ -1,28 +1,20 @@
 <script setup lang="ts">
-// TableBrowser — paginated table data viewer with inline cell editing.
+// TableBrowser —— 对象树 → "浏览数据" 入口。
 //
-// Editing rules (CLAUDE.md #4, MVP.md M3):
-//   - Tables with no primary/unique key are read-only — banner shown, no
-//     edit affordances.
-//   - Each cell edit is a one-row UPDATE via EditService.ApplyChange, keyed
-//     on the original row's PK values.
-//   - Optimistic: the new value is applied to the local row immediately.
-//     If ApplyChange fails (network, constraint, RowsAffected==0 meaning
-//     the row was changed under us), we roll back and show the error.
+// 这里只剩业务装配：分页器、SQL 显示、剪贴板格式化、编辑提交流水线。
+// 真正的表格渲染（虚拟化、列宽、选区、内置编辑器）下沉到 DataGrid。
+//
+// 编辑规则（CLAUDE.md #4, MVP.md M3）：
+//   - 表没有 PK/Unique → 整张表只读，banner 提示
+//   - 每次单元格编辑 = 一次基于原行 PK 的 UPDATE
+//   - 乐观：先本地写入，applyChange 失败则 reload 整页恢复真值
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import {
-  NAlert,
-  NButton,
-  NInput,
-  NSelect,
-  NSpin,
-  NTag,
-  useMessage,
-  useThemeVars,
-} from 'naive-ui'
+import { NAlert, NButton, NSelect, NSpin, NTag, useMessage } from 'naive-ui'
 import { edit as editApi, metadata as metaApi } from '../api'
-import { useTableSelection } from '../composables/useTableSelection'
+import { setActiveGridContext } from '../api/gridContextMenu'
+import { useTableSelection, type SelectionRange } from '../composables/useTableSelection'
 import type { BrowseResult, ColumnMeta } from '../api/metadata'
+import DataGrid from './data-grid/DataGrid.vue'
 import ExportDialog from './ExportDialog.vue'
 
 const props = defineProps<{
@@ -48,147 +40,54 @@ const pageSizeOptions = [
 
 const browse = ref<BrowseResult | null>(null)
 const loading = ref(false)
+const exportOpen = ref(false)
 
 const columns = computed<ColumnMeta[]>(() => browse.value?.columns ?? [])
 const rows = computed<any[][]>(() => browse.value?.rows ?? [])
 const pk = computed<string[]>(() => browse.value?.primaryKey ?? [])
 const readOnly = computed(() => !(browse.value?.hasUniqueKey ?? false))
 
-const themeVars = useThemeVars()
-const hoverBg = computed(() => themeVars.value.primaryColorHover)
-
-// ---- range selection + copy ----
+// ---- selection + copy ----
 const sel = useTableSelection()
-const ctxMenu = ref<{ x: number; y: number } | null>(null)
 
-function cellRowColFromEvent(e: MouseEvent): { row: number; col: number } | null {
-  const cell = (e.target as HTMLElement).closest('[data-col-idx]')
-  if (!cell) return null
-  const row = Number(cell.getAttribute('data-row-idx'))
-  const col = Number(cell.getAttribute('data-col-idx'))
-  if (isNaN(row) || isNaN(col)) return null
-  return { row, col }
+function colNames(): string[] { return columns.value.map((c) => c.name) }
+function fullTableName(): string { return `\`${props.db}\`.\`${props.table}\`` }
+
+function onSelectionChange(p: { range: SelectionRange | null }) {
+  sel.selection.value = p.range
 }
 
-function onGridMouseDown(e: MouseEvent) {
-  if (e.button !== 0) return
-  if ((e.target as HTMLElement).closest('.col-resize')) return
-  const rc = cellRowColFromEvent(e)
-  if (!rc) return
-  sel.startSelection(rc.row, rc.col)
-}
-
-function onGridMouseMove(e: MouseEvent) {
-  if (!sel.selecting.value) return
-  const rc = cellRowColFromEvent(e)
-  if (!rc) return
-  sel.extendSelection(rc.row, rc.col)
-}
-
-function onDocMouseUp() {
-  if (sel.selecting.value) sel.endSelection()
-}
-onMounted(() => document.addEventListener('mouseup', onDocMouseUp))
-onBeforeUnmount(() => document.removeEventListener('mouseup', onDocMouseUp))
-
-function onGridContextMenu(e: MouseEvent) {
-  // Ensure the right-clicked cell is inside the selection or start a new one
-  const rc = cellRowColFromEvent(e)
-  if (rc && !sel.isSelected(rc.row, rc.col)) {
-    sel.selectCell(rc.row, rc.col)
+function onCellContextMenu(p: { row: number; col: number }) {
+  if (!sel.hasSelection() || !sel.isSelected(p.row, p.col)) {
+    sel.selectCell(p.row, p.col)
   }
-  ctxMenu.value = { x: e.clientX, y: e.clientY }
+  // Push live state to the native-menu singleton; Wails opens the registered
+  // "catdb-grid-cell" menu and its item handlers operate against this state.
+  setActiveGridContext({
+    rows: rows.value,
+    columnNames: colNames(),
+    selection: sel.selection.value,
+    tableName: fullTableName(),
+    pkColumns: pk.value,
+  })
 }
-
-function closeCtxMenu() { ctxMenu.value = null }
 
 async function copyToClipboard(text: string) {
   if (!text) return
   try { await navigator.clipboard.writeText(text) } catch { /* ignore */ }
 }
 
-function ctxCopyTSV() {
-  copyToClipboard(sel.formatTSV(rows.value, columns.value.map((c) => c.name), false))
-  closeCtxMenu()
-}
-function ctxCopyInsert() {
-  const tbl = `\`${props.db}\`.\`${props.table}\``
-  copyToClipboard(sel.formatInsert(rows.value, columns.value.map((c) => c.name), tbl))
-  closeCtxMenu()
-}
-function ctxCopyUpdate() {
-  const tbl = `\`${props.db}\`.\`${props.table}\``
-  copyToClipboard(sel.formatUpdate(rows.value, columns.value.map((c) => c.name), tbl, pk.value))
-  closeCtxMenu()
-}
-function ctxCopyColumns() {
-  copyToClipboard(sel.formatColumns(columns.value.map((c) => c.name)))
-  closeCtxMenu()
-}
-function ctxCopyDataPlusColumns() {
-  copyToClipboard(sel.formatDataPlusColumns(rows.value, columns.value.map((c) => c.name)))
-  closeCtxMenu()
-}
-
-// Cmd/Ctrl+C → copy selected range as TSV.
-function onKeyDown(e: KeyboardEvent) {
+function onDocKeyDown(e: KeyboardEvent) {
   if (!sel.hasSelection()) return
   if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
     e.preventDefault()
-    e.stopPropagation()
-    copyToClipboard(sel.formatTSV(rows.value, columns.value.map((c) => c.name), false))
+    copyToClipboard(sel.formatTSV(rows.value, colNames(), false))
   }
 }
+onMounted(() => document.addEventListener('keydown', onDocKeyDown))
+onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeyDown))
 
-// Row hover via event delegation (CSS Grid has no row containers).
-const hoveredRow = ref(-1)
-function onGridHover(e: MouseEvent) {
-  const cell = (e.target as HTMLElement).closest('[data-row-idx]')
-  if (cell) hoveredRow.value = Number(cell.getAttribute('data-row-idx'))
-}
-function onGridLeave() { hoveredRow.value = -1 }
-
-// Per-column widths — reset when the column set changes.
-const DEFAULT_COL_W = 160
-const MIN_COL_W = 60
-const colWidths = ref<number[]>([])
-
-watch(
-  columns,
-  (cols) => {
-    const old = colWidths.value
-    colWidths.value = cols.map((_, i) => old[i] ?? DEFAULT_COL_W)
-  },
-  { immediate: true },
-)
-
-const gridTemplateColumns = computed(() =>
-  `56px ${colWidths.value.map((w) => w + 'px').join(' ')}`,
-)
-const gridWidthPx = computed(() => {
-  let sum = 56
-  for (const w of colWidths.value) sum += w
-  return sum
-})
-
-function onColResizeDown(e: PointerEvent, colIdx: number) {
-  e.preventDefault()
-  e.stopPropagation()
-  const startX = e.clientX
-  const startW = colWidths.value[colIdx] ?? DEFAULT_COL_W
-  function onMove(ev: PointerEvent) {
-    const dx = ev.clientX - startX
-    colWidths.value[colIdx] = Math.max(MIN_COL_W, startW + dx)
-  }
-  function onUp() {
-    document.removeEventListener('pointermove', onMove)
-    document.removeEventListener('pointerup', onUp)
-    document.body.style.cursor = ''
-  }
-  document.body.style.cursor = 'col-resize'
-  document.addEventListener('pointermove', onMove)
-  document.addEventListener('pointerup', onUp)
-}
+// ---- load + pagination ----
 
 async function load() {
   loading.value = true
@@ -196,14 +95,9 @@ async function load() {
     const isAll = pageSize.value === ALL_ROWS
     const limit = isAll ? ALL_ROWS : pageSize.value
     const offset = isAll ? 0 : (page.value - 1) * pageSize.value
-    const result = await metaApi.browseTable(
-      props.connId,
-      props.db,
-      props.table,
-      limit,
-      offset,
+    browse.value = await metaApi.browseTable(
+      props.connId, props.db, props.table, limit, offset,
     )
-    browse.value = result
   } catch (e) {
     message.error(`browse failed: ${String(e)}`)
   } finally {
@@ -217,49 +111,28 @@ watch(
   load,
 )
 
-// Keep the editable page input synced when `page` changes from elsewhere
-// (page-size change, prev/next clicks, table reload).
 watch(page, (v) => { pageInput.value = String(v) }, { immediate: true })
-
-// Changing page size resets to page 1 — offsets computed against the old
-// size are meaningless against the new one.
 watch(pageSize, () => { page.value = 1 })
 
-// "全部" → only one logical page. Otherwise: next is enabled only when the
-// last fetch filled the page (a short page means we hit the tail).
 const isAllRows = computed(() => pageSize.value === ALL_ROWS)
 const hasPrev = computed(() => !isAllRows.value && page.value > 1)
 const hasNext = computed(() => !isAllRows.value && rows.value.length >= pageSize.value)
 
-function goPrev() {
-  if (!hasPrev.value) return
-  page.value = page.value - 1
-}
-function goNext() {
-  if (!hasNext.value) return
-  page.value = page.value + 1
-}
+function goPrev() { if (hasPrev.value) page.value -= 1 }
+function goNext() { if (hasNext.value) page.value += 1 }
 function commitPageInput() {
   const n = Math.floor(Number(pageInput.value))
-  if (!Number.isFinite(n) || n < 1) {
-    pageInput.value = String(page.value)
-    return
-  }
+  if (!Number.isFinite(n) || n < 1) { pageInput.value = String(page.value); return }
   if (n === page.value) return
   page.value = n
 }
 
-// SQL display: hover state controls the visibility of the copy button.
 const sqlHover = ref(false)
 async function copySql() {
   const sql = browse.value?.sql
   if (!sql) return
-  try {
-    await navigator.clipboard.writeText(sql)
-    message.success('SQL copied')
-  } catch (e) {
-    message.error(`copy failed: ${String(e)}`)
-  }
+  try { await navigator.clipboard.writeText(sql); message.success('SQL copied') }
+  catch (e) { message.error(`copy failed: ${String(e)}`) }
 }
 
 const rowsStart = computed(() => {
@@ -273,31 +146,7 @@ const rowsEnd = computed(() => {
     : (page.value - 1) * pageSize.value + rows.value.length
 })
 
-
-// Inline editing -----------------------------------------------------------
-
-const editing = ref<{ rowIdx: number; colIdx: number } | null>(null)
-const draft = ref<any>(null)
-const exportOpen = ref(false)
-
-function isEditableCell(rowIdx: number, colIdx: number): boolean {
-  if (readOnly.value) return false
-  const colName = columns.value[colIdx]?.name
-  // PK columns are also editable but warn the user — changing a PK key
-  // moves the row; for M3 we allow non-PK only to keep things tight.
-  return !!colName && !pk.value.includes(colName)
-}
-
-function startEdit(rowIdx: number, colIdx: number) {
-  if (!isEditableCell(rowIdx, colIdx)) return
-  editing.value = { rowIdx, colIdx }
-  draft.value = rows.value[rowIdx]?.[colIdx] ?? ''
-}
-
-function cancelEdit() {
-  editing.value = null
-  draft.value = null
-}
+// ---- edit pipeline (DataGrid → edit-commit) ----
 
 function pkValuesOf(rowIdx: number): Record<string, any> {
   const map: Record<string, any> = {}
@@ -310,44 +159,9 @@ function pkValuesOf(rowIdx: number): Record<string, any> {
   return map
 }
 
-async function commitEdit() {
-  const e = editing.value
-  if (!e) return
-  const col = columns.value[e.colIdx]
-  if (!col) { cancelEdit(); return }
-  const oldValue = rows.value[e.rowIdx]?.[e.colIdx]
-  const newValue = coerceForType(draft.value, col)
-  if (newValue === oldValue) { cancelEdit(); return }
-  // Optimistic apply.
-  const original = rows.value[e.rowIdx]
-  const updated = original.slice()
-  updated[e.colIdx] = newValue
-  rows.value[e.rowIdx] = updated
-  const pos = { ...e }
-  cancelEdit()
-
-  try {
-    const res = await editApi.applyChange(props.connId, {
-      op: 'update',
-      db: props.db,
-      table: props.table,
-      pk: pkValuesOf(pos.rowIdx),
-      values: { [col.name]: newValue },
-    })
-    if (res.rowsAffected === 0) {
-      throw new Error('row not found — likely modified by another session')
-    }
-    message.success(`updated (${res.rowsAffected} row)`)
-  } catch (err) {
-    // Roll back the optimistic write.
-    rows.value[pos.rowIdx] = original
-    message.error(`update failed: ${String(err)}`)
-  }
-}
-
 function coerceForType(raw: any, col: ColumnMeta): any {
   if (raw == null) return null
-  const lt = (col as any).logicalType
+  const lt = col.logicalType
   if (lt === 'int' || lt === 'bigint' || lt === 'float' || lt === 'decimal') {
     if (raw === '') return null
     const n = Number(raw)
@@ -360,23 +174,33 @@ function coerceForType(raw: any, col: ColumnMeta): any {
   return raw
 }
 
-function renderCell(v: any): string {
-  if (v == null) return ''
-  if (typeof v === 'string') return v
-  if (typeof v === 'number') return String(v)
-  if (typeof v === 'boolean') return v ? 'true' : 'false'
-  if (typeof v === 'object') {
-    if (v.__type__ === 'bytes') return `bytes(${v.length})`
-    if (v.__type__ === 'bigint') return v.value
-    try { return JSON.stringify(v) } catch { return String(v) }
+async function onEditCommit(p: {
+  row: number; col: number; oldValue: any; newValue: any; column: ColumnMeta
+}) {
+  const newValue = coerceForType(p.newValue, p.column)
+  if (newValue === p.oldValue) return
+  // VTable 已乐观更新了它的内部 record。我们的 rows 是 computed 但拿到的是
+  // 同一个底层数组，所以 VTable 的修改也反映到我们这边 —— 这是我们想要的。
+  try {
+    const res = await editApi.applyChange(props.connId, {
+      op: 'update',
+      db: props.db,
+      table: props.table,
+      pk: pkValuesOf(p.row),
+      values: { [p.column.name]: newValue },
+    })
+    if (res.rowsAffected === 0) throw new Error('row not found — likely modified by another session')
+    message.success(`updated (${res.rowsAffected} row)`)
+  } catch (err) {
+    // 失败 → 重新拉本页恢复真值（既同步本地 rows 也同步 VTable）
+    message.error(`update failed: ${String(err)}`)
+    await load()
   }
-  return String(v)
 }
-function isNull(v: any): boolean { return v == null }
 </script>
 
 <template>
-  <div class="tb" :style="{ '--hover-bg': hoverBg }" @keydown="onKeyDown" tabindex="-1">
+  <div class="tb">
     <div class="toolbar">
       <span class="title mono">{{ db }}.{{ table }}</span>
       <n-tag v-if="readOnly" size="small" type="warning">read-only · no primary key</n-tag>
@@ -397,74 +221,16 @@ function isNull(v: any): boolean { return v == null }
     </n-alert>
 
     <n-spin :show="loading" class="data-spin">
-      <div class="scroller">
-        <div
-          class="layout"
-          :style="{ 'min-width': '100%', width: gridWidthPx + 'px' }"
-        >
-          <div
-            class="grid"
-            :style="{ 'grid-template-columns': gridTemplateColumns }"
-            @mouseover="onGridHover"
-            @mouseleave="onGridLeave"
-            @mousedown="onGridMouseDown"
-            @mousemove="onGridMouseMove"
-            @contextmenu.prevent="onGridContextMenu"
-          >
-            <div class="hd idx">#</div>
-            <div
-              v-for="(c, i) in columns"
-              :key="'h' + i"
-              class="hd"
-              :title="c.nativeType"
-            >
-              <span class="col-name">{{ c.name }}</span>
-              <span class="col-type mono">{{ c.nativeType }}</span>
-              <div class="col-resize" @pointerdown="onColResizeDown($event, i)" />
-            </div>
-
-            <template v-for="(row, rowIdx) in rows" :key="rowIdx">
-              <div class="cell idx mono mute" :class="{ zebra: rowIdx % 2 === 1, 'row-hover': hoveredRow === rowIdx, selected: sel.isSelected(rowIdx, -1) }" :data-row-idx="rowIdx" @mousedown.stop="sel.selectRow(rowIdx, columns.length)">{{ (page - 1) * pageSize + rowIdx + 1 }}</div>
-              <div
-                v-for="(c, colIdx) in columns"
-                :key="colIdx"
-                class="cell mono"
-                :class="{
-                  editable: isEditableCell(rowIdx, colIdx),
-                  editing: editing?.rowIdx === rowIdx && editing?.colIdx === colIdx,
-                  'is-null': isNull(row[colIdx]),
-                  pk: pk.includes(c.name),
-                  zebra: rowIdx % 2 === 1,
-                  'row-hover': hoveredRow === rowIdx,
-                  selected: sel.isSelected(rowIdx, colIdx),
-                }"
-                :data-row-idx="rowIdx"
-                :data-col-idx="colIdx"
-                @dblclick="startEdit(rowIdx, colIdx)"
-              >
-                <template v-if="editing?.rowIdx === rowIdx && editing?.colIdx === colIdx">
-                  <n-input
-                    v-model:value="draft"
-                    size="tiny"
-                    autofocus
-                    @keydown.enter.prevent="commitEdit"
-                    @keydown.esc.prevent="cancelEdit"
-                    @blur="commitEdit"
-                  />
-                </template>
-                <template v-else>
-                  <span v-if="isNull(row[colIdx])" class="null-tag">NULL</span>
-                  <span v-else>{{ renderCell(row[colIdx]) }}</span>
-                </template>
-              </div>
-            </template>
-          </div>
-          <!-- Tail: fills remaining vertical space; bg gradient renders
-               virtual empty rows so the table reaches the bottom of the
-               pane even when there are few rows. -->
-          <div class="filler" />
-        </div>
-      </div>
+      <DataGrid
+        :columns="columns"
+        :rows="rows"
+        :editable="!readOnly"
+        :pk-columns="pk"
+        :fetching="loading"
+        @selection-change="onSelectionChange"
+        @cell-context-menu="onCellContextMenu"
+        @edit-commit="onEditCommit"
+      />
     </n-spin>
 
     <div class="footer">
@@ -516,28 +282,6 @@ function isNull(v: any): boolean { return v == null }
         />
       </div>
     </div>
-
-    <!-- Context menu overlay -->
-    <div
-      v-if="ctxMenu"
-      class="ctx-backdrop"
-      @mousedown="closeCtxMenu"
-      @contextmenu.prevent="closeCtxMenu"
-    >
-      <div
-        class="ctx-menu"
-        :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
-        @mousedown.stop
-        @contextmenu.prevent
-      >
-        <div class="ctx-item" @click="ctxCopyTSV">Copy as TSV</div>
-        <div class="ctx-item" @click="ctxCopyInsert">Copy as INSERT</div>
-        <div class="ctx-item" :class="{ disabled: !pk.length }" @click="ctxCopyUpdate">Copy as UPDATE</div>
-        <div class="ctx-sep" />
-        <div class="ctx-item" @click="ctxCopyColumns">Copy column names</div>
-        <div class="ctx-item" @click="ctxCopyDataPlusColumns">Copy data + column names</div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -564,160 +308,7 @@ function isNull(v: any): boolean { return v == null }
   min-width: 0;
   min-height: 0;
 }
-/* The ONLY element that scrolls in this view. Header is sticky inside .grid. */
-.scroller {
-  height: 100%;
-  width: 100%;
-  min-width: 0;
-  overflow: auto;
-  background: var(--n-card-color, transparent);
-}
-.layout {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
-}
-.grid {
-  display: grid;
-  font-size: 12px;
-  position: relative;
-  flex: 0 0 auto;
-  border: none;
-}
-/* OPAQUE sticky header — won't show data through on scroll. */
-.hd {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 0 8px;
-  background-color: rgb(245, 246, 247);
-  background-color: light-dark(rgb(245, 246, 247), rgb(40, 40, 42));
-  border-bottom: 1px solid var(--n-border-color);
-  border-right: 1px solid var(--n-divider-color);
-  font-weight: 500;
-  height: 26px;
-  position: sticky;
-  top: 0;
-  z-index: 2;
-}
-@media (prefers-color-scheme: dark) {
-  .hd { background-color: rgb(40, 40, 42); }
-}
-.hd .col-name { font-size: 12px; line-height: 1.2; }
-.hd .col-type { font-size: 10px; opacity: 0.55; line-height: 1; }
-.hd.idx { text-align: right; padding-right: 8px; justify-content: center; align-items: flex-end; }
-.cell.idx { text-align: right; padding-right: 8px; justify-content: flex-end; opacity: 0.6; }
-.cell {
-  padding: 0 8px;
-  border-bottom: 1px solid var(--n-divider-color);
-  border-right: 1px solid var(--n-divider-color);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  position: relative;
-}
-.cell.editable { cursor: text; }
-.cell.editing :deep(.n-input) { font-size: 12px; }
-.cell.is-null { opacity: 0.85; }
-/* Background priority (low → high): zebra < pk < editing. Multi-selectors
-   make sure each tier's specificity beats the lower tiers, regardless of
-   which other classes the cell also has. */
-.cell.zebra {
-  background-color: rgb(250, 250, 251);
-  background-color: light-dark(rgb(250, 250, 251), rgb(34, 34, 36));
-}
-@media (prefers-color-scheme: dark) {
-  .cell.zebra { background-color: rgb(34, 34, 36); }
-}
-.cell.pk { background-color: rgba(255, 200, 0, 0.06); }
-/* PK + zebra: keep the zebra background underneath and overlay the yellow
-   tint via a transparent gradient so zebra striping is still visible. */
-.cell.pk.zebra {
-  background-color: rgb(250, 250, 251);
-  background-color: light-dark(rgb(250, 250, 251), rgb(34, 34, 36));
-  background-image: linear-gradient(rgba(255, 200, 0, 0.06), rgba(255, 200, 0, 0.06));
-}
-/* Editing cell always wins over hover. Same-specifity rules later in the
-   stylesheet would normally override, so repeat .editing after .row-hover. */
-.cell.editing,
-.cell.editing.zebra,
-.cell.editing.pk,
-.cell.editing.pk.zebra {
-  background: var(--n-color-target);
-  padding: 0;
-  overflow: visible;
-}
 
-/* Row hover — event delegation sets hoveredRow, all cells with
-   .row-hover get the highlight background. This correctly highlights an
-   entire row in a CSS Grid layout that has no row wrapper elements. */
-.cell.row-hover,
-.cell.row-hover.zebra,
-.cell.row-hover.pk,
-.cell.row-hover.pk.zebra {
-  background-color: var(--hover-bg);
-  background-image: none;
-}
-/* Editing cells must keep their distinct background even when hovered. */
-.cell.editing.row-hover,
-.cell.editing.zebra.row-hover,
-.cell.editing.pk.row-hover,
-.cell.editing.pk.zebra.row-hover { background: var(--n-color-target); }
-
-/* Column resize handle on the right edge of each header cell. */
-.col-resize {
-  position: absolute;
-  top: 0;
-  right: -3px;
-  width: 6px;
-  height: 100%;
-  cursor: col-resize;
-  z-index: 3;
-  user-select: none;
-  -webkit-user-select: none;
-}
-.col-resize::after {
-  content: '';
-  position: absolute;
-  top: 5px;
-  bottom: 5px;
-  left: 50%;
-  width: 1px;
-  background-color: transparent;
-  transition: background-color 120ms ease-out;
-}
-.col-resize:hover::after,
-.col-resize:active::after {
-  background-color: var(--n-primary-color, #18a058);
-}
-.null-tag {
-  display: inline-block;
-  padding: 0 4px;
-  border: 1px solid var(--n-divider-color);
-  border-radius: 2px;
-  font-size: 10px;
-  opacity: 0.5;
-}
-.mute { opacity: 0.55; font-size: 10px; }
-
-/* Filler row at the bottom: extends down to fill remaining vertical space
-   inside the scroller. The repeating-linear-gradient draws virtual empty
-   row separators, aligned with 24px row height. */
-.filler {
-  flex: 1 1 auto;
-  min-height: 24px;
-  width: 100%;
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent 23px,
-    var(--n-divider-color, rgba(127,127,127,0.18)) 23px,
-    var(--n-divider-color, rgba(127,127,127,0.18)) 24px
-  );
-}
 .footer {
   display: flex;
   align-items: center;
@@ -729,7 +320,6 @@ function isNull(v: any): boolean { return v == null }
   min-width: 0;
 }
 
-/* --- pager (prev / page input / next) ---------------------------------- */
 .pager {
   display: flex;
   align-items: center;
@@ -779,7 +369,6 @@ function isNull(v: any): boolean { return v == null }
   opacity: 0.4;
 }
 
-/* --- middle: executed SQL, hover-reveals copy button ------------------- */
 .sql-display {
   flex: 1 1 0;
   min-width: 0;
@@ -822,7 +411,6 @@ function isNull(v: any): boolean { return v == null }
   background: var(--n-color-target, rgba(127, 127, 127, 0.12));
 }
 
-/* --- right: rows range + page-size picker ------------------------------ */
 .footer-right {
   display: flex;
   align-items: center;
@@ -832,68 +420,5 @@ function isNull(v: any): boolean { return v == null }
 .size-select {
   width: 80px;
 }
-
-/* Selection highlight — semi-transparent primary tint, no !important so that
-   .row-hover (higher specificity via combos below) can override when both
-   classes are present on the same cell. Sits after zebra/pk/editing in
-   source order so same-specificity (0,2,0) naturally wins over .cell.pk. */
-.cell.selected,
-.cell.selected.zebra,
-.cell.selected.pk,
-.cell.selected.pk.zebra {
-  background-color: color-mix(in srgb, var(--n-primary-color, #2080f0) 18%, transparent);
-  background-image: none;
-}
-/* Selected + hovered: show hover background so the user can still see which
-   row they're hovering while a selection exists. (0,3,0) beats (0,2,0).
-   Also clear background-image from .cell.pk.zebra overlay. */
-.cell.selected.row-hover,
-.cell.selected.row-hover.zebra,
-.cell.selected.row-hover.pk,
-.cell.selected.row-hover.pk.zebra {
-  background-color: var(--hover-bg);
-  background-image: none;
-}
-/* Selected + editing: editing background wins. */
-.cell.editing.selected,
-.cell.editing.zebra.selected,
-.cell.editing.pk.selected,
-.cell.editing.pk.zebra.selected { background: var(--n-color-target); }
-
-/* ---- context menu ---- */
-.ctx-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-}
-.ctx-menu {
-  position: fixed;
-  background: var(--n-color, #fff);
-  border: 1px solid var(--n-border-color, #d0d0d0);
-  border-radius: 4px;
-  padding: 4px 0;
-  min-width: 180px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
-  font-size: 12px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  user-select: none;
-}
-.ctx-item {
-  padding: 4px 16px;
-  cursor: default;
-  line-height: 20px;
-}
-.ctx-item:hover {
-  background: var(--n-primary-color-hover, #2080f0);
-  color: #fff;
-}
-.ctx-item.disabled {
-  opacity: 0.4;
-  pointer-events: none;
-}
-.ctx-sep {
-  height: 1px;
-  margin: 4px 8px;
-  background: var(--n-divider-color, #d0d0d0);
-}
+.mute { opacity: 0.55; font-size: 10px; }
 </style>
