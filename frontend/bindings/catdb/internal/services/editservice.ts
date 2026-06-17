@@ -22,7 +22,7 @@ import * as $models from "./models.js";
  * the SQL it issued so the front-end can show the user what really ran.
  */
 export function ApplyChange(connID: string, ch: $models.RowChange): $CancellablePromise<$models.RowChangeResult> {
-    return $Call.ByID(2588511571, connID, ch).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.EditService.ApplyChange", connID, ch).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -33,7 +33,7 @@ export function ApplyChange(connID: string, ch: $models.RowChange): $Cancellable
  * hides the row-edit affordances and shows a banner.
  */
 export function GetPrimaryKey(connID: string, db: string, table: string): $CancellablePromise<string[]> {
-    return $Call.ByID(1327424890, connID, db, table).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.EditService.GetPrimaryKey", connID, db, table).then(($result: any) => {
         return $$createType1($result);
     });
 }

@@ -22,7 +22,7 @@ import * as $models from "./models.js";
  * accepted "Discard & Close".
  */
 export function AllowNextClose(): $CancellablePromise<void> {
-    return $Call.ByID(540885912);
+    return $Call.ByName("catdb/internal/services.SystemService.AllowNextClose");
 }
 
 /**
@@ -31,7 +31,7 @@ export function AllowNextClose(): $CancellablePromise<void> {
  * refreshing its sidebar list.
  */
 export function BroadcastConnectionSaved(connID: string): $CancellablePromise<void> {
-    return $Call.ByID(229827702, connID);
+    return $Call.ByName("catdb/internal/services.SystemService.BroadcastConnectionSaved", connID);
 }
 
 /**
@@ -44,7 +44,7 @@ export function BroadcastConnectionSaved(connID: string): $CancellablePromise<vo
  * instead of stacking duplicates.
  */
 export function OpenConnectionEditor(driver: string, connID: string): $CancellablePromise<void> {
-    return $Call.ByID(924141369, driver, connID);
+    return $Call.ByName("catdb/internal/services.SystemService.OpenConnectionEditor", driver, connID);
 }
 
 /**
@@ -52,7 +52,7 @@ export function OpenConnectionEditor(driver: string, connID: string): $Cancellab
  * "" if the user cancelled.
  */
 export function PickOpenFile(title: string, filters: $models.FileFilterDescriptor[]): $CancellablePromise<string> {
-    return $Call.ByID(3227827043, title, filters);
+    return $Call.ByName("catdb/internal/services.SystemService.PickOpenFile", title, filters);
 }
 
 /**
@@ -60,7 +60,7 @@ export function PickOpenFile(title: string, filters: $models.FileFilterDescripto
  * "" if the user cancelled.
  */
 export function PickSaveFile(title: string, defaultName: string, filters: $models.FileFilterDescriptor[]): $CancellablePromise<string> {
-    return $Call.ByID(973255610, title, defaultName, filters);
+    return $Call.ByName("catdb/internal/services.SystemService.PickSaveFile", title, defaultName, filters);
 }
 
 /**
@@ -68,16 +68,16 @@ export function PickSaveFile(title: string, defaultName: string, filters: $model
  * close-guard reads this on WindowClosing to decide whether to block.
  */
 export function SetDirtyTabs(count: number): $CancellablePromise<void> {
-    return $Call.ByID(3642892468, count);
+    return $Call.ByName("catdb/internal/services.SystemService.SetDirtyTabs", count);
 }
 
 export function ShowError(title: string, message: string): $CancellablePromise<void> {
-    return $Call.ByID(167066461, title, message);
+    return $Call.ByName("catdb/internal/services.SystemService.ShowError", title, message);
 }
 
 /**
  * ShowInfo / ShowError trigger native message dialogs.
  */
 export function ShowInfo(title: string, message: string): $CancellablePromise<void> {
-    return $Call.ByID(2515121281, title, message);
+    return $Call.ByName("catdb/internal/services.SystemService.ShowInfo", title, message);
 }

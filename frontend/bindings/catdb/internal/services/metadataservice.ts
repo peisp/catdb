@@ -27,72 +27,79 @@ import * as $models from "./models.js";
  * nothing for completion.
  */
 export function AutocompleteFor(connID: string, db: string): $CancellablePromise<$models.AutocompleteSnapshot> {
-    return $Call.ByID(3708401607, connID, db).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.MetadataService.AutocompleteFor", connID, db).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 /**
- * BrowseTable runs `SELECT * FROM db.table LIMIT … OFFSET …` and returns the
- * rows + columns + primary-key info needed by the data browser.
+ * BrowseTable runs `SELECT * FROM db.table [ORDER BY col ASC|DESC] LIMIT …
+ * OFFSET …` and returns the rows + columns + primary-key info needed by the
+ * data browser.
  * 
  * Pass limit < 0 to fetch all rows (no LIMIT/OFFSET clause). limit == 0 is
  * reserved as "use default" and resolves to 200.
+ * 
+ * orderBy is a column name. Empty disables ORDER BY. The name is validated
+ * against the table's actual columns before being quoted via the dialect, so
+ * the caller can't smuggle arbitrary SQL through it (CLAUDE.md rule 4).
+ * orderDir is case-insensitive "asc" / "desc"; anything else is treated as
+ * "asc". If orderBy is empty, orderDir is ignored.
  */
-export function BrowseTable(connID: string, db: string, table: string, limit: number, offset: number): $CancellablePromise<$models.BrowseResult> {
-    return $Call.ByID(2868197746, connID, db, table, limit, offset).then(($result: any) => {
+export function BrowseTable(connID: string, db: string, table: string, limit: number, offset: number, orderBy: string, orderDir: string): $CancellablePromise<$models.BrowseResult> {
+    return $Call.ByName("catdb/internal/services.MetadataService.BrowseTable", connID, db, table, limit, offset, orderBy, orderDir).then(($result: any) => {
         return $$createType1($result);
     });
 }
 
 export function GetCreateTable(connID: string, db: string, table: string): $CancellablePromise<string> {
-    return $Call.ByID(2145493696, connID, db, table);
+    return $Call.ByName("catdb/internal/services.MetadataService.GetCreateTable", connID, db, table);
 }
 
 export function GetTableSummary(connID: string, db: string, table: string): $CancellablePromise<$models.TableSummary> {
-    return $Call.ByID(916351572, connID, db, table).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.MetadataService.GetTableSummary", connID, db, table).then(($result: any) => {
         return $$createType2($result);
     });
 }
 
 export function ListColumns(connID: string, db: string, table: string): $CancellablePromise<dbdriver$0.ColumnMeta[]> {
-    return $Call.ByID(1293462559, connID, db, table).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.MetadataService.ListColumns", connID, db, table).then(($result: any) => {
         return $$createType4($result);
     });
 }
 
 export function ListDatabases(connID: string): $CancellablePromise<string[]> {
-    return $Call.ByID(3356924382, connID).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.MetadataService.ListDatabases", connID).then(($result: any) => {
         return $$createType5($result);
     });
 }
 
 export function ListForeignKeys(connID: string, db: string, table: string): $CancellablePromise<dbdriver$0.ForeignKeyInfo[]> {
-    return $Call.ByID(1721532952, connID, db, table).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.MetadataService.ListForeignKeys", connID, db, table).then(($result: any) => {
         return $$createType7($result);
     });
 }
 
 export function ListIndexes(connID: string, db: string, table: string): $CancellablePromise<dbdriver$0.IndexInfo[]> {
-    return $Call.ByID(3139931300, connID, db, table).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.MetadataService.ListIndexes", connID, db, table).then(($result: any) => {
         return $$createType9($result);
     });
 }
 
 export function ListRoutines(connID: string, db: string): $CancellablePromise<dbdriver$0.RoutineInfo[]> {
-    return $Call.ByID(3423514245, connID, db).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.MetadataService.ListRoutines", connID, db).then(($result: any) => {
         return $$createType11($result);
     });
 }
 
 export function ListTables(connID: string, db: string): $CancellablePromise<dbdriver$0.TableInfo[]> {
-    return $Call.ByID(4049054833, connID, db).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.MetadataService.ListTables", connID, db).then(($result: any) => {
         return $$createType13($result);
     });
 }
 
 export function ListViews(connID: string, db: string): $CancellablePromise<dbdriver$0.ViewInfo[]> {
-    return $Call.ByID(4007673450, connID, db).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.MetadataService.ListViews", connID, db).then(($result: any) => {
         return $$createType15($result);
     });
 }

@@ -26,7 +26,7 @@ import * as $models from "./models.js";
  * For SQL: per-row INSERT (lightweight, easy to import anywhere).
  */
 export function ExportQuery(connID: string, sqlText: string, opts: $models.ExportOptions): $CancellablePromise<$models.ExportResult> {
-    return $Call.ByID(861845604, connID, sqlText, opts).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.TransferService.ExportQuery", connID, sqlText, opts).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -37,7 +37,7 @@ export function ExportQuery(connID: string, sqlText: string, opts: $models.Expor
  * CREATE TABLE prefix from the driver's metadata layer.
  */
 export function ExportTable(connID: string, db: string, table: string, opts: $models.ExportOptions): $CancellablePromise<$models.ExportResult> {
-    return $Call.ByID(3212977540, connID, db, table, opts).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.TransferService.ExportTable", connID, db, table, opts).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -47,7 +47,7 @@ export function ExportTable(connID: string, db: string, table: string, opts: $mo
  * OpenFile dialog (so the back-end has filesystem access).
  */
 export function ImportFile(connID: string, opts: $models.ImportOptions): $CancellablePromise<$models.ImportResult> {
-    return $Call.ByID(3435948689, connID, opts).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.TransferService.ImportFile", connID, opts).then(($result: any) => {
         return $$createType1($result);
     });
 }
