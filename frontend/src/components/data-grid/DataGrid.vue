@@ -258,40 +258,99 @@ function rangeFromArgs(args: any): SelectionRange | null {
   const r = ranges[ranges.length - 1]
   if (!r?.start || !r?.end) return null
 
+  const rowCount = props.rows.length
+  const colCount = props.columns.length
+  if (rowCount === 0 || colCount === 0) return null
+
   const off = offsets()
   const sRow = r.start.row - off.row
   const eRow = r.end.row - off.row
-  // 任意端在表头里 → 当作清空（跟 VTable 把视觉选区移到表头一致）
-  if (sRow < 0 || eRow < 0) return null
-
-  // 序号 / 行表头列：任意端在序号区 → 整行选（所有数据列）。这是点行号
-  // 这一栏时的常识语义；否则直接用数据列坐标。
   const sCol = r.start.col - off.col
   const eCol = r.end.col - off.col
-  const colCount = props.columns.length
+  const inHeader = sRow < 0 || eRow < 0
   const inSeriesNumber = sCol < 0 || eCol < 0
-  const startCol = inSeriesNumber ? 0 : Math.min(sCol, eCol)
-  const endCol = inSeriesNumber ? Math.max(0, colCount - 1) : Math.max(sCol, eCol)
+
+  // 左上角（表头 ∩ 序号列）→ 全选
+  if (inHeader && inSeriesNumber) {
+    return { startRow: 0, startCol: 0, endRow: rowCount - 1, endCol: colCount - 1 }
+  }
+  // 表头列：任意端在表头 → 整列选（拖多列时列范围跟着扩）
+  if (inHeader) {
+    return {
+      startRow: 0,
+      startCol: Math.max(0, Math.min(sCol, eCol)),
+      endRow: rowCount - 1,
+      endCol: Math.min(colCount - 1, Math.max(sCol, eCol)),
+    }
+  }
+  // 序号列：任意端在序号区 → 整行选（行范围按 sRow/eRow）
+  if (inSeriesNumber) {
+    return {
+      startRow: Math.min(sRow, eRow),
+      startCol: 0,
+      endRow: Math.max(sRow, eRow),
+      endCol: colCount - 1,
+    }
+  }
+  // 普通 body
   return {
     startRow: Math.min(sRow, eRow),
-    startCol,
+    startCol: Math.min(sCol, eCol),
     endRow: Math.max(sRow, eRow),
-    endCol,
+    endCol: Math.max(sCol, eCol),
   }
+}
+
+// 把逻辑选区翻译回 VTable 内部坐标（加上表头 + 序号列偏移）
+function toVTableRange(range: SelectionRange) {
+  const off = offsets()
+  return {
+    start: { col: range.startCol + off.col, row: range.startRow + off.row },
+    end: { col: range.endCol + off.col, row: range.endRow + off.row },
+  }
+}
+
+// 把 VTable 视觉选区同步到逻辑选区。仅在 selected_cell（mouseup 后）调用，
+// 不在 drag 中调用，避免打断 VTable 的拖拽状态。
+// suppressEvents 防止递归 —— selectCells 内部会再触发 SELECTED_CHANGED。
+let suppressEvents = false
+function syncVTableVisual(range: SelectionRange) {
+  const inst = vTableInstance.value
+  if (!inst?.selectCells) return
+  const v = toVTableRange(range)
+  const current = inst.stateManager?.select?.ranges
+  const last = Array.isArray(current) && current.length ? current[current.length - 1] : null
+  // 已经一致 → 跳过，避免无谓重绘
+  if (last
+    && last.start?.col === v.start.col && last.start?.row === v.start.row
+    && last.end?.col === v.end.col && last.end?.row === v.end.row
+    && current.length === 1) return
+  suppressEvents = true
+  try { inst.selectCells([v]) } catch { /* ignore */ }
+  suppressEvents = false
 }
 
 function onReady(instance: any) {
   vTableInstance.value = instance
 
   // 选区变化：拖拽中 + 单击 + 右键自动选中都走 SELECTED_CHANGED；mouseup 之后
-  // 还会再补一次 SELECTED_CELL。两个都接，让 parent 拿到最新状态。
+  // 还会再补一次 SELECTED_CELL。SELECTED_CHANGED 只更新逻辑选区，不动 VTable
+  // 视觉（避免打断 drag）；SELECTED_CELL（mouseup 后）才把表头/序号点击同步
+  // 到 VTable 视觉，让用户看到整列/整行高亮。
   instance.on('selected_changed', (args: any) => {
-    emit('selection-change', { range: rangeFromArgs(args) })
+    if (suppressEvents) return
+    const range = rangeFromArgs(args)
+    if (range) emit('selection-change', { range })
   })
   instance.on('selected_cell', (args: any) => {
-    emit('selection-change', { range: rangeFromArgs(args) })
+    if (suppressEvents) return
+    const range = rangeFromArgs(args)
+    if (!range) return
+    emit('selection-change', { range })
+    syncVTableVisual(range)
   })
   instance.on('selected_clear', () => {
+    if (suppressEvents) return
     emit('selection-change', { range: null })
   })
 
