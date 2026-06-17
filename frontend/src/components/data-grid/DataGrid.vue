@@ -356,14 +356,13 @@ function onReady(instance: any) {
 
   // 右键单元格：VTable 已经在 rightdown 里把选区调整好了；这里把屏幕坐标 +
   // body 坐标透传出去，parent 据此推送 setActiveGridContext。
-  // 序号列右键也要透传 —— 把 col 归零（第一个数据列）就行，parent 的
-  // isSelected 检查会命中（此时选区已被 selected_changed 扩成整行），不会
-  // 触发 fallback 单元格选中。
+  // 序号列 / 表头右键也要透传 —— row / col 各自 clamp 到 0；此时 selected_changed
+  // 已把选区扩成整行/整列，parent 的 isSelected 检查会命中，不会触发 fallback
+  // 单元格选中。
   instance.on('contextmenu_cell', (args: any) => {
     if (args?.col == null || args?.row == null) return
     const off = offsets()
-    const bodyRow = args.row - off.row
-    if (bodyRow < 0) return // 表头右键不处理
+    const bodyRow = Math.max(0, args.row - off.row)
     const bodyCol = Math.max(0, args.col - off.col)
     const ev: MouseEvent | undefined = args.event ?? args.federatedEvent?.nativeEvent
     emit('cell-context-menu', {
