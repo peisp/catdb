@@ -3,7 +3,7 @@
 //   - query  (SQL editor + result table)
 //   - table  (TableBrowser)
 //   - structure (TableStructure)
-import { computed, onMounted, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { NTabPane, NTabs } from 'naive-ui'
 import QueryTab from './QueryTab.vue'
 import TableBrowser from './TableBrowser.vue'
@@ -45,11 +45,26 @@ async function closeTab(id: string) {
   await store.closeTab(id)
   if (tabs.value.length === 0) ensureTab()
 }
+
+const tabsRef = ref<InstanceType<typeof NTabs> | null>(null)
+
+// 当 active tab 变化时，如果 tab 在可视区外则自动滚到可视区
+watch(activeId, () => {
+  nextTick(() => {
+    const el = tabsRef.value?.$el as HTMLElement | undefined
+    if (!el) return
+    const tab = el.querySelector('.n-tabs-tab--active') as HTMLElement | null
+    if (tab) {
+      tab.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    }
+  })
+})
 </script>
 
 <template>
   <div class="ws">
     <n-tabs
+      ref="tabsRef"
       v-model:value="activeId"
       type="card"
       closable
@@ -109,7 +124,7 @@ async function closeTab(id: string) {
 }
 .ws :deep(.n-tabs-tab-pad), .ws :deep(.n-tabs-tab) { padding: 4px 1px; }
 .ws :deep(.n-tabs-tab) { padding-left: 8px; }
-.ws :deep(.n-tabs-nav) { background: var(--n-color); flex: 0 0 auto; }
+.ws :deep(.n-tabs-nav) { background: var(--n-color); flex: 0 0 auto; padding: 6px;}
 /* Pane wrapper is the actual culprit when broken — give it explicit
    flex: 1 1 0 so the wrapper has a definite height equal to (n-tabs height
    - nav height). With overflow: hidden anything taller inside is clipped. */

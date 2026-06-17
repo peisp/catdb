@@ -60,7 +60,10 @@ const orderByName = computed(() => {
 const columns = computed<ColumnMeta[]>(() => browse.value?.columns ?? [])
 const rows = computed<any[][]>(() => browse.value?.rows ?? [])
 const pk = computed<string[]>(() => browse.value?.primaryKey ?? [])
-const readOnly = computed(() => !(browse.value?.hasUniqueKey ?? false))
+const readOnly = computed(() => {
+  if (!browse.value) return false  // 数据还没加载到，不显示只读提示
+  return !browse.value.hasUniqueKey
+})
 
 // ---- selection + copy ----
 const sel = useTableSelection()
