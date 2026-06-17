@@ -1,13 +1,15 @@
 <script setup lang="ts">
 // QueryWorkspace — per-connection tab container. Each tab is one of:
-//   - query  (SQL editor + result table)
-//   - table  (TableBrowser)
-//   - structure (TableStructure)
+//   - query           (SQL editor + result table)
+//   - table           (TableBrowser)
+//   - structure       (TableStructure)
+//   - tables-overview (TablesOverview)
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { NTabPane, NTabs } from 'naive-ui'
 import QueryTab from './QueryTab.vue'
 import TableBrowser from './TableBrowser.vue'
 import TableStructure from './TableStructure.vue'
+import TablesOverview from './TablesOverview.vue'
 import type { ConnectionProfile } from '../api/connections'
 import { useQueryStore } from '../stores/query'
 
@@ -100,6 +102,11 @@ watch(activeId, () => {
           :conn-id="t.connId"
           :db="t.db"
           :table="t.table"
+        />
+        <TablesOverview
+          v-else-if="t.kind === 'tables-overview' && t.db"
+          :conn-id="t.connId"
+          :db="t.db"
         />
       </n-tab-pane>
     </n-tabs>

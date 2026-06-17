@@ -25,6 +25,7 @@ const emit = defineEmits<{
   (e: 'edit', conn: ConnectionProfile): void
   (e: 'openData', payload: { db: string; table: string }): void
   (e: 'openStructure', payload: { db: string; table: string }): void
+  (e: 'openTablesOverview', payload: { db: string }): void
   (e: 'collapse'): void
 }>()
 
@@ -131,6 +132,7 @@ onBeforeUnmount(() => {
             :connection="activeConn"
             @open-data="(p) => emit('openData', p)"
             @open-structure="(p) => emit('openStructure', p)"
+            @open-tables-overview="(p) => emit('openTablesOverview', p)"
           />
         </template>
       </n-split>

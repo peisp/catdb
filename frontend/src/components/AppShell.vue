@@ -124,6 +124,10 @@ function onOpenStructure(payload: { db: string; table: string }) {
   if (!activeConn.value) return
   queryStore.openTableTab(activeConn.value.id, payload.db, payload.table, 'structure')
 }
+function onOpenTablesOverview(payload: { db: string }) {
+  if (!activeConn.value) return
+  queryStore.openTablesOverviewTab(activeConn.value.id, payload.db)
+}
 
 // Mirror the native OS gesture: double-clicking the drag strip toggles
 // between maximised and the previous size. Wails alpha-96 doesn't do this
@@ -144,6 +148,7 @@ function toggleMaximise() {
         @edit="onEditConnection"
         @open-data="onOpenData"
         @open-structure="onOpenStructure"
+        @open-tables-overview="onOpenTablesOverview"
         @collapse="sidebarVisible = false"
       />
       <div class="main">

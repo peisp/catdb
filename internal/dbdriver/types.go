@@ -122,11 +122,15 @@ type ExecResult struct {
 
 // TableInfo is a row in the object tree at the table level.
 type TableInfo struct {
-	Name    string `json:"name"`
-	Schema  string `json:"schema,omitempty"`
-	Engine  string `json:"engine,omitempty"`
-	Comment string `json:"comment,omitempty"`
-	Rows    int64  `json:"rows,omitempty"`
+	Name       string `json:"name"`
+	Schema     string `json:"schema,omitempty"`
+	Engine     string `json:"engine,omitempty"`
+	Comment    string `json:"comment,omitempty"`
+	Rows       int64  `json:"rows,omitempty"`
+	DataLength int64  `json:"dataLength"`
+	CreateTime string `json:"createTime"`
+	UpdateTime string `json:"updateTime"`
+	Collation  string `json:"collation"`
 }
 
 // ViewInfo is a view in the object tree.

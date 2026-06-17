@@ -59,7 +59,8 @@ func (m metadata) ListTables(ctx context.Context, db, schema string) ([]dbdriver
 	if d == "" {
 		return nil, fmt.Errorf("mysqldrv: ListTables requires a database name")
 	}
-	const q = `SELECT TABLE_NAME, IFNULL(ENGINE,''), IFNULL(TABLE_COMMENT,''), IFNULL(TABLE_ROWS,0)
+	const q = `SELECT TABLE_NAME, IFNULL(ENGINE,''), IFNULL(TABLE_COMMENT,''), IFNULL(TABLE_ROWS,0),
+	                  IFNULL(DATA_LENGTH,0) + IFNULL(INDEX_LENGTH,0), IFNULL(CAST(CREATE_TIME AS CHAR),''), IFNULL(CAST(UPDATE_TIME AS CHAR),''), IFNULL(TABLE_COLLATION,'')
 	             FROM information_schema.TABLES
 	            WHERE TABLE_SCHEMA=? AND TABLE_TYPE='BASE TABLE'
 	            ORDER BY TABLE_NAME`
@@ -72,7 +73,8 @@ func (m metadata) ListTables(ctx context.Context, db, schema string) ([]dbdriver
 	for rows.Next() {
 		var t dbdriver.TableInfo
 		t.Schema = d
-		if err := rows.Scan(&t.Name, &t.Engine, &t.Comment, &t.Rows); err != nil {
+		if err := rows.Scan(&t.Name, &t.Engine, &t.Comment, &t.Rows,
+				&t.DataLength, &t.CreateTime, &t.UpdateTime, &t.Collation); err != nil {
 			return nil, err
 		}
 		out = append(out, t)

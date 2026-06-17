@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // ObjectTree — per-connection database/table/column tree. Lazy loads each
-// level via MetadataService. Double-click a table → open the data browser
+// level via MetadataService. Single-click a database node → open the
+// tables overview tab. Double-click a table → open the data browser
 // in the workspace. Right-click → action menu (M4 will replace this with
 // the native Wails context menu).
 import { computed, ref, watch } from 'vue'
@@ -23,6 +24,7 @@ const props = defineProps<{ connection: ConnectionProfile }>()
 const emit = defineEmits<{
   (e: 'open-data', payload: { db: string; table: string }): void
   (e: 'open-structure', payload: { db: string; table: string }): void
+  (e: 'open-tables-overview', payload: { db: string }): void
 }>()
 
 const store = useMetadataStore()
@@ -210,7 +212,15 @@ function onDblclick(_: MouseEvent, node: TreeOption) {
   }
 }
 
+function onClick(_: MouseEvent, node: TreeOption) {
+  const m = (node as any).extra as TreeMeta
+  if (m.kind === 'database') {
+    emit('open-tables-overview', { db: m.db! })
+  }
+}
+
 const nodeProps = ({ option }: { option: TreeOption }) => ({
+  onClick: (e: MouseEvent) => onClick(e, option),
   onContextmenu: (e: MouseEvent) => onContextMenu(e, option),
   onDblclick: (e: MouseEvent) => onDblclick(e, option),
 })

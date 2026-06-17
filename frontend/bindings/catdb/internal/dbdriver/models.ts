@@ -449,11 +449,27 @@ export class TableInfo {
     "engine"?: string;
     "comment"?: string;
     "rows"?: number;
+    "dataLength": number;
+    "createTime": string;
+    "updateTime": string;
+    "collation": string;
 
     /** Creates a new TableInfo instance. */
     constructor($$source: Partial<TableInfo> = {}) {
         if (!("name" in $$source)) {
             this["name"] = "";
+        }
+        if (!("dataLength" in $$source)) {
+            this["dataLength"] = 0;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = "";
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = "";
+        }
+        if (!("collation" in $$source)) {
+            this["collation"] = "";
         }
 
         Object.assign(this, $$source);

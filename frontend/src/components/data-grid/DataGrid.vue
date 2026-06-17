@@ -87,6 +87,8 @@ const emit = defineEmits<{
   /** 排序变化（sortRemote=true 时发射）：field 为列下标，order 为 'asc'/'desc'；
    *  null 表示清除排序 */
   (e: 'sort-change', p: { field: number; order: 'asc' | 'desc' } | null): void
+  /** 双击单元格：row 为 body 行号（0 起），col 为 body 列号 */
+  (e: 'cell-dblclick', p: { row: number; col: number; value: any }): void
 }>()
 
 const themeVars = useThemeVars()
@@ -390,6 +392,18 @@ function onReady(instance: any) {
       x: ev?.pageX ?? 0,
       y: ev?.pageY ?? 0,
       value: props.rows[bodyRow]?.[bodyCol],
+    })
+  })
+
+  // 双击单元格：发射 body 坐标 + 原始值，parent 可用于导航等用途。
+  instance.on('dblclick_cell', (args: any) => {
+    if (args?.col == null || args?.row == null) return
+    const body = toBody(args.col, args.row)
+    if (!body) return
+    emit('cell-dblclick', {
+      row: body.row,
+      col: body.col,
+      value: props.rows[body.row]?.[body.col],
     })
   })
 

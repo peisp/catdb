@@ -25,8 +25,9 @@ export type QueryStatus = 'idle' | 'running' | 'done' | 'error' | 'canceled'
  *   - 'query': SQL editor + result table
  *   - 'table': data browser for `db.table`
  *   - 'structure': structure viewer for `db.table`
+ *   - 'tables-overview': all tables in a database/schema
  */
-export type TabKind = 'query' | 'table' | 'structure'
+export type TabKind = 'query' | 'table' | 'structure' | 'tables-overview'
 
 let tabSeq = 0
 function nextTabId(): string {
@@ -137,6 +138,21 @@ export const useQueryStore = defineStore('query', () => {
       db,
       table,
       title: `${titlePrefix} ${db}.${table}`,
+    })
+  }
+
+  function openTablesOverviewTab(connId: string, db: string): QueryTab {
+    const existing = tabs.value.find(
+      (t) => t.connId === connId && t.kind === 'tables-overview' && t.db === db,
+    )
+    if (existing) {
+      setActive(connId, existing.id)
+      return existing
+    }
+    return addTab(connId, {
+      kind: 'tables-overview',
+      db,
+      title: `📋 ${db}`,
     })
   }
 
@@ -311,6 +327,7 @@ export const useQueryStore = defineStore('query', () => {
     setActive,
     addTab,
     openTableTab,
+    openTablesOverviewTab,
     closeTab,
     closeAllForConn,
     runActive,
