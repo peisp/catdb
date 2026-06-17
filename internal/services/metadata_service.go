@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"catdb/internal/core/session"
 	"catdb/internal/dbdriver"
@@ -206,12 +207,15 @@ type BrowseResult struct {
 	SQL string `json:"sql"`
 }
 
-// BrowseTable runs `SELECT * FROM db.table LIMIT … OFFSET …` and returns the
-// rows + columns + primary-key info needed by the data browser.
+// BrowseTable runs `SELECT * FROM db.table ORDER BY … LIMIT … OFFSET …` and
+// returns the rows + columns + primary-key info needed by the data browser.
 //
+// Pass orderBy to request an ORDER BY clause (the column name is quoted via the
+// active Dialect). orderDir defaults to "ASC" when empty; valid values are
+// "ASC" and "DESC" (case-insensitive).
 // Pass limit < 0 to fetch all rows (no LIMIT/OFFSET clause). limit == 0 is
 // reserved as "use default" and resolves to 200.
-func (s *MetadataService) BrowseTable(ctx context.Context, connID, db, table string, limit, offset int) (BrowseResult, error) {
+func (s *MetadataService) BrowseTable(ctx context.Context, connID, db, table, orderBy, orderDir string, limit, offset int) (BrowseResult, error) {
 	var empty BrowseResult
 	if connID == "" || db == "" || table == "" {
 		return empty, fmt.Errorf("MetadataService: connID, db and table are required")
@@ -239,6 +243,13 @@ func (s *MetadataService) BrowseTable(ctx context.Context, connID, db, table str
 		return empty, fmt.Errorf("MetadataService: connection has no querier")
 	}
 	base := fmt.Sprintf("SELECT * FROM %s.%s", dia.QuoteIdentifier(db), dia.QuoteIdentifier(table))
+	if orderBy != "" {
+		dir := strings.ToUpper(orderDir)
+		if dir != "DESC" {
+			dir = "ASC"
+		}
+		base = fmt.Sprintf("%s ORDER BY %s %s", base, dia.QuoteIdentifier(orderBy), dir)
+	}
 	var paginated string
 	if unlimited {
 		paginated = base

@@ -38,9 +38,24 @@ const pageSizeOptions = [
   { label: '全部', value: ALL_ROWS },
 ]
 
+// ---- sort state ----
+interface SortState { field: number; order: 'asc' | 'desc' }
+const sortColumn = ref<number>(-1)  // -1 = 未排序; 列下标
+const sortOrder = ref<'asc' | 'desc' | ''>('')
+
 const browse = ref<BrowseResult | null>(null)
 const loading = ref(false)
 const exportOpen = ref(false)
+
+const sortState = computed<SortState | null>(() => {
+  if (sortColumn.value < 0) return null
+  return { field: sortColumn.value, order: sortOrder.value as 'asc' | 'desc' }
+})
+
+const orderByName = computed(() => {
+  if (sortColumn.value < 0) return ''
+  return columns.value[sortColumn.value]?.name ?? ''
+})
 
 const columns = computed<ColumnMeta[]>(() => browse.value?.columns ?? [])
 const rows = computed<any[][]>(() => browse.value?.rows ?? [])
@@ -97,6 +112,7 @@ async function load() {
     const offset = isAll ? 0 : (page.value - 1) * pageSize.value
     browse.value = await metaApi.browseTable(
       props.connId, props.db, props.table, limit, offset,
+      orderByName.value, sortOrder.value,
     )
   } catch (e) {
     message.error(`browse failed: ${String(e)}`)
@@ -107,9 +123,31 @@ async function load() {
 
 onMounted(load)
 watch(
-  () => [props.connId, props.db, props.table, page.value, pageSize.value],
+  () => [props.connId, props.db, props.table, page.value, pageSize.value, orderByName.value, sortOrder.value],
   load,
 )
+
+// 切换表/数据库时清除排序状态
+watch(
+  () => [props.connId, props.db, props.table],
+  () => {
+    sortColumn.value = -1
+    sortOrder.value = ''
+    page.value = 1
+  },
+)
+
+// 排序变化处理：来自 DataGrid 表头点击
+function onSortChange(sort: { field: number; order: 'asc' | 'desc' } | null) {
+  if (!sort) {
+    sortColumn.value = -1
+    sortOrder.value = ''
+  } else {
+    sortColumn.value = sort.field
+    sortOrder.value = sort.order
+  }
+  page.value = 1  // 排序换页时回到第一页
+}
 
 watch(page, (v) => { pageInput.value = String(v) }, { immediate: true })
 watch(pageSize, () => { page.value = 1 })
@@ -227,9 +265,12 @@ async function onEditCommit(p: {
         :editable="!readOnly"
         :pk-columns="pk"
         :fetching="loading"
+        :sort-remote="true"
+        :sort-state="sortState"
         @selection-change="onSelectionChange"
         @cell-context-menu="onCellContextMenu"
         @edit-commit="onEditCommit"
+        @sort-change="onSortChange"
       />
     </n-spin>
 
