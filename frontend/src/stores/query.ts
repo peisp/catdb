@@ -179,6 +179,38 @@ export const useQueryStore = defineStore('query', () => {
     }
   }
 
+  async function closeOthers(id: string) {
+    const t = getTab(id)
+    if (!t) return
+    const connTabs = tabsForConn(t.connId)
+    for (const tab of connTabs) {
+      if (tab.id !== id) {
+        await closeTab(tab.id)
+      }
+    }
+  }
+
+  async function closeLeft(id: string) {
+    const t = getTab(id)
+    if (!t) return
+    const connTabs = tabsForConn(t.connId)
+    for (const tab of connTabs) {
+      if (tab.id === id) break
+      await closeTab(tab.id)
+    }
+  }
+
+  async function closeRight(id: string) {
+    const t = getTab(id)
+    if (!t) return
+    const connTabs = tabsForConn(t.connId)
+    const idx = connTabs.findIndex((x) => x.id === id)
+    if (idx === -1) return
+    for (let i = idx + 1; i < connTabs.length; i++) {
+      await closeTab(connTabs[i].id)
+    }
+  }
+
   function resetResult(t: QueryTab) {
     t.handle = null
     t.columns = []
@@ -330,6 +362,9 @@ export const useQueryStore = defineStore('query', () => {
     openTablesOverviewTab,
     closeTab,
     closeAllForConn,
+    closeOthers,
+    closeLeft,
+    closeRight,
     runActive,
     fetchMore,
     cancel,

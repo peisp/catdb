@@ -42,6 +42,52 @@ func RegisterContextMenus(app *application.App) {
 	editGrid.Add("Copy column names").OnClick(emitContextEvent("ctx:grid-copy-columns"))
 	editGrid.Add("Copy data + column names").OnClick(emitContextEvent("ctx:grid-copy-data-plus-columns"))
 	editGrid.Update()
+
+	// Tab strip context menu — 4 variants by tab position.
+	// The front-end decides which variant to show based on tab index and total.
+	//
+	//   catdb-tab          — middle position: all 4 items
+	//   catdb-tab-first    — first tab: no 「关闭左侧」
+	//   catdb-tab-last     — last tab: no 「关闭右侧」
+	//   catdb-tab-only     — lone tab: only 「关闭」
+	tabs := []struct {
+		name  string
+		items []struct{ label, event string }
+	}{
+		{"catdb-tab", []struct{ label, event string }{
+			{"关闭", "ctx:tab-close"},
+			{"", ""}, // separator
+			{"关闭其他", "ctx:tab-close-others"},
+			{"关闭左侧", "ctx:tab-close-left"},
+			{"关闭右侧", "ctx:tab-close-right"},
+		}},
+		{"catdb-tab-first", []struct{ label, event string }{
+			{"关闭", "ctx:tab-close"},
+			{"", ""},
+			{"关闭其他", "ctx:tab-close-others"},
+			{"关闭右侧", "ctx:tab-close-right"},
+		}},
+		{"catdb-tab-last", []struct{ label, event string }{
+			{"关闭", "ctx:tab-close"},
+			{"", ""},
+			{"关闭其他", "ctx:tab-close-others"},
+			{"关闭左侧", "ctx:tab-close-left"},
+		}},
+		{"catdb-tab-only", []struct{ label, event string }{
+			{"关闭", "ctx:tab-close"},
+		}},
+	}
+	for _, t := range tabs {
+		m := application.NewContextMenu(t.name)
+		for _, it := range t.items {
+			if it.label == "" {
+				m.AddSeparator()
+			} else {
+				m.Add(it.label).OnClick(emitContextEvent(it.event))
+			}
+		}
+		m.Update()
+	}
 }
 
 func emitContextEvent(event string) func(*application.Context) {

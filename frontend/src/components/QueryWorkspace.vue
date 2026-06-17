@@ -11,7 +11,9 @@ import TableBrowser from './TableBrowser.vue'
 import TableStructure from './TableStructure.vue'
 import TablesOverview from './TablesOverview.vue'
 import type { ConnectionProfile } from '../api/connections'
+import type { QueryTab as QueryTabInfo } from '../stores/query'
 import { useQueryStore } from '../stores/query'
+import { setActiveTabContext } from '../api/tabContextMenu'
 
 const props = defineProps<{
   connection: ConnectionProfile
@@ -49,6 +51,7 @@ async function closeTab(id: string) {
 }
 
 const tabsRef = ref<InstanceType<typeof NTabs> | null>(null)
+const wsRef = ref<HTMLElement | null>(null)
 
 // 当 active tab 变化时，如果 tab 在可视区外则自动滚到可视区
 watch(activeId, () => {
@@ -61,10 +64,29 @@ watch(activeId, () => {
     }
   })
 })
+
+// --- 原生右键菜单 ---
+function openCtx(e: MouseEvent, tab: QueryTabInfo) {
+  e.preventDefault()
+  setActiveTabContext(tab.id, tab.connId)
+
+  // 根据 tab 位置选择合适的菜单名
+  const connTabs = store.tabsForConn(tab.connId)
+  const idx = connTabs.findIndex((t) => t.id === tab.id)
+  let menuName = 'catdb-tab'
+  if (connTabs.length <= 1) {
+    menuName = 'catdb-tab-only'
+  } else if (idx <= 0) {
+    menuName = 'catdb-tab-first'
+  } else if (idx >= connTabs.length - 1) {
+    menuName = 'catdb-tab-last'
+  }
+  wsRef.value?.style.setProperty('--custom-contextmenu', menuName)
+}
 </script>
 
 <template>
-  <div class="ws">
+  <div ref="wsRef" class="ws">
     <n-tabs
       ref="tabsRef"
       v-model:value="activeId"
@@ -82,9 +104,11 @@ watch(activeId, () => {
         v-for="t in tabs"
         :key="t.id"
         :name="t.id"
-        :tab="t.title"
         display-directive="show:lazy"
       >
+        <template #tab>
+          <span class="tab-label" @contextmenu.prevent="openCtx($event, t)">{{ t.title }}</span>
+        </template>
         <QueryTab
           v-if="t.kind === 'query'"
           :tab-id="t.id"
