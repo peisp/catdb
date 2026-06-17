@@ -261,23 +261,39 @@ function rangeFromArgs(args: any): SelectionRange | null {
   const off = offsets()
   const sRow = r.start.row - off.row
   const eRow = r.end.row - off.row
-  // 任意端在表头里 → 当作清空（跟 VTable 把视觉选区移到表头一致）
-  if (sRow < 0 || eRow < 0) return null
-
-  // 序号 / 行表头列：任意端在序号区 → 整行选（所有数据列）。这是点行号
-  // 这一栏时的常识语义；否则直接用数据列坐标。
   const sCol = r.start.col - off.col
   const eCol = r.end.col - off.col
   const colCount = props.columns.length
+  const rowCount = props.rows.length
+  if (colCount === 0 || rowCount === 0) return null
+
+  // 序号列：任意端在行表头 / 序号区 → 整行选（所有数据列）
+  // 列表头：任意端在列表头 → 整列选（所有数据行）
+  // 两者交叉（顶左角的 # 表头）→ 全选
   const inSeriesNumber = sCol < 0 || eCol < 0
-  const startCol = inSeriesNumber ? 0 : Math.min(sCol, eCol)
-  const endCol = inSeriesNumber ? Math.max(0, colCount - 1) : Math.max(sCol, eCol)
-  return {
-    startRow: Math.min(sRow, eRow),
-    startCol,
-    endRow: Math.max(sRow, eRow),
-    endCol,
+  const inColHeader = sRow < 0 || eRow < 0
+
+  let startRow: number
+  let endRow: number
+  if (inColHeader) {
+    startRow = 0
+    endRow = rowCount - 1
+  } else {
+    startRow = Math.min(sRow, eRow)
+    endRow = Math.max(sRow, eRow)
   }
+
+  let startCol: number
+  let endCol: number
+  if (inSeriesNumber) {
+    startCol = 0
+    endCol = colCount - 1
+  } else {
+    startCol = Math.min(sCol, eCol)
+    endCol = Math.max(sCol, eCol)
+  }
+
+  return { startRow, startCol, endRow, endCol }
 }
 
 function onReady(instance: any) {
@@ -297,15 +313,18 @@ function onReady(instance: any) {
 
   // 右键单元格：VTable 已经在 rightdown 里把选区调整好了；这里把屏幕坐标 +
   // body 坐标透传出去，parent 据此推送 setActiveGridContext。
-  // 序号列右键也要透传 —— 把 col 归零（第一个数据列）就行，parent 的
-  // isSelected 检查会命中（此时选区已被 selected_changed 扩成整行），不会
-  // 触发 fallback 单元格选中。
+  // 边角情况：
+  //   - 序号列右键 → col 归零（数据列首列）
+  //   - 列表头右键 → row 归零（数据行首行）
+  //   - 顶左角 → (0, 0)
+  // parent 的 isSelected 检查会命中已被 selected_changed 扩成整行/整列/全选
+  // 的选区，不会触发 fallback 单元格选中。
   instance.on('contextmenu_cell', (args: any) => {
     if (args?.col == null || args?.row == null) return
     const off = offsets()
-    const bodyRow = args.row - off.row
-    if (bodyRow < 0) return // 表头右键不处理
+    const bodyRow = Math.max(0, args.row - off.row)
     const bodyCol = Math.max(0, args.col - off.col)
+    if (!props.rows.length || !props.columns.length) return
     const ev: MouseEvent | undefined = args.event ?? args.federatedEvent?.nativeEvent
     emit('cell-context-menu', {
       row: bodyRow,
