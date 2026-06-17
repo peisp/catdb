@@ -6,34 +6,42 @@ import "github.com/wailsapp/wails/v3/pkg/application"
 // front-end (CLAUDE.md rule 11: right-click must use Wails native menus).
 //
 // The data-grid context menu is triggered by setting the CSS property
-// `--custom-contextmenu: catdb-grid-cell` on the DataGrid wrapper. Right-click
-// then opens this menu at the cursor position; each item Emits a `ctx:grid-…`
-// event the front-end listens for to perform the action against the currently
-// active grid (selection + rows + column names + table + PK live in
-// frontend/src/api/gridContextMenu.ts).
+// `--custom-contextmenu` on the DataGrid wrapper. Two menus are registered:
 //
-// We do NOT toggle item enabled-state from JS — keeping the menu static keeps
-// the bridge thin. The front-end listener silently no-ops actions that aren't
-// applicable to the active grid (e.g. Copy-as-INSERT on SQL editor results
-// where no table name is known).
+//	catdb-grid-cell      — copy items only (for SQL results, read-only, PK columns)
+//	catdb-grid-cell-edit — includes "Set to NULL" (editable table browser with non-PK selection)
+//
+// The front-end switches between them synchronously inside the
+// contextmenu_cell event handler before Wails reads the CSS property.
 //
 // Must be called AFTER SetApp so globalApplication is non-nil.
 func RegisterContextMenus(app *application.App) {
 	if app == nil {
 		return
 	}
+
+	// Menu for read-only / non-editable contexts (SQL results, PK column
+	// selected in table browser, etc.)
 	grid := application.NewContextMenu("catdb-grid-cell")
-	grid.Add("Set to NULL").OnClick(emitContextEvent("ctx:grid-set-null"))
-	grid.AddSeparator()
 	grid.Add("Copy as TSV").OnClick(emitContextEvent("ctx:grid-copy-tsv"))
 	grid.Add("Copy as INSERT").OnClick(emitContextEvent("ctx:grid-copy-insert"))
 	grid.Add("Copy as UPDATE").OnClick(emitContextEvent("ctx:grid-copy-update"))
 	grid.AddSeparator()
 	grid.Add("Copy column names").OnClick(emitContextEvent("ctx:grid-copy-columns"))
 	grid.Add("Copy data + column names").OnClick(emitContextEvent("ctx:grid-copy-data-plus-columns"))
-	// Rebuild native menu with the items we just added — NewContextMenu's
-	// internal Update runs before any Add() calls.
 	grid.Update()
+
+	// Menu for editable table browser contexts — includes "Set to NULL".
+	editGrid := application.NewContextMenu("catdb-grid-cell-edit")
+	editGrid.Add("Set to NULL").OnClick(emitContextEvent("ctx:grid-set-null"))
+	editGrid.AddSeparator()
+	editGrid.Add("Copy as TSV").OnClick(emitContextEvent("ctx:grid-copy-tsv"))
+	editGrid.Add("Copy as INSERT").OnClick(emitContextEvent("ctx:grid-copy-insert"))
+	editGrid.Add("Copy as UPDATE").OnClick(emitContextEvent("ctx:grid-copy-update"))
+	editGrid.AddSeparator()
+	editGrid.Add("Copy column names").OnClick(emitContextEvent("ctx:grid-copy-columns"))
+	editGrid.Add("Copy data + column names").OnClick(emitContextEvent("ctx:grid-copy-data-plus-columns"))
+	editGrid.Update()
 }
 
 func emitContextEvent(event string) func(*application.Context) {

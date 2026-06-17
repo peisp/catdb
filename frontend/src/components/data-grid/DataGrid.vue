@@ -15,7 +15,7 @@
 //
 // VTable 的 row 索引把 header 算在内（row=0 是表头），所以对外发出的 row
 // 一律减去 columnHeaderLevelCount 得到 body 行号。
-import { computed, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { ListTable, register } from '@visactor/vue-vtable'
 import { InputEditor, TextAreaEditor, DateInputEditor } from '@visactor/vtable-editors'
 import { useThemeVars } from 'naive-ui'
@@ -91,6 +91,7 @@ const emit = defineEmits<{
 
 const themeVars = useThemeVars()
 const vTableInstance = shallowRef<any>(null)
+const gridWrapRef = ref<HTMLElement | null>(null)
 
 // ---- 单元格显示渲染 ----
 function renderCellValue(v: any): string {
@@ -359,6 +360,29 @@ function onReady(instance: any) {
     const bodyRow = Math.max(0, args.row - off.row)
     const bodyCol = Math.max(0, args.col - off.col)
     if (!props.rows.length || !props.columns.length) return
+
+    // Decide which native context menu to show:
+    //   catdb-grid-cell-edit (includes "Set to NULL") when table has a PK
+    //   and NO selected column is a PK column.
+    //   Otherwise catdb-grid-cell (copy items only).
+    let showSetNull = props.pkColumns.length > 0
+    if (showSetNull) {
+      const ranges = instance.getSelectedCellRanges?.() ?? []
+      for (const r of ranges) {
+        const sCol = Math.max(0, r.start.col - off.col)
+        const eCol = Math.max(0, r.end.col - off.col)
+        for (let c = sCol; c <= eCol && showSetNull; c++) {
+          if (props.pkColumns.includes(props.columns[c]?.name)) {
+            showSetNull = false
+          }
+        }
+      }
+    }
+    gridWrapRef.value?.style.setProperty(
+      '--custom-contextmenu',
+      showSetNull ? 'catdb-grid-cell-edit' : 'catdb-grid-cell',
+    )
+
     const ev: MouseEvent | undefined = args.event ?? args.federatedEvent?.nativeEvent
     emit('cell-context-menu', {
       row: bodyRow,
@@ -447,7 +471,7 @@ watch(
 <template>
   <!-- --custom-contextmenu: catdb-grid-cell 触发 Wails 原生上下文菜单
        （wailsbridge/contextmenu.go 中注册）。CSS 变量在画布子节点也生效。 -->
-  <div class="datagrid-wrap" style="--custom-contextmenu: catdb-grid-cell">
+  <div ref="gridWrapRef" class="datagrid-wrap" style="--custom-contextmenu: catdb-grid-cell">
     <ListTable
       :options="tableOptions"
       :records="rows"
