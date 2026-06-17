@@ -257,14 +257,26 @@ function rangeFromArgs(args: any): SelectionRange | null {
   // 用最近一次的 range（用户最后拖出来的那块）
   const r = ranges[ranges.length - 1]
   if (!r?.start || !r?.end) return null
-  const s = toBody(r.start.col, r.start.row)
-  const e = toBody(r.end.col, r.end.row)
-  if (!s || !e) return null
+
+  const off = offsets()
+  const sRow = r.start.row - off.row
+  const eRow = r.end.row - off.row
+  // 任意端在表头里 → 当作清空（跟 VTable 把视觉选区移到表头一致）
+  if (sRow < 0 || eRow < 0) return null
+
+  // 序号 / 行表头列：任意端在序号区 → 整行选（所有数据列）。这是点行号
+  // 这一栏时的常识语义；否则直接用数据列坐标。
+  const sCol = r.start.col - off.col
+  const eCol = r.end.col - off.col
+  const colCount = props.columns.length
+  const inSeriesNumber = sCol < 0 || eCol < 0
+  const startCol = inSeriesNumber ? 0 : Math.min(sCol, eCol)
+  const endCol = inSeriesNumber ? Math.max(0, colCount - 1) : Math.max(sCol, eCol)
   return {
-    startRow: Math.min(s.row, e.row),
-    startCol: Math.min(s.col, e.col),
-    endRow: Math.max(s.row, e.row),
-    endCol: Math.max(s.col, e.col),
+    startRow: Math.min(sRow, eRow),
+    startCol,
+    endRow: Math.max(sRow, eRow),
+    endCol,
   }
 }
 
@@ -285,17 +297,22 @@ function onReady(instance: any) {
 
   // 右键单元格：VTable 已经在 rightdown 里把选区调整好了；这里把屏幕坐标 +
   // body 坐标透传出去，parent 据此推送 setActiveGridContext。
+  // 序号列右键也要透传 —— 把 col 归零（第一个数据列）就行，parent 的
+  // isSelected 检查会命中（此时选区已被 selected_changed 扩成整行），不会
+  // 触发 fallback 单元格选中。
   instance.on('contextmenu_cell', (args: any) => {
     if (args?.col == null || args?.row == null) return
-    const body = toBody(args.col, args.row)
-    if (!body) return
+    const off = offsets()
+    const bodyRow = args.row - off.row
+    if (bodyRow < 0) return // 表头右键不处理
+    const bodyCol = Math.max(0, args.col - off.col)
     const ev: MouseEvent | undefined = args.event ?? args.federatedEvent?.nativeEvent
     emit('cell-context-menu', {
-      row: body.row,
-      col: body.col,
+      row: bodyRow,
+      col: bodyCol,
       x: ev?.pageX ?? 0,
       y: ev?.pageY ?? 0,
-      value: props.rows[body.row]?.[body.col],
+      value: props.rows[bodyRow]?.[bodyCol],
     })
   })
 
