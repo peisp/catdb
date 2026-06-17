@@ -11,6 +11,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NAlert, NButton, NSelect, NSpin, NTag, useMessage } from 'naive-ui'
 import { edit as editApi, metadata as metaApi } from '../api'
+import { on } from '../api/events'
 import { setActiveGridContext } from '../api/gridContextMenu'
 import { useTableSelection, type SelectionRange } from '../composables/useTableSelection'
 import type { BrowseResult, ColumnMeta } from '../api/metadata'
@@ -85,6 +86,9 @@ function onCellContextMenu(p: { row: number; col: number }) {
     rows: rows.value,
     columnNames: colNames(),
     selection: sel.selection.value,
+    connId: props.connId,
+    db: props.db,
+    table: props.table,
     tableName: fullTableName(),
     pkColumns: pk.value,
   })
@@ -125,6 +129,11 @@ async function load() {
 }
 
 onMounted(load)
+// 监听来自右键菜单（设置为NULL）的数据变更事件，自动刷新
+let unsubDataChanged: (() => void) | undefined
+onMounted(() => { unsubDataChanged = on('ctx:grid-data-changed', load) })
+onBeforeUnmount(() => unsubDataChanged?.())
+
 watch(
   () => [props.connId, props.db, props.table, page.value, pageSize.value, orderByName.value, sortOrder.value],
   load,

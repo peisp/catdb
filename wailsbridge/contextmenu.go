@@ -23,6 +23,8 @@ func RegisterContextMenus(app *application.App) {
 		return
 	}
 	grid := application.NewContextMenu("catdb-grid-cell")
+	grid.Add("Set to NULL").OnClick(emitContextEvent("ctx:grid-set-null"))
+	grid.AddSeparator()
 	grid.Add("Copy as TSV").OnClick(emitContextEvent("ctx:grid-copy-tsv"))
 	grid.Add("Copy as INSERT").OnClick(emitContextEvent("ctx:grid-copy-insert"))
 	grid.Add("Copy as UPDATE").OnClick(emitContextEvent("ctx:grid-copy-update"))

@@ -17,8 +17,10 @@
 // Only ONE grid context can be active at a time — the latest right-click wins.
 // Context menus are inherently modal-ish (clicking elsewhere dismisses), so
 // a "stale" context is essentially impossible in practice.
+import { createDiscreteApi } from 'naive-ui'
 import { useTableSelection, type SelectionRange } from '../composables/useTableSelection'
-import { on } from './events'
+import { on, emit } from './events'
+import * as editApi from './edit'
 
 const ctxSel = useTableSelection()
 let ctxState = {
@@ -26,6 +28,9 @@ let ctxState = {
   columnNames: [] as string[],
   tableName: undefined as string | undefined,
   pkColumns: [] as string[],
+  connId: undefined as string | undefined,
+  db: undefined as string | undefined,
+  table: undefined as string | undefined,
 }
 
 export interface ActiveGridContext {
@@ -34,6 +39,9 @@ export interface ActiveGridContext {
   selection: SelectionRange | null
   tableName?: string
   pkColumns?: string[]
+  connId?: string
+  db?: string
+  table?: string
 }
 
 /** Called by ResultTable / TableBrowser on every cell-context-menu event. */
@@ -44,6 +52,9 @@ export function setActiveGridContext(p: ActiveGridContext): void {
     columnNames: p.columnNames,
     tableName: p.tableName,
     pkColumns: p.pkColumns ?? [],
+    connId: p.connId,
+    db: p.db,
+    table: p.table,
   }
 }
 
@@ -79,5 +90,92 @@ export function installGridContextMenuListener(): void {
   on('ctx:grid-copy-data-plus-columns', () => {
     if (!ctxSel.hasSelection()) return
     copy(ctxSel.formatDataPlusColumns(ctxState.rows, ctxState.columnNames))
+  })
+
+  // ---- 设置为NULL ----
+
+  on('ctx:grid-set-null', async () => {
+    const { rows, columnNames, pkColumns, connId, db, table } = ctxState
+    const sel = ctxSel.selection.value
+    const { message } = createDiscreteApi(['message'])
+
+    // Can't edit from SQL results (no connId/db/table context)
+    if (!sel || !connId || !db || !table || !rows.length) return
+
+    // Table has no primary key → can't build UPDATE statements
+    if (!pkColumns.length) return
+
+    const minR = Math.min(sel.startRow, sel.endRow)
+    const maxR = Math.max(sel.startRow, sel.endRow)
+    const minC = Math.max(0, Math.min(sel.startCol, sel.endCol))
+    const maxC = Math.max(0, Math.max(sel.startCol, sel.endCol))
+
+    // Check if any selected column is a primary-key column
+    for (let c = minC; c <= maxC; c++) {
+      if (pkColumns.includes(columnNames[c])) {
+        message.warning('主键不能设置为NULL')
+        return
+      }
+    }
+
+    // Collect selected non-PK column names
+    const selectedCols: string[] = []
+    for (let c = minC; c <= maxC; c++) {
+      const col = columnNames[c]
+      if (!pkColumns.includes(col)) {
+        selectedCols.push(col)
+      }
+    }
+    if (!selectedCols.length) return
+
+    // ---- 逐行修改 ----
+    let successCount = 0
+    let errorCount = 0
+
+    for (let r = minR; r <= maxR; r++) {
+      // Build PK map for this row (include PK columns NOT in selection too)
+      const pk: Record<string, any> = {}
+      for (const pkCol of pkColumns) {
+        const pkIdx = columnNames.indexOf(pkCol)
+        if (pkIdx >= 0) {
+          pk[pkCol] = rows[r]?.[pkIdx]
+        }
+      }
+
+      // Build values: set each selected column to NULL
+      const values: Record<string, null> = {}
+      for (const col of selectedCols) {
+        values[col] = null
+      }
+
+      try {
+        const result = await editApi.applyChange(connId, {
+          op: 'update',
+          db,
+          table,
+          pk,
+          values,
+        })
+        if (result.rowsAffected > 0) {
+          successCount++
+        } else {
+          errorCount++
+        }
+      } catch {
+        errorCount++
+      }
+    }
+
+    // Show result feedback
+    if (successCount > 0 && errorCount === 0) {
+      message.success(`已更新 ${successCount} 行`)
+    } else if (successCount > 0 && errorCount > 0) {
+      message.warning(`已更新 ${successCount} 行，${errorCount} 行更新失败`)
+    } else if (errorCount > 0) {
+      message.error(`${errorCount} 行全部更新失败`)
+    }
+
+    // Signal the active table browser to refresh its data
+    emit('ctx:grid-data-changed')
   })
 }
