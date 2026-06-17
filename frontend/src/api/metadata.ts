@@ -54,6 +54,6 @@ export function getTableSummary(connId: string, db: string, table: string): Prom
 export function autocompleteFor(connId: string, db: string): Promise<AutocompleteSnapshot> {
   return MetadataService.AutocompleteFor(connId, db) as unknown as Promise<AutocompleteSnapshot>
 }
-export function browseTable(connId: string, db: string, table: string, limit: number, offset: number): Promise<BrowseResult> {
-  return MetadataService.BrowseTable(connId, db, table, limit, offset) as unknown as Promise<BrowseResult>
+export function browseTable(connId: string, db: string, table: string, limit: number, offset: number, orderBy?: string, orderDir?: string): Promise<BrowseResult> {
+  return MetadataService.BrowseTable(connId, db, table, orderBy ?? '', orderDir ?? '', limit, offset) as unknown as Promise<BrowseResult>
 }

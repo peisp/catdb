@@ -9,6 +9,9 @@
 //   - 主题从 Naive 的 useThemeVars() 派生，light/dark 切换走同一通道
 //   - 选区翻译成现有 SelectionRange 形状，formatters（useTableSelection）100% 复用
 //   - 编辑：VTable 的 InputEditor/TextAreaEditor/DateInputEditor 按列类型分发
+//   - 排序：sortRemote=true 时不启用 VTable 客户端排序（用 () => 0 替代），
+//     排序交互通过 sort_click 事件发射给父组件处理（服务端 ORDER BY）；
+//     sortRemote=false 时 VTable 原生处理客户端排序。
 //
 // VTable 的 row 索引把 header 算在内（row=0 是表头），所以对外发出的 row
 // 一律减去 columnHeaderLevelCount 得到 body 行号。
@@ -18,6 +21,12 @@ import { InputEditor, TextAreaEditor, DateInputEditor } from '@visactor/vtable-e
 import { useThemeVars } from 'naive-ui'
 import { ColumnMeta, LogicalType } from '../../../bindings/catdb/internal/dbdriver/models'
 import type { SelectionRange } from '../../composables/useTableSelection'
+
+/** Sort state for indicator sync (server-side sort). field = column index. */
+export interface SortState {
+  field: number
+  order: 'asc' | 'desc'
+}
 
 // ---- editor 注册：模块级单次 ----
 let editorsRegistered = false
@@ -46,6 +55,13 @@ interface Props {
   rowHeight?: number
   /** 单列默认宽度 */
   defaultColumnWidth?: number
+  /** 是否启用手动列排序; 默认 true */
+  sortable?: boolean
+  /** true=服务端排序（发射 sort-change，VTable 用无操作排序函数禁掉客户端重拍），
+   *  false=VTable 原生处理客户端排序（默认）。 */
+  sortRemote?: boolean
+  /** 当前服务端排序状态，用于同步 VTable 排序指示器。sortRemote=true 时使用。 */
+  sortState?: SortState | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -54,6 +70,9 @@ const props = withDefaults(defineProps<Props>(), {
   fetching: false,
   rowHeight: 24,
   defaultColumnWidth: 160,
+  sortable: true,
+  sortRemote: false,
+  sortState: null,
 })
 
 const emit = defineEmits<{
@@ -65,6 +84,9 @@ const emit = defineEmits<{
   (e: 'selection-change', p: { range: SelectionRange | null }): void
   /** 滚到底部，触发分页/流式追加 */
   (e: 'load-more'): void
+  /** 排序变化（sortRemote=true 时发射）：field 为列下标，order 为 'asc'/'desc'；
+   *  null 表示清除排序 */
+  (e: 'sort-change', p: { field: number; order: 'asc' | 'desc' } | null): void
 }>()
 
 const themeVars = useThemeVars()
@@ -179,6 +201,7 @@ const tableTheme = computed(() => {
 
 // ---- VTable options ----
 const tableOptions = computed<any>(() => {
+  const sortFn = props.sortRemote ? () => 0 : true
   const cols = props.columns.map((c, idx) => ({
     field: idx,
     title: c.name,
@@ -186,6 +209,7 @@ const tableOptions = computed<any>(() => {
     minWidth: 60,
     editor: props.editable ? pickEditor(c) : undefined,
     style: { textAlign: pickAlign(c) },
+    sort: props.sortable ? sortFn : undefined,
     description: c.comment || c.nativeType,
     fieldFormat: (record: any) => renderCellValue(record?.[idx]),
   }))
@@ -334,6 +358,19 @@ function onReady(instance: any) {
 
   // 滚到底部：触发分页/流式追加
   instance.on('scroll_vertical_end', () => emit('load-more'))
+
+  // 排序点击：sortRemote=true 时发射给父组件做服务端排序
+  instance.on('sort_click', (args: any) => {
+    if (!props.sortRemote) return
+    const field = args?.field
+    const order = args?.order
+    if (field == null || order == null) return
+    if (order === 'normal' || order === 'NORMAL') {
+      emit('sort-change', null)
+    } else {
+      emit('sort-change', { field: Number(field), order: order.toLowerCase() as 'asc' | 'desc' })
+    }
+  })
 }
 
 // 监听 rows 变化时滚到顶（避免新列保留旧滚动位置）
@@ -345,6 +382,36 @@ watch(
       try { inst.scrollTo({ scrollTop: 0, scrollLeft: 0 }) } catch { /* ignore */ }
     }
   },
+)
+
+// 同步服务端排序状态到 VTable 指示器
+watch(
+  () => props.sortState,
+  (state) => {
+    const inst = vTableInstance.value
+    if (!inst?.updateSortState) return
+    if (!props.sortRemote) return
+    if (!state) {
+      inst.updateSortState(null, false)
+    } else {
+      inst.updateSortState({ field: state.field, order: state.order }, false)
+    }
+  },
+  { deep: true },
+)
+
+// 服务端排序时，rows 变化会清掉 VTable 的排序指示器，需要等重渲染完成后恢复。
+watch(
+  () => props.rows,
+  () => {
+    if (!props.sortRemote || !props.sortState) return
+    const inst = vTableInstance.value
+    if (!inst?.updateSortState) return
+    requestAnimationFrame(() => {
+      inst.updateSortState({ field: props.sortState!.field, order: props.sortState!.order }, false)
+    })
+  },
+  { deep: false },
 )
 </script>
 
