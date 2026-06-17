@@ -208,10 +208,20 @@ const tableOptions = computed<any>(() => {
     width: props.defaultColumnWidth,
     minWidth: 60,
     editor: props.editable ? pickEditor(c) : undefined,
-    style: { textAlign: pickAlign(c) },
+    style: (args: any) => {
+      const align = pickAlign(c)
+      // dataValue 是 fieldFormat 前的原始值，value 是格式化后的
+      if (args?.dataValue == null) return { textAlign: align, color: '#aaa', fontStyle: 'italic' }
+      return { textAlign: align }
+    },
+
     sort: props.sortable ? sortFn : undefined,
     description: c.comment || c.nativeType,
-    fieldFormat: (record: any) => renderCellValue(record?.[idx]),
+    fieldFormat: (record: any) => {
+      const v = record?.[idx]
+      if (v == null) return 'NULL'
+      return renderCellValue(v)
+    },
   }))
   return {
     columns: cols,
