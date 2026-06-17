@@ -12,7 +12,7 @@
 //
 // VTable 的 row 索引把 header 算在内（row=0 是表头），所以对外发出的 row
 // 一律减去 columnHeaderLevelCount 得到 body 行号。
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, shallowRef, watch } from 'vue'
 import { ListTable, register } from '@visactor/vue-vtable'
 import { InputEditor, TextAreaEditor, DateInputEditor } from '@visactor/vtable-editors'
 import { useThemeVars } from 'naive-ui'
@@ -68,7 +68,6 @@ const emit = defineEmits<{
 }>()
 
 const themeVars = useThemeVars()
-const tableRef = ref<any>(null)
 const vTableInstance = shallowRef<any>(null)
 
 // ---- 单元格显示渲染 ----
@@ -223,98 +222,102 @@ const tableOptions = computed<any>(() => {
 })
 
 // ---- VTable 事件 → 对外发射 ----
+//
+// 早期版本走 `:on-xxx` prop 路线踩了三个坑：
+//   1. VTable 的 SELECTED_CELL payload 是 `{ ranges, col, row }`，不是
+//      cellRange/range —— 之前的代码永远落到 fallback；
+//   2. 当 rowSeriesNumber 打开时，事件中的 col 还包含 leftRowSeriesNumberCount
+//      偏移（通常是 1），不扣会复制到错位的列；
+//   3. `:on-contextmenu-cell` 这种 kebab 命名跟 Vue 的 emit 名 `onContextMenuCell`
+//      存在大小写映射歧义，listener 经常根本没接上。
+//
+// 改成在 onReady 里直接 instance.on(eventName, handler) 订阅原生事件 —— 既能
+// 拿到 SELECTED_CHANGED（右键自动选中走的是它，vue-vtable wrapper 没暴露），
+// 又彻底绕开 prop / emit 名映射问题。
 
-function bodyRowOf(row: number): number {
-  const headerLevels = vTableInstance.value?.columnHeaderLevelCount ?? 1
-  return row - headerLevels
-}
-
-function onChangeCellValue(args: any) {
-  // args: { col, row, changedValue, originValue, ... }
-  if (!args) return
-  const bodyRow = bodyRowOf(args.row)
-  if (bodyRow < 0) return
-  const meta = props.columns[args.col]
-  if (!meta) return
-  emit('edit-commit', {
-    row: bodyRow,
-    col: args.col,
-    oldValue: args.originValue,
-    newValue: args.changedValue,
-    column: meta,
-  })
-}
-
-function onContextMenuCell(args: any) {
-  if (!args || args.col == null || args.row == null) return
-  const bodyRow = bodyRowOf(args.row)
-  if (bodyRow < 0) return
-  const ev: MouseEvent | undefined = args.federatedEvent?.nativeEvent ?? args.event
-  emit('cell-context-menu', {
-    row: bodyRow,
-    col: args.col,
-    x: ev?.pageX ?? args.x ?? 0,
-    y: ev?.pageY ?? args.y ?? 0,
-    value: props.rows[bodyRow]?.[args.col],
-  })
-}
-
-function onSelectedCell(args: any) {
-  if (!args) {
-    emit('selection-change', { range: null })
-    return
-  }
-  // 单击选中：{ col, row }
-  // 拖拽 / shift+click：{ ranges: [{ start: {col,row}, end: {col,row} }] } 或类似
-  // VTable 不同版本 args 形状可能略有差异，做兼容
-  const cr = args.cellRange ?? args.range ?? null
-  if (cr && cr.start && cr.end) {
-    const sr = bodyRowOf(cr.start.row)
-    const er = bodyRowOf(cr.end.row)
-    if (sr < 0 || er < 0) {
-      emit('selection-change', { range: null })
-      return
-    }
-    emit('selection-change', {
-      range: {
-        startRow: sr,
-        startCol: cr.start.col,
-        endRow: er,
-        endCol: cr.end.col,
-      },
-    })
-    return
-  }
-  // 单 cell
-  if (args.col != null && args.row != null) {
-    const r = bodyRowOf(args.row)
-    if (r < 0) {
-      emit('selection-change', { range: null })
-      return
-    }
-    emit('selection-change', {
-      range: { startRow: r, startCol: args.col, endRow: r, endCol: args.col },
-    })
+function offsets(): { col: number; row: number } {
+  const inst = vTableInstance.value
+  return {
+    col: (inst?.rowHeaderLevelCount ?? 0) + (inst?.leftRowSeriesNumberCount ?? 0),
+    row: inst?.columnHeaderLevelCount ?? 1,
   }
 }
 
-function onDragSelectEnd(args: any) {
-  // VTable 在拖拽结束时给出最终范围，比 selected_cell 更可靠
-  onSelectedCell(args)
+function toBody(rawCol: number, rawRow: number): { col: number; row: number } | null {
+  const off = offsets()
+  const col = rawCol - off.col
+  const row = rawRow - off.row
+  if (col < 0 || row < 0) return null
+  return { col, row }
 }
 
-function onScrollVerticalEnd() {
-  emit('load-more')
+function rangeFromArgs(args: any): SelectionRange | null {
+  const ranges: any[] = Array.isArray(args?.ranges) ? args.ranges : []
+  if (!ranges.length) return null
+  // 用最近一次的 range（用户最后拖出来的那块）
+  const r = ranges[ranges.length - 1]
+  if (!r?.start || !r?.end) return null
+  const s = toBody(r.start.col, r.start.row)
+  const e = toBody(r.end.col, r.end.row)
+  if (!s || !e) return null
+  return {
+    startRow: Math.min(s.row, e.row),
+    startCol: Math.min(s.col, e.col),
+    endRow: Math.max(s.row, e.row),
+    endCol: Math.max(s.col, e.col),
+  }
 }
 
 function onReady(instance: any) {
   vTableInstance.value = instance
-}
 
-// 暴露给 parent 访问底层实例（高级用法，正常不会用到）
-defineExpose({
-  getVTableInstance: () => vTableInstance.value,
-})
+  // 选区变化：拖拽中 + 单击 + 右键自动选中都走 SELECTED_CHANGED；mouseup 之后
+  // 还会再补一次 SELECTED_CELL。两个都接，让 parent 拿到最新状态。
+  instance.on('selected_changed', (args: any) => {
+    emit('selection-change', { range: rangeFromArgs(args) })
+  })
+  instance.on('selected_cell', (args: any) => {
+    emit('selection-change', { range: rangeFromArgs(args) })
+  })
+  instance.on('selected_clear', () => {
+    emit('selection-change', { range: null })
+  })
+
+  // 右键单元格：VTable 已经在 rightdown 里把选区调整好了；这里把屏幕坐标 +
+  // body 坐标透传出去，parent 据此推送 setActiveGridContext。
+  instance.on('contextmenu_cell', (args: any) => {
+    if (args?.col == null || args?.row == null) return
+    const body = toBody(args.col, args.row)
+    if (!body) return
+    const ev: MouseEvent | undefined = args.event ?? args.federatedEvent?.nativeEvent
+    emit('cell-context-menu', {
+      row: body.row,
+      col: body.col,
+      x: ev?.pageX ?? 0,
+      y: ev?.pageY ?? 0,
+      value: props.rows[body.row]?.[body.col],
+    })
+  })
+
+  // 单元格编辑提交：VTable 内部已乐观更新 record；parent 决定是否回滚。
+  instance.on('change_cell_value', (args: any) => {
+    if (args?.col == null || args?.row == null) return
+    const body = toBody(args.col, args.row)
+    if (!body) return
+    const meta = props.columns[body.col]
+    if (!meta) return
+    emit('edit-commit', {
+      row: body.row,
+      col: body.col,
+      oldValue: args.originValue,
+      newValue: args.changedValue,
+      column: meta,
+    })
+  })
+
+  // 滚到底部：触发分页/流式追加
+  instance.on('scroll_vertical_end', () => emit('load-more'))
+}
 
 // 监听 rows 变化时滚到顶（避免新列保留旧滚动位置）
 watch(
@@ -333,18 +336,12 @@ watch(
        （wailsbridge/contextmenu.go 中注册）。CSS 变量在画布子节点也生效。 -->
   <div class="datagrid-wrap" style="--custom-contextmenu: catdb-grid-cell">
     <ListTable
-      ref="tableRef"
       :options="tableOptions"
       :records="rows"
       width="100%"
       height="100%"
       :keep-column-width-change="true"
       :on-ready="onReady"
-      :on-change-cell-value="onChangeCellValue"
-      :on-contextmenu-cell="onContextMenuCell"
-      :on-selected-cell="onSelectedCell"
-      :on-drag-select-end="onDragSelectEnd"
-      :on-scroll-vertical-end="onScrollVerticalEnd"
     />
   </div>
 </template>
