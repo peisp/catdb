@@ -26,7 +26,7 @@ import * as $models from "./models.js";
  * active connection.
  */
 export function CapabilitiesFor(driverName: string): $CancellablePromise<dbdriver$0.Capabilities> {
-    return $Call.ByID(693442694, driverName).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.QueryService.CapabilitiesFor", driverName).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -35,7 +35,7 @@ export function CapabilitiesFor(driverName: string): $CancellablePromise<dbdrive
  * Close releases a handle and its underlying cursor. Idempotent.
  */
 export function Close(handle: string): $CancellablePromise<void> {
-    return $Call.ByID(4229270911, handle);
+    return $Call.ByName("catdb/internal/services.QueryService.Close", handle);
 }
 
 /**
@@ -46,7 +46,7 @@ export function Close(handle: string): $CancellablePromise<void> {
  * driver doesn't support it).
  */
 export function Explain(connID: string, sqlText: string, opts: $models.QueryOptions): $CancellablePromise<$models.QueryRunResult> {
-    return $Call.ByID(3956862712, connID, sqlText, opts).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.QueryService.Explain", connID, sqlText, opts).then(($result: any) => {
         return $$createType1($result);
     });
 }
@@ -56,7 +56,7 @@ export function Explain(connID: string, sqlText: string, opts: $models.QueryOpti
  * handle is closed automatically — the front-end should drop its reference.
  */
 export function FetchMore(handle: string, batch: number): $CancellablePromise<$models.QueryBatchResult> {
-    return $Call.ByID(1774901466, handle, batch).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.QueryService.FetchMore", handle, batch).then(($result: any) => {
         return $$createType2($result);
     });
 }
@@ -71,7 +71,7 @@ export function FetchMore(handle: string, batch: number): $CancellablePromise<$m
  *   - Timeout: capped at QueryOptions.TimeoutMs (default 60s).
  */
 export function RunQuery(connID: string, sqlText: string, opts: $models.QueryOptions): $CancellablePromise<$models.QueryRunResult> {
-    return $Call.ByID(920722978, connID, sqlText, opts).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.QueryService.RunQuery", connID, sqlText, opts).then(($result: any) => {
         return $$createType1($result);
     });
 }

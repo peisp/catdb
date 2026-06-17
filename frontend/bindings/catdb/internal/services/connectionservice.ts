@@ -27,14 +27,14 @@ import * as $models from "./models.js";
  * Connect opens (or returns the cached) live Connection for id.
  */
 export function Connect(id: string): $CancellablePromise<void> {
-    return $Call.ByID(3543089053, id);
+    return $Call.ByName("catdb/internal/services.ConnectionService.Connect", id);
 }
 
 /**
  * ConnectedIDs returns the set of currently-open connection IDs.
  */
 export function ConnectedIDs(): $CancellablePromise<string[]> {
-    return $Call.ByID(3345175150).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.ConnectionService.ConnectedIDs").then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -44,7 +44,7 @@ export function ConnectedIDs(): $CancellablePromise<string[]> {
  * connection. Idempotent regarding secrets / live state.
  */
 export function DeleteConnection(id: string): $CancellablePromise<void> {
-    return $Call.ByID(3839391146, id);
+    return $Call.ByName("catdb/internal/services.ConnectionService.DeleteConnection", id);
 }
 
 /**
@@ -52,21 +52,21 @@ export function DeleteConnection(id: string): $CancellablePromise<void> {
  * group_id is nulled by the underlying schema's ON DELETE SET NULL.
  */
 export function DeleteGroup(id: string): $CancellablePromise<void> {
-    return $Call.ByID(2165927233, id);
+    return $Call.ByName("catdb/internal/services.ConnectionService.DeleteGroup", id);
 }
 
 /**
  * Disconnect closes a live Connection. Idempotent.
  */
 export function Disconnect(id: string): $CancellablePromise<void> {
-    return $Call.ByID(3051476383, id);
+    return $Call.ByName("catdb/internal/services.ConnectionService.Disconnect", id);
 }
 
 /**
  * GetConnection returns one profile (no secret).
  */
 export function GetConnection(id: string): $CancellablePromise<storage$0.ConnectionProfile> {
-    return $Call.ByID(1184343259, id).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.ConnectionService.GetConnection", id).then(($result: any) => {
         return $$createType1($result);
     });
 }
@@ -76,7 +76,7 @@ export function GetConnection(id: string): $CancellablePromise<storage$0.Connect
  * Connection. Returns ErrNotOpen if the connection is not active.
  */
 export function GetServerInfo(id: string): $CancellablePromise<dbdriver$0.ServerInfo> {
-    return $Call.ByID(771640052, id).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.ConnectionService.GetServerInfo", id).then(($result: any) => {
         return $$createType2($result);
     });
 }
@@ -85,14 +85,14 @@ export function GetServerInfo(id: string): $CancellablePromise<dbdriver$0.Server
  * IsConnected reports whether a Connection is live.
  */
 export function IsConnected(id: string): $CancellablePromise<boolean> {
-    return $Call.ByID(352355940, id);
+    return $Call.ByName("catdb/internal/services.ConnectionService.IsConnected", id);
 }
 
 /**
  * ListConnections returns every saved profile (no secrets).
  */
 export function ListConnections(): $CancellablePromise<storage$0.ConnectionProfile[]> {
-    return $Call.ByID(3446961070).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.ConnectionService.ListConnections").then(($result: any) => {
         return $$createType3($result);
     });
 }
@@ -103,7 +103,7 @@ export function ListConnections(): $CancellablePromise<storage$0.ConnectionProfi
  * change is needed when a new driver lands.
  */
 export function ListDrivers(): $CancellablePromise<$models.DriverInfo[]> {
-    return $Call.ByID(783635796).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.ConnectionService.ListDrivers").then(($result: any) => {
         return $$createType5($result);
     });
 }
@@ -112,7 +112,7 @@ export function ListDrivers(): $CancellablePromise<$models.DriverInfo[]> {
  * ListGroups returns the sidebar's folder list.
  */
 export function ListGroups(): $CancellablePromise<storage$0.Group[]> {
-    return $Call.ByID(4163085149).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.ConnectionService.ListGroups").then(($result: any) => {
         return $$createType7($result);
     });
 }
@@ -121,7 +121,7 @@ export function ListGroups(): $CancellablePromise<storage$0.Group[]> {
  * Ping pings a live Connection.
  */
 export function Ping(id: string): $CancellablePromise<void> {
-    return $Call.ByID(1596068253, id);
+    return $Call.ByName("catdb/internal/services.ConnectionService.Ping", id);
 }
 
 /**
@@ -130,7 +130,7 @@ export function Ping(id: string): $CancellablePromise<void> {
  * timestamps populated).
  */
 export function SaveConnection(d: $models.ConnectionDraft): $CancellablePromise<storage$0.ConnectionProfile> {
-    return $Call.ByID(2004612908, d).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.ConnectionService.SaveConnection", d).then(($result: any) => {
         return $$createType1($result);
     });
 }
@@ -139,7 +139,7 @@ export function SaveConnection(d: $models.ConnectionDraft): $CancellablePromise<
  * SaveGroup upserts a group.
  */
 export function SaveGroup(g: storage$0.Group): $CancellablePromise<storage$0.Group> {
-    return $Call.ByID(4249990095, g).then(($result: any) => {
+    return $Call.ByName("catdb/internal/services.ConnectionService.SaveGroup", g).then(($result: any) => {
         return $$createType6($result);
     });
 }
@@ -149,7 +149,7 @@ export function SaveGroup(g: storage$0.Group): $CancellablePromise<storage$0.Gro
  * nothing is persisted. Used by the form's "Test" button.
  */
 export function TestConnection(d: $models.ConnectionDraft): $CancellablePromise<void> {
-    return $Call.ByID(1736812285, d);
+    return $Call.ByName("catdb/internal/services.ConnectionService.TestConnection", d);
 }
 
 // Private type creation functions
