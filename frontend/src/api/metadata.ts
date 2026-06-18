@@ -8,6 +8,7 @@ import type {
 import type {
   ColumnMeta as BoundColumn,
   ForeignKeyInfo as BoundFK,
+  IndexColumn as BoundIndexColumn,
   IndexInfo as BoundIndex,
   RoutineInfo as BoundRoutine,
   TableInfo as BoundTable,
@@ -17,6 +18,7 @@ import type {
 export type TableInfo = BoundTable
 export type ViewInfo = BoundView
 export type ColumnMeta = BoundColumn
+export type IndexColumn = BoundIndexColumn
 export type IndexInfo = BoundIndex
 export type ForeignKeyInfo = BoundFK
 export type RoutineInfo = BoundRoutine

@@ -169,7 +169,7 @@ func (m metadata) ListIndexes(ctx context.Context, db, schema, table string) ([]
 	if d == "" || table == "" {
 		return nil, fmt.Errorf("mysqldrv: ListIndexes requires db and table")
 	}
-	const q = `SELECT INDEX_NAME, COLUMN_NAME, NON_UNIQUE, INDEX_TYPE, SEQ_IN_INDEX
+	const q = `SELECT INDEX_NAME, COLUMN_NAME, NON_UNIQUE, INDEX_TYPE, SEQ_IN_INDEX, COLLATION, INDEX_COMMENT
 	             FROM information_schema.STATISTICS
 	            WHERE TABLE_SCHEMA=? AND TABLE_NAME=?
 	            ORDER BY INDEX_NAME, SEQ_IN_INDEX`
@@ -187,8 +187,10 @@ func (m metadata) ListIndexes(ctx context.Context, db, schema, table string) ([]
 			nonUnique int
 			idxType   string
 			seq       int
+			collation sql.NullString
+			comment   sql.NullString
 		)
-		if err := rows.Scan(&name, &column, &nonUnique, &idxType, &seq); err != nil {
+		if err := rows.Scan(&name, &column, &nonUnique, &idxType, &seq, &collation, &comment); err != nil {
 			return nil, err
 		}
 		ix, ok := byName[name]
@@ -198,11 +200,22 @@ func (m metadata) ListIndexes(ctx context.Context, db, schema, table string) ([]
 				Unique:  nonUnique == 0,
 				Primary: name == "PRIMARY",
 				Type:    idxType,
+				Comment: comment.String,
 			}
 			byName[name] = ix
 			order = append(order, name)
 		}
-		ix.Columns = append(ix.Columns, column)
+		// COLLATION: 'A' = ascending, 'D' = descending, NULL = not sorted (e.g. HASH).
+		dir := ""
+		if collation.Valid {
+			switch collation.String {
+			case "A":
+				dir = "ASC"
+			case "D":
+				dir = "DESC"
+			}
+		}
+		ix.Columns = append(ix.Columns, dbdriver.IndexColumn{Name: column, Order: dir})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

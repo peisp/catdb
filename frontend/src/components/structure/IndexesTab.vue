@@ -1,10 +1,18 @@
 <script setup lang="ts">
-// IndexesTab — editable list of (non-primary) table indexes.
+// IndexesTab — master-detail editor for table indexes.
 //
-// PRIMARY KEY is owned by the column-level PK checkbox in ColumnsTab; we
-// filter the primary entry out here both for display and on edit.
-import { computed } from 'vue'
-import { NButton, NCheckbox, NInput } from 'naive-ui'
+//   ┌── sidebar ──┬─────── detail form ──────────────┐
+//   │ idx list    │  name / comment / unique / type   │
+//   │             │  ┌── col list ── col editor ──┐  │
+//   │             │  │ + - ↑ ↓     │ name / order │  │
+//   │             │  └─────────────┴──────────────┘  │
+//   └─────────────┴───────────────────────────────────┘
+//
+// PRIMARY is shown in the list (read-only) because it lives on the same
+// concept, but every field is disabled when it's selected: the source of
+// truth for PK is the column-level checkbox in ColumnsTab.
+import { computed, ref, watch } from 'vue'
+import { NCheckbox, NInput } from 'naive-ui'
 import {
   emptyIndexDraft,
   type ColumnDraft,
@@ -13,7 +21,7 @@ import {
 
 const props = defineProps<{
   modelValue: IndexDraft[]
-  /** Column draft list — used to populate the columns-multi-select. */
+  /** Column draft list — populates the per-row column dropdown. */
   columnsDraft: ColumnDraft[]
   busy?: boolean
 }>()
@@ -21,226 +29,586 @@ const emit = defineEmits<{
   (e: 'update:modelValue', v: IndexDraft[]): void
 }>()
 
+// ---- selection state ------------------------------------------------------
+
+const selectedKey = ref<string | null>(null)
+const selectedColIdx = ref<number>(0)
+
+const selectedIndex = computed(() =>
+  props.modelValue.find((ix) => ix._key === selectedKey.value) ?? null,
+)
+const selectedIsPrimary = computed(() => !!selectedIndex.value?.primary)
+
+// Auto-pick a sensible default: prefer the first non-primary editable row;
+// fall back to primary so the right pane is never blank when indexes exist.
+function pickDefaultSelection() {
+  const list = props.modelValue
+  if (list.length === 0) {
+    selectedKey.value = null
+    return
+  }
+  const stillThere = list.some((ix) => ix._key === selectedKey.value)
+  if (stillThere) return
+  const firstEditable = list.find((ix) => !ix.primary)
+  selectedKey.value = (firstEditable ?? list[0])._key
+  selectedColIdx.value = 0
+}
+
+watch(
+  () => props.modelValue,
+  () => pickDefaultSelection(),
+  { immediate: true, deep: false },
+)
+
+// Keep selectedColIdx in range as columns change.
+watch(
+  () => selectedIndex.value?.columns.length ?? 0,
+  (n) => {
+    if (selectedColIdx.value >= n) selectedColIdx.value = Math.max(0, n - 1)
+  },
+)
+
+// ---- index list ops -------------------------------------------------------
+
 function commit() {
   emit('update:modelValue', props.modelValue)
 }
 
-function addRow() {
-  emit('update:modelValue', [...props.modelValue, emptyIndexDraft()])
+function addIndex() {
+  const row = emptyIndexDraft()
+  // Newly-created indexes pre-populate one empty column slot so the user
+  // sees the column editor immediately rather than an empty box.
+  row.columns.push({ name: '', order: '' })
+  const list = [...props.modelValue, row]
+  emit('update:modelValue', list)
+  selectedKey.value = row._key
+  selectedColIdx.value = 0
 }
-function deleteRow(idx: number) {
+
+function deleteSelectedIndex() {
+  if (!selectedIndex.value || selectedIndex.value.primary) return
+  const idx = props.modelValue.indexOf(selectedIndex.value)
+  if (idx < 0) return
   const list = props.modelValue.slice()
   list.splice(idx, 1)
+  selectedKey.value = null
   emit('update:modelValue', list)
 }
 
-/** Parse comma-separated column names into string array. */
-function onColsInput(row: IndexDraft, val: string) {
-  row.columns = val.split(',').map((s) => s.trim()).filter(Boolean)
+function selectIndex(key: string) {
+  selectedKey.value = key
+  selectedColIdx.value = 0
+}
+
+// ---- column rows inside the selected index --------------------------------
+
+function addCol() {
+  const ix = selectedIndex.value
+  if (!ix || ix.primary) return
+  ix.columns.push({ name: '', order: '' })
+  selectedColIdx.value = ix.columns.length - 1
   commit()
 }
 
-// Column option list, filtered to rows with a non-blank name. Sourced from the
-// CURRENT columns draft, so a freshly-added column appears in the index editor.
+function removeCol() {
+  const ix = selectedIndex.value
+  if (!ix || ix.primary || ix.columns.length === 0) return
+  ix.columns.splice(selectedColIdx.value, 1)
+  selectedColIdx.value = Math.min(selectedColIdx.value, ix.columns.length - 1)
+  if (selectedColIdx.value < 0) selectedColIdx.value = 0
+  commit()
+}
+
+function moveCol(delta: -1 | 1) {
+  const ix = selectedIndex.value
+  if (!ix || ix.primary) return
+  const i = selectedColIdx.value
+  const j = i + delta
+  if (j < 0 || j >= ix.columns.length) return
+  const tmp = ix.columns[i]
+  ix.columns[i] = ix.columns[j]
+  ix.columns[j] = tmp
+  selectedColIdx.value = j
+  commit()
+}
+
+function updateColName(val: string) {
+  const ix = selectedIndex.value
+  if (!ix || ix.primary) return
+  const c = ix.columns[selectedColIdx.value]
+  if (!c) return
+  c.name = val
+  commit()
+}
+
+function updateColOrder(val: string) {
+  const ix = selectedIndex.value
+  if (!ix || ix.primary) return
+  const c = ix.columns[selectedColIdx.value]
+  if (!c) return
+  c.order = val
+  commit()
+}
+
+// ---- derived view-models --------------------------------------------------
+
+/** Compact "(col1, col2) UNIQUE" string for the sidebar list. */
+function previewLine(ix: IndexDraft): string {
+  const cols = ix.columns.map((c) => c.name).filter(Boolean).join(', ')
+  const flag = ix.primary ? 'PK' : ix.unique ? 'UNIQUE' : ''
+  return cols ? `(${cols})${flag ? ' ' + flag : ''}` : flag
+}
+
 const columnOptions = computed(() =>
   props.columnsDraft
     .filter((c) => c.name.trim() !== '')
     .map((c) => ({ label: c.name, value: c.name })),
 )
 
-const editable = computed(() => props.modelValue.filter((ix) => !ix.primary))
-const primaryDisplay = computed(() => props.modelValue.find((ix) => ix.primary))
+const ORDER_OPTIONS = [
+  { label: 'NONE', value: '' },
+  { label: 'ASC', value: 'ASC' },
+  { label: 'DESC', value: 'DESC' },
+]
+
+const TYPE_OPTIONS = [
+  { label: 'BTREE', value: '' },
+  { label: 'HASH', value: 'HASH' },
+  { label: 'FULLTEXT', value: 'FULLTEXT' },
+]
 </script>
 
 <template>
   <div class="ix-tab">
-    <div v-if="primaryDisplay" class="primary-hint">
-      <span class="pk-tag">PRIMARY</span>
-      <span class="pk-cols">{{ primaryDisplay.columns.join(', ') }}</span>
-      <span class="pk-note">主键在「字段」tab 通过 PK 复选框管理</span>
-    </div>
-    <div class="ix-table-wrap">
-      <table class="ix-table">
-        <colgroup>
-          <col style="width: 32px" />
-          <col style="width: 22%" />
-          <col style="width: 38%" />
-          <col style="width: 70px" />
-          <col style="width: 22%" />
-          <col style="width: 60px" />
-        </colgroup>
-        <thead>
-          <tr>
-            <th class="th-idx">#</th>
-            <th>名称</th>
-            <th>列</th>
-            <th>UNIQUE</th>
-            <th>类型</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="(row, i) in editable"
-            :key="row._key"
-            :class="{ 'is-new': !row.origName }"
-          >
-            <td class="td-idx">{{ i + 1 }}</td>
-            <td>
-              <n-input
-                v-model:value="row.name"
-                size="tiny"
-                placeholder="idx_name"
-                :disabled="busy"
-                @update:value="commit"
-              />
-            </td>
-            <td>
-              <!-- Column multi-select: comma-separated text + datalist hints -->
-            <input
-              :value="(row.columns ?? []).join(', ')"
-              placeholder="col1, col2, …"
-              :disabled="busy"
-              class="native-input"
-              list="ixColsDatalist"
-              @input="onColsInput(row, ($event.target as HTMLInputElement).value)"
+    <!-- Sidebar: index list -->
+    <aside class="ix-side">
+      <div class="ix-side-head">
+        <span>索引</span>
+        <div class="ix-side-tools">
+          <button
+            type="button"
+            class="icon-btn"
+            :disabled="busy"
+            title="添加索引"
+            @click="addIndex"
+          >+</button>
+          <button
+            type="button"
+            class="icon-btn"
+            :disabled="busy || !selectedIndex || selectedIsPrimary"
+            title="删除选中索引"
+            @click="deleteSelectedIndex"
+          >−</button>
+        </div>
+      </div>
+      <div class="ix-list">
+        <div
+          v-for="ix in modelValue"
+          :key="ix._key"
+          class="ix-item"
+          :class="{
+            selected: ix._key === selectedKey,
+            'is-new': !ix.origName,
+          }"
+          @click="selectIndex(ix._key)"
+        >
+          <span class="ix-icon" :class="{ 'is-unique': ix.unique || ix.primary }">
+            {{ ix.unique || ix.primary ? 'iu' : 'i' }}
+          </span>
+          <span class="ix-name">{{ ix.name || '(未命名)' }}</span>
+          <span class="ix-detail">{{ previewLine(ix) }}</span>
+        </div>
+        <div v-if="modelValue.length === 0" class="ix-empty">暂无索引</div>
+      </div>
+    </aside>
+
+    <!-- Detail pane -->
+    <section class="ix-detail">
+      <template v-if="!selectedIndex">
+        <div class="ix-empty-detail">从左侧选择或新建一个索引</div>
+      </template>
+      <template v-else>
+        <div v-if="selectedIsPrimary" class="pk-hint">
+          PRIMARY 索引由「字段」tab 的 PK 复选框管理，此处只读
+        </div>
+
+        <div class="row">
+          <div class="label">名称</div>
+          <n-input
+            :value="selectedIndex.name"
+            size="tiny"
+            placeholder="idx_name"
+            :disabled="busy || selectedIsPrimary"
+            @update:value="(v: string) => { selectedIndex!.name = v; commit() }"
+          />
+        </div>
+
+        <div class="row">
+          <div class="label">注释</div>
+          <n-input
+            :value="selectedIndex.comment"
+            size="tiny"
+            placeholder=""
+            :disabled="busy || selectedIsPrimary"
+            @update:value="(v: string) => { selectedIndex!.comment = v; commit() }"
+          />
+        </div>
+
+        <div class="row">
+          <div class="label"></div>
+          <label class="inline-check">
+            <n-checkbox
+              :checked="selectedIndex.unique"
+              :disabled="busy || selectedIsPrimary"
+              @update:checked="(v: boolean) => { selectedIndex!.unique = !!v; commit() }"
             />
-            <datalist id="ixColsDatalist">
-              <option v-for="opt in columnOptions" :key="opt.value" :value="opt.value" />
-            </datalist>
-            </td>
-            <td class="td-center">
-              <n-checkbox
-                :checked="row.unique"
-                :disabled="busy"
-                @update:checked="(v) => { row.unique = !!v; commit() }"
-              />
-            </td>
-            <td>
-              <!-- Index type -->
-            <select
-              :value="(row.type || '').toUpperCase() === 'BTREE' ? '' : (row.type || '').toUpperCase()"
-              :disabled="busy"
-              class="native-sel"
-              @change="(e: any) => { row.type = e.target.value; commit() }"
-            >
-              <option value="">BTREE (default)</option>
-              <option value="HASH">HASH</option>
-              <option value="FULLTEXT">FULLTEXT</option>
-            </select>
-            </td>
-            <td class="td-actions">
-              <n-button size="tiny" quaternary :disabled="busy" title="删除" @click="deleteRow(modelValue.indexOf(row))">✕</n-button>
-            </td>
-          </tr>
-          <tr v-if="editable.length === 0" class="empty-row">
-            <td colspan="6" style="text-align: center; color: var(--n-text-color-3); padding: 16px">
-              暂无索引，点击下方“添加索引”
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="ix-toolbar">
-      <n-button size="tiny" :disabled="busy" @click="addRow">+ 添加索引</n-button>
-    </div>
+            <span>唯一</span>
+          </label>
+        </div>
+
+        <div class="row">
+          <div class="label">类型</div>
+          <select
+            :value="(selectedIndex.type || '').toUpperCase() === 'BTREE' ? '' : (selectedIndex.type || '').toUpperCase()"
+            :disabled="busy || selectedIsPrimary"
+            class="native-sel"
+            @change="(e: any) => { selectedIndex!.type = e.target.value; commit() }"
+          >
+            <option v-for="t in TYPE_OPTIONS" :key="t.label" :value="t.value">{{ t.label }}</option>
+          </select>
+        </div>
+
+        <!-- Column editor: left list + right inspector -->
+        <div class="row top">
+          <div class="label">列</div>
+          <div class="col-wrapper">
+            <div class="col-left">
+              <div class="col-tools">
+                <button
+                  type="button"
+                  class="icon-btn"
+                  :disabled="busy || selectedIsPrimary"
+                  title="添加列"
+                  @click="addCol"
+                >+</button>
+                <button
+                  type="button"
+                  class="icon-btn"
+                  :disabled="busy || selectedIsPrimary || selectedIndex.columns.length === 0"
+                  title="移除列"
+                  @click="removeCol"
+                >−</button>
+                <button
+                  type="button"
+                  class="icon-btn"
+                  :disabled="busy || selectedIsPrimary || selectedColIdx <= 0"
+                  title="上移"
+                  @click="moveCol(-1)"
+                >↑</button>
+                <button
+                  type="button"
+                  class="icon-btn"
+                  :disabled="busy || selectedIsPrimary || selectedColIdx >= selectedIndex.columns.length - 1"
+                  title="下移"
+                  @click="moveCol(1)"
+                >↓</button>
+              </div>
+              <div class="col-items">
+                <div
+                  v-for="(c, i) in selectedIndex.columns"
+                  :key="i"
+                  class="col-item"
+                  :class="{ active: i === selectedColIdx }"
+                  @click="selectedColIdx = i"
+                >{{ c.name || '(未选择)' }}</div>
+                <div v-if="selectedIndex.columns.length === 0" class="col-empty">
+                  无
+                </div>
+              </div>
+            </div>
+            <div class="col-right">
+              <template v-if="selectedIndex.columns[selectedColIdx]">
+                <div class="col-row">
+                  <div class="col-label">列名</div>
+                  <select
+                    :value="selectedIndex.columns[selectedColIdx].name"
+                    :disabled="busy || selectedIsPrimary"
+                    class="native-sel"
+                    @change="(e: any) => updateColName(e.target.value)"
+                  >
+                    <option value="">(请选择)</option>
+                    <option v-for="opt in columnOptions" :key="opt.value" :value="opt.value">
+                      {{ opt.label }}
+                    </option>
+                  </select>
+                </div>
+                <div class="col-row">
+                  <div class="col-label">顺序</div>
+                  <select
+                    :value="(selectedIndex.columns[selectedColIdx].order || '').toUpperCase()"
+                    :disabled="busy || selectedIsPrimary"
+                    class="native-sel"
+                    @change="(e: any) => updateColOrder(e.target.value)"
+                  >
+                    <option v-for="o in ORDER_OPTIONS" :key="o.label" :value="o.value">
+                      {{ o.label }}
+                    </option>
+                  </select>
+                </div>
+              </template>
+              <div v-else class="col-empty-detail">先在左侧添加一列</div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </section>
   </div>
 </template>
 
 <style scoped>
 .ix-tab {
+  margin: 6px 6px 0px 6px;
   display: flex;
-  flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  padding-left: 6px;
-  padding-right: 6px;
+  font-size: 12px;
+  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+
 }
-.primary-hint {
-  flex: 0 0 auto;
+
+/* ---- sidebar ---- */
+.ix-side {
+  flex: 0 0 240px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  min-height: 0;
+}
+.ix-side-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  justify-content: space-between;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--n-divider-color);
-  font-size: 11px;
+  color: var(--n-text-color-2);
+  user-select: none;
 }
-.pk-tag {
-  font-weight: 600;
-  color: var(--n-info-color);
+.ix-side-tools {
+  display: flex;
+  gap: 2px;
 }
-.pk-cols {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  color: var(--n-text-color-1);
-}
-.pk-note {
-  color: var(--n-text-color-3);
-}
-.ix-table-wrap {
+.ix-list {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  padding: 4px 0;
 }
-.ix-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  font-size: 12px;
-  table-layout: fixed;
-}
-.ix-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--n-color-segment);
-  color: var(--n-text-color-2);
-  font-weight: 500;
-  text-align: left;
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--n-divider-color);
-  white-space: nowrap;
-  user-select: none;
-}
-.ix-table thead th.th-idx { text-align: right; color: var(--n-text-color-2); }
-.ix-table tbody td {
-  padding: 3px 6px;
-  vertical-align: middle;
-  border-bottom: 1px solid var(--n-divider-color);
-}
-.ix-table tbody td.td-idx {
-  text-align: right;
+.ix-empty {
+  padding: 16px;
+  text-align: center;
   color: var(--n-text-color-3);
+}
+.ix-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-left: 3px solid transparent;
+  cursor: pointer;
   user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
 }
-.ix-table tbody td.td-center { text-align: center; }
-.ix-table tbody td.td-actions {
-  text-align: right;
+.ix-item:hover {
+  background: var(--n-hover-color);
 }
-.ix-table tbody td.td-actions :deep(.n-button) {
-  padding: 0 4px;
-  min-width: 20px;
+.ix-item.selected {
+  background: var(--n-action-color, var(--n-hover-color));
+  border-left-color: var(--n-color-info, #3b8ee0);
 }
-.ix-table tbody tr:hover td { background: var(--n-hover-color); }
-.ix-table tbody tr.is-new td:first-child::before {
+.ix-item.is-new .ix-name::before {
   content: '+';
   color: var(--n-success-color);
   margin-right: 2px;
 }
-.ix-toolbar {
-  padding: 6px 8px;
-  border-top: 1px solid var(--n-divider-color);
+.ix-icon {
+  display: inline-block;
+  min-width: 14px;
+  text-align: center;
+  font-style: italic;
+  font-weight: 600;
+  color: var(--n-text-color-3);
   flex: 0 0 auto;
 }
+.ix-icon.is-unique {
+  color: var(--n-color-info, #3b8ee0);
+}
+.ix-name {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--n-text-color-1);
+}
+.ix-detail {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--n-text-color-3);
+  font-size: 11px;
+}
 
-/* ---- native select / input ---- */
-.native-sel,
-.native-input {
+/* ---- detail pane ---- */
+.ix-detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ix-empty-detail {
+  margin: auto;
+  color: var(--n-text-color-3);
+}
+.pk-hint {
+  padding: 4px 8px;
+  border-radius: 3px;
+  background: var(--n-action-color, var(--n-hover-color));
+  color: var(--n-text-color-3);
+  font-size: 11px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.row.top {
+  align-items: flex-start;
+}
+.label {
+  flex: 0 0 40px;
+  color: var(--n-text-color-2);
+  font-size: 12px;
+}
+.inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+
+/* ---- column editor (split) ---- */
+.col-wrapper {
+  flex: 1 1 auto;
+  display: flex;
+  border: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border-radius: 3px;
+  min-height: 160px;
+  max-height: 240px;
+  overflow: hidden;
+  background: var(--n-input-color, var(--n-card-color));
+}
+.col-left {
+  border-right: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  flex: 0 0 130px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.col-tools {
+  display: flex;
+  gap: 2px;
+  padding: 3px 4px;
+  border-bottom: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+}
+.col-items {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 2px 0;
+}
+.col-item {
+  padding: 3px 8px 3px 10px;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  user-select: none;
+  color: var(--n-text-color-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.col-item:hover {
+  background: var(--n-hover-color);
+}
+.col-item.active {
+  background: var(--n-action-color, var(--n-hover-color));
+  border-left-color: var(--n-color-info, #3b8ee0);
+}
+.col-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--n-text-color-3);
+  font-size: 11px;
+}
+.col-right {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.col-empty-detail {
+  margin: auto;
+  color: var(--n-text-color-3);
+  font-size: 11px;
+}
+.col-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.col-label {
+  flex: 0 0 36px;
+  color: var(--n-text-color-2);
+}
+
+/* ---- icon button (sidebar & col tools) ---- */
+.icon-btn {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--n-text-color-2);
+  font-size: 13px;
+  line-height: 1;
+  border-radius: 3px;
+  cursor: pointer;
+  padding: 0;
+}
+.icon-btn:hover:not(:disabled) {
+  background: var(--n-hover-color);
+  border-color: var(--n-border-color, rgba(127,127,127,0.2));
+  color: var(--n-text-color-1);
+}
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---- native select ---- */
+.native-sel {
   font-size: 12px;
   font-family: inherit;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   padding: 2px 4px;
-  border: 1px solid var(--n-border-color);
+  border: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
   border-radius: 3px;
   background: var(--n-input-color, var(--n-card-color));
   color: var(--n-text-color-1);
@@ -249,17 +617,8 @@ const primaryDisplay = computed(() => props.modelValue.find((ix) => ix.primary))
   cursor: pointer;
   line-height: 1.5;
 }
-.native-sel:disabled,
-.native-input:disabled {
+.native-sel:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 120ms ease;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
 }
 </style>

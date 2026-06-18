@@ -224,11 +224,40 @@ export class ForeignKeyInfo {
 }
 
 /**
+ * IndexColumn is one column entry inside an index, with its sort direction.
+ */
+export class IndexColumn {
+    "name": string;
+
+    /**
+     * ASC | DESC | "" (HASH / unsortable)
+     */
+    "order"?: string;
+
+    /** Creates a new IndexColumn instance. */
+    constructor($$source: Partial<IndexColumn> = {}) {
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new IndexColumn instance from a string or object.
+     */
+    static createFrom($$source: any = {}): IndexColumn {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new IndexColumn($$parsedSource as Partial<IndexColumn>);
+    }
+}
+
+/**
  * IndexInfo describes one index on a table.
  */
 export class IndexInfo {
     "name": string;
-    "columns": string[];
+    "columns": IndexColumn[];
     "unique": boolean;
     "primary": boolean;
 
@@ -236,6 +265,11 @@ export class IndexInfo {
      * BTREE, HASH, FULLTEXT, ...
      */
     "type"?: string;
+
+    /**
+     * index comment
+     */
+    "comment"?: string;
 
     /** Creates a new IndexInfo instance. */
     constructor($$source: Partial<IndexInfo> = {}) {
@@ -259,7 +293,7 @@ export class IndexInfo {
      * Creates a new IndexInfo instance from a string or object.
      */
     static createFrom($$source: any = {}): IndexInfo {
-        const $$createField1_0 = $$createType0;
+        const $$createField1_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
             $$parsedSource["columns"] = $$createField1_0($$parsedSource["columns"]);
@@ -512,3 +546,5 @@ export class ViewInfo {
 
 // Private type creation functions
 const $$createType0 = $Create.Array($Create.Any);
+const $$createType1 = IndexColumn.createFrom;
+const $$createType2 = $Create.Array($$createType1);

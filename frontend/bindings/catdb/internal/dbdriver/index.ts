@@ -7,6 +7,7 @@ export {
     ConnParamField,
     ExecResult,
     ForeignKeyInfo,
+    IndexColumn,
     IndexInfo,
     LogicalType,
     RoutineInfo,

@@ -140,13 +140,20 @@ type ViewInfo struct {
 	Comment string `json:"comment,omitempty"`
 }
 
+// IndexColumn is one column entry inside an index, with its sort direction.
+type IndexColumn struct {
+	Name  string `json:"name"`
+	Order string `json:"order,omitempty"` // ASC | DESC | "" (HASH / unsortable)
+}
+
 // IndexInfo describes one index on a table.
 type IndexInfo struct {
-	Name    string   `json:"name"`
-	Columns []string `json:"columns"`
-	Unique  bool     `json:"unique"`
-	Primary bool     `json:"primary"`
-	Type    string   `json:"type,omitempty"` // BTREE, HASH, FULLTEXT, ...
+	Name    string        `json:"name"`
+	Columns []IndexColumn `json:"columns"`
+	Unique  bool          `json:"unique"`
+	Primary bool          `json:"primary"`
+	Type    string        `json:"type,omitempty"`    // BTREE, HASH, FULLTEXT, ...
+	Comment string        `json:"comment,omitempty"` // index comment
 }
 
 // ForeignKeyInfo describes one FK constraint.

@@ -294,17 +294,29 @@ export const BASE_TYPE_GROUPS: { label: string; types: string[] }[] = [
   },
 ]
 
+/**
+ * One column inside an index draft. `order` is "ASC" / "DESC" / "" — empty
+ * means the user hasn't picked a direction, which in MySQL maps to "NONE"
+ * (omits the sort modifier so the engine picks the default, typically ASC).
+ */
+export interface IndexColumnDraft {
+  name: string
+  order: string
+}
+
 export interface IndexDraft {
   _key: string
   origName: string
 
   name: string
-  columns: string[]
+  columns: IndexColumnDraft[]
   unique: boolean
   /** PRIMARY indexes are handled by the PK pipeline, not here. */
   primary: boolean
   /** BTREE / HASH / FULLTEXT — empty string falls back to default BTREE. */
   type: string
+  /** Index COMMENT clause; empty string = no clause. */
+  comment: string
 }
 
 export interface ForeignKeyDraft {
@@ -359,10 +371,14 @@ export function indexToDraft(ix: IndexInfo): IndexDraft {
     _key: nextKey(),
     origName: ix.name,
     name: ix.name,
-    columns: [...(ix.columns ?? [])],
+    columns: (ix.columns ?? []).map((c) => ({
+      name: c.name,
+      order: (c.order ?? '').toUpperCase(),
+    })),
     unique: !!ix.unique,
     primary: !!ix.primary,
     type: ix.type ?? '',
+    comment: ix.comment ?? '',
   }
 }
 
@@ -415,6 +431,7 @@ export function emptyIndexDraft(): IndexDraft {
     unique: false,
     primary: false,
     type: '',
+    comment: '',
   }
 }
 
@@ -628,18 +645,39 @@ function arraysEqual(a: string[], b: string[]): boolean {
 // ---- index diff -----------------------------------------------------------
 
 function indexFromDraft(d: IndexDraft, fq: string): string {
-  if (!d.name.trim() || d.columns.length === 0) return ''
-  const cols = d.columns.map(quoteIdent).join(', ')
+  // Filter out blank column rows the user added but didn't fill in.
+  const cols = (d.columns ?? []).filter((c) => c.name.trim() !== '')
+  if (!d.name.trim() || cols.length === 0) return ''
+  const colSpec = cols
+    .map((c) => {
+      const dir = (c.order ?? '').toUpperCase()
+      const suffix = dir === 'ASC' || dir === 'DESC' ? ` ${dir}` : ''
+      return `${quoteIdent(c.name.trim())}${suffix}`
+    })
+    .join(', ')
   const kw = d.unique ? 'UNIQUE INDEX' : 'INDEX'
   const using = d.type && d.type.toUpperCase() !== 'BTREE' ? ` USING ${d.type.toUpperCase()}` : ''
-  return `ALTER TABLE ${fq} ADD ${kw} ${quoteIdent(d.name.trim())} (${cols})${using};`
+  const comment = d.comment && d.comment.trim() !== '' ? ` COMMENT ${quoteString(d.comment)}` : ''
+  return `ALTER TABLE ${fq} ADD ${kw} ${quoteIdent(d.name.trim())} (${colSpec})${using}${comment};`
+}
+
+function indexColumnsEqual(a: IndexColumnDraft[], b: { name: string; order?: string }[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].name !== b[i].name) return false
+    const ao = (a[i].order ?? '').toUpperCase()
+    const bo = (b[i].order ?? '').toUpperCase()
+    if (ao !== bo) return false
+  }
+  return true
 }
 
 function indexesEqual(a: IndexDraft, b: IndexInfo): boolean {
   if (a.name !== b.name) return false
   if (!!a.unique !== !!b.unique) return false
   if ((a.type ?? '').toUpperCase() !== (b.type ?? '').toUpperCase()) return false
-  if (!arraysEqual(a.columns, b.columns ?? [])) return false
+  if ((a.comment ?? '') !== (b.comment ?? '')) return false
+  if (!indexColumnsEqual(a.columns, b.columns ?? [])) return false
   return true
 }
 
@@ -671,7 +709,8 @@ export function diffIndexes(
 
   // ADD: every draft row whose definition differs from its original counterpart.
   for (const d of draftNonPK) {
-    if (!d.name.trim() || d.columns.length === 0) continue
+    const filledCols = (d.columns ?? []).filter((c) => c.name.trim() !== '')
+    if (!d.name.trim() || filledCols.length === 0) continue
     if (!d.origName) {
       // brand-new index
       const stmt = indexFromDraft(d, fq)
