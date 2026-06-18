@@ -4,10 +4,10 @@
 // 渲染（虚拟化、列宽、选区高亮、键盘导航）全部下沉到 DataGrid；
 // 右键菜单走 Wails 原生（CLAUDE.md 规则 11），状态通过 setActiveGridContext 同步。
 import { onBeforeUnmount, onMounted } from 'vue'
-import DataGrid from './data-grid/DataGrid.vue'
-import { useTableSelection, type SelectionRange } from '../composables/useTableSelection'
-import { setActiveGridContext } from '../api/gridContextMenu'
-import type { QueryColumn } from '../stores/query'
+import DataGrid from '../data-grid/DataGrid.vue'
+import { useTableSelection, type SelectionRange } from '../../composables/useTableSelection'
+import { setActiveGridContext } from '../../api/gridContextMenu'
+import type { QueryColumn } from '../../stores/query'
 
 const props = defineProps<{
   columns: QueryColumn[]

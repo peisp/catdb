@@ -22,8 +22,8 @@ import {
   NTabs,
   useMessage,
 } from 'naive-ui'
-import type { ConnectionDraft, ConnectionProfile, DriverInfo } from '../api/connections'
-import { useConnectionsStore } from '../stores/connections'
+import type { ConnectionDraft, ConnectionProfile, DriverInfo } from '../../api/connections'
+import { useConnectionsStore } from '../../stores/connections'
 
 const props = defineProps<{
   driver: DriverInfo

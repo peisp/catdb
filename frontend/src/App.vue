@@ -8,8 +8,8 @@ import { computed, onMounted, ref } from 'vue'
 import { NConfigProvider, NMessageProvider, NDialogProvider, NNotificationProvider, darkTheme } from 'naive-ui'
 import { useThemeStore } from './stores/theme'
 import { themeOverrides, darkThemeOverrides } from './styles/theme'
-import AppShell from './components/AppShell.vue'
-import ConnectionEditorWindow from './components/ConnectionEditorWindow.vue'
+import AppShell from './components/layout/AppShell.vue'
+import ConnectionEditorWindow from './components/connection/ConnectionEditorWindow.vue'
 
 const theme = useThemeStore()
 const naiveTheme = computed(() => (theme.mode === 'dark' ? darkTheme : null))

@@ -13,7 +13,7 @@
 // truth for PK is the column-level checkbox in ColumnsTab.
 import { computed, ref, watch } from 'vue'
 import { NCheckbox, NInput } from 'naive-ui'
-import ResizeHandle from '../ResizeHandle.vue'
+import ResizeHandle from '../shared/ResizeHandle.vue'
 import {
   emptyIndexDraft,
   type ColumnDraft,

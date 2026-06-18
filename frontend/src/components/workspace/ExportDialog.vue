@@ -17,8 +17,8 @@ import {
   NSpin,
   useMessage,
 } from 'naive-ui'
-import { system as systemApi, transfer as transferApi } from '../api'
-import type { ExportOptions } from '../api/transfer'
+import { system as systemApi, transfer as transferApi } from '../../api'
+import type { ExportOptions } from '../../api/transfer'
 
 const props = defineProps<{
   show: boolean

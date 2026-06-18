@@ -10,12 +10,12 @@
 //   - 乐观：先本地写入，applyChange 失败则 reload 整页恢复真值
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NAlert, NButton, NSelect, NSpin, NTag, useMessage } from 'naive-ui'
-import { edit as editApi, metadata as metaApi } from '../api'
-import { on } from '../api/events'
-import { setActiveGridContext } from '../api/gridContextMenu'
-import { useTableSelection, type SelectionRange } from '../composables/useTableSelection'
-import type { BrowseResult, ColumnMeta } from '../api/metadata'
-import DataGrid from './data-grid/DataGrid.vue'
+import { edit as editApi, metadata as metaApi } from '../../api'
+import { on } from '../../api/events'
+import { setActiveGridContext } from '../../api/gridContextMenu'
+import { useTableSelection, type SelectionRange } from '../../composables/useTableSelection'
+import type { BrowseResult, ColumnMeta } from '../../api/metadata'
+import DataGrid from '../data-grid/DataGrid.vue'
 import ExportDialog from './ExportDialog.vue'
 import FilterBar from './FilterBar.vue'
 

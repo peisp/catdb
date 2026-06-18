@@ -3,10 +3,10 @@
 // changes (connect/disconnect/switch). Shows connection name, connection
 // status, server version/user, theme mode, and build tag.
 import { computed, ref, watch } from 'vue'
-import { connections as connectionsApi } from '../api'
-import { useConnectionsStore } from '../stores/connections'
-import { useThemeStore } from '../stores/theme'
-import type { ServerInfo } from '../api/connections'
+import { connections as connectionsApi } from '../../api'
+import { useConnectionsStore } from '../../stores/connections'
+import { useThemeStore } from '../../stores/theme'
+import type { ServerInfo } from '../../api/connections'
 
 const conns = useConnectionsStore()
 const theme = useThemeStore()

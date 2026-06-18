@@ -13,10 +13,10 @@
 //     collapsing — you have to clearly intend to drag further.
 import { NSplit } from 'naive-ui'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import ConnectionSidebar from './ConnectionSidebar.vue'
+import ConnectionSidebar from '../connection/ConnectionSidebar.vue'
 import ObjectTree from './ObjectTree.vue'
-import ResizeHandle from './ResizeHandle.vue'
-import type { ConnectionProfile, DriverInfo } from '../api/connections'
+import ResizeHandle from '../shared/ResizeHandle.vue'
+import type { ConnectionProfile, DriverInfo } from '../../api/connections'
 
 defineProps<{ activeConn: ConnectionProfile | null }>()
 

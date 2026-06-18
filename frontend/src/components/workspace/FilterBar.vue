@@ -4,7 +4,7 @@
 // 双输入框 + 列名自动补全 + 历史记录。
 // 按回车触发 @apply，清空按钮触发 @clear。
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { ColumnMeta } from '../api/metadata'
+import type { ColumnMeta } from '../../api/metadata'
 
 const props = defineProps<{
   connId: string

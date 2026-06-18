@@ -19,20 +19,20 @@ import { EditorView } from '@codemirror/view'
 import { sql, MySQL } from '@codemirror/lang-sql'
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
 import { oneDark } from '@codemirror/theme-one-dark'
-import { metadata as metaApi, query as queryApi } from '../api'
-import type { TableSummary } from '../api/metadata'
-import { useThemeStore } from '../stores/theme'
+import { metadata as metaApi, query as queryApi } from '../../api'
+import type { TableSummary } from '../../api/metadata'
+import { useThemeStore } from '../../stores/theme'
 import {
   buildAlterPlan,
   parseTableCommentFromDDL,
   summaryToDraft,
   type StructureDraft,
-} from '../lib/alterPlan'
-import AlterSqlPanel from './structure/AlterSqlPanel.vue'
-import ColumnsTab from './structure/ColumnsTab.vue'
-import IndexesTab from './structure/IndexesTab.vue'
-import ForeignKeysTab from './structure/ForeignKeysTab.vue'
-import OptionsTab from './structure/OptionsTab.vue'
+} from '../../lib/alterPlan'
+import AlterSqlPanel from '../structure/AlterSqlPanel.vue'
+import ColumnsTab from '../structure/ColumnsTab.vue'
+import IndexesTab from '../structure/IndexesTab.vue'
+import ForeignKeysTab from '../structure/ForeignKeysTab.vue'
+import OptionsTab from '../structure/OptionsTab.vue'
 
 const props = defineProps<{
   connId: string

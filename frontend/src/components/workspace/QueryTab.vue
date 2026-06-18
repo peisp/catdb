@@ -27,9 +27,9 @@ import SqlEditor from './SqlEditor.vue'
 import ResultTable from './ResultTable.vue'
 import ExportDialog from './ExportDialog.vue'
 import { format } from 'sql-formatter'
-import { useQueryStore } from '../stores/query'
-import { useMetadataStore } from '../stores/metadata'
-import type { Capabilities } from '../api/query'
+import { useQueryStore } from '../../stores/query'
+import { useMetadataStore } from '../../stores/metadata'
+import type { Capabilities } from '../../api/query'
 import type { SQLNamespace } from '@codemirror/lang-sql'
 
 const props = defineProps<{

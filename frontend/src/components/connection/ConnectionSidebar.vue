@@ -12,8 +12,8 @@ import {
   useDialog,
   useMessage,
 } from 'naive-ui'
-import type { ConnectionProfile, DriverInfo } from '../api/connections'
-import { useConnectionsStore } from '../stores/connections'
+import type { ConnectionProfile, DriverInfo } from '../../api/connections'
+import { useConnectionsStore } from '../../stores/connections'
 
 const emit = defineEmits<{
   (e: 'select', conn: ConnectionProfile): void

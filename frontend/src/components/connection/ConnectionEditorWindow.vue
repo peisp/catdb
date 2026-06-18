@@ -16,9 +16,9 @@ import { computed, onMounted, ref } from 'vue'
 import { Window } from '@wailsio/runtime'
 import { NSpin, useMessage } from 'naive-ui'
 import ConnectionForm from './ConnectionForm.vue'
-import { useConnectionsStore } from '../stores/connections'
-import { connections as connectionsApi, system as systemApi } from '../api'
-import type { ConnectionProfile, DriverInfo } from '../api/connections'
+import { useConnectionsStore } from '../../stores/connections'
+import { connections as connectionsApi, system as systemApi } from '../../api'
+import type { ConnectionProfile, DriverInfo } from '../../api/connections'
 
 const store = useConnectionsStore()
 const message = useMessage()

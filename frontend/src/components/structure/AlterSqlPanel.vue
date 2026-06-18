@@ -13,7 +13,7 @@ import { sql, MySQL } from '@codemirror/lang-sql'
 import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { useThemeStore } from '../../stores/theme'
-import ResizeHandle from '../ResizeHandle.vue'
+import ResizeHandle from '../shared/ResizeHandle.vue'
 
 const props = defineProps<{
   /** Generated SQL statements (already terminated with `;`). */

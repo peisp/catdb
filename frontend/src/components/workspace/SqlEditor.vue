@@ -44,9 +44,9 @@ import {
   historyKeymap,
   indentWithTab,
 } from '@codemirror/commands'
-import { useThemeStore } from '../stores/theme'
-import { mysqlExtraCompletions } from '../editor/mysqlCompletions'
-import { emit as wailsEmit } from '../api/events'
+import { useThemeStore } from '../../stores/theme'
+import { mysqlExtraCompletions } from '../../editor/mysqlCompletions'
+import { emit as wailsEmit } from '../../api/events'
 
 const props = defineProps<{
   modelValue: string

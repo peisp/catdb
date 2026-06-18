@@ -3,7 +3,7 @@
 // active. Keeps the desktop-spec density (UI_SPEC §3) — no big hero card.
 import { computed } from 'vue'
 import { NButton, NSpace } from 'naive-ui'
-import { useConnectionsStore } from '../stores/connections'
+import { useConnectionsStore } from '../../stores/connections'
 
 const emit = defineEmits<{ (e: 'new'): void }>()
 const store = useConnectionsStore()

@@ -6,11 +6,11 @@
 // 双击表所在的行跳转到该表的数据浏览 tab。
 import { computed, ref, watch } from 'vue'
 import { NButton, NSpin, useMessage } from 'naive-ui'
-import { metadata as metaApi } from '../api'
-import { useQueryStore } from '../stores/query'
-import { LogicalType } from '../../bindings/catdb/internal/dbdriver/models'
-import type { ColumnMeta, TableInfo } from '../api/metadata'
-import DataGrid from './data-grid/DataGrid.vue'
+import { metadata as metaApi } from '../../api'
+import { useQueryStore } from '../../stores/query'
+import { LogicalType } from '../../../bindings/catdb/internal/dbdriver/models'
+import type { ColumnMeta, TableInfo } from '../../api/metadata'
+import DataGrid from '../data-grid/DataGrid.vue'
 
 const props = defineProps<{
   connId: string

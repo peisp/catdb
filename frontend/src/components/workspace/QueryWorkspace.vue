@@ -10,10 +10,10 @@ import QueryTab from './QueryTab.vue'
 import TableBrowser from './TableBrowser.vue'
 import TableStructure from './TableStructure.vue'
 import TablesOverview from './TablesOverview.vue'
-import type { ConnectionProfile } from '../api/connections'
-import type { QueryTab as QueryTabInfo } from '../stores/query'
-import { useQueryStore } from '../stores/query'
-import { setActiveTabContext } from '../api/tabContextMenu'
+import type { ConnectionProfile } from '../../api/connections'
+import type { QueryTab as QueryTabInfo } from '../../stores/query'
+import { useQueryStore } from '../../stores/query'
+import { setActiveTabContext } from '../../api/tabContextMenu'
 
 const props = defineProps<{
   connection: ConnectionProfile

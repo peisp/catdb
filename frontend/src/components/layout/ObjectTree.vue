@@ -15,10 +15,10 @@ import {
   useMessage,
 } from 'naive-ui'
 import type { TreeOption } from 'naive-ui'
-import type { ConnectionProfile } from '../api/connections'
-import { metadata as metaApi } from '../api'
-import { useMetadataStore } from '../stores/metadata'
-import { useConnectionsStore } from '../stores/connections'
+import type { ConnectionProfile } from '../../api/connections'
+import { metadata as metaApi } from '../../api'
+import { useMetadataStore } from '../../stores/metadata'
+import { useConnectionsStore } from '../../stores/connections'
 
 const props = defineProps<{ connection: ConnectionProfile }>()
 const emit = defineEmits<{
