@@ -1,9 +1,9 @@
 <script setup lang="ts">
 // ObjectTree — per-connection database/table/column tree. Lazy loads each
 // level via MetadataService. Single-click a database node → open the
-// tables overview tab. Double-click a table → open the data browser
-// in the workspace. Right-click → action menu (M4 will replace this with
-// the native Wails context menu).
+// tables overview tab. Double-click any non-leaf node → expand/collapse
+// it. Right-click → action menu (M4 will replace this with the native
+// Wails context menu).
 import { computed, ref, watch } from 'vue'
 import {
   NButton,
@@ -206,14 +206,23 @@ async function onCtxSelect(key: string) {
 
 function onDblclick(_: MouseEvent, node: TreeOption) {
   const m = (node as any).extra as TreeMeta
+  // 表/视图 → 打开数据浏览
   if (m.kind === 'table' || m.kind === 'view') {
-    emit('open-data', { db: m.db!, table: m.table! })
+    if (m.db && m.table) emit('open-data', { db: m.db, table: m.table })
     return
   }
-  // 非叶子节点的展开/收起交给 n-tree 自带的 expandOnClick 处理。
-  // 这里再手动 toggle expandedKeys 会和 n-tree 在 dblclick 的两次 click
-  // 中分别 toggle 的行为打架（最终展开状态翻转回原状），同时多余的
-  // expandedKeys 变动还会触发 n-tree 内部的 onLoad 重扫。
+  // 叶子节点：没有可展开的内容
+  if (m.kind === 'column') return
+  // 切换展开/收起状态
+  const key = node.key as string
+  const idx = expandedKeys.value.indexOf(key)
+  if (idx >= 0) {
+    const keys = [...expandedKeys.value]
+    keys.splice(idx, 1)
+    expandedKeys.value = keys
+  } else {
+    expandedKeys.value = [...expandedKeys.value, key]
+  }
 }
 
 function onClick(_: MouseEvent, node: TreeOption) {
