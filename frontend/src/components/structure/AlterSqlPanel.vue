@@ -13,6 +13,7 @@ import { sql, MySQL } from '@codemirror/lang-sql'
 import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { useThemeStore } from '../../stores/theme'
+import ResizeHandle from '../ResizeHandle.vue'
 
 const props = defineProps<{
   /** Generated SQL statements (already terminated with `;`). */
@@ -167,9 +168,9 @@ function onReset() {
     class="alter-panel"
     :style="{ height: panelHeight + 'px' }"
   >
-    <div
-      class="resize-handle"
-      :class="{ active: dragging }"
+    <ResizeHandle
+      orientation="horizontal"
+      :active="dragging"
       @pointerdown="onResizePointerDown"
       @pointermove="onResizePointerMove"
       @pointerup="onResizePointerUp"
@@ -248,39 +249,5 @@ function onReset() {
   justify-content: center;
   align-items: center;
   min-height: 60px;
-}
-
-/* ---- resize handle ---- */
-.resize-handle {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  cursor: row-resize;
-  z-index: 10;
-  touch-action: none;
-  background: transparent;
-  transition: background-color 0.2s ease;
-}
-.resize-handle:hover,
-.resize-handle.active {
-  background-color: var(--n-primary-color-hover, rgba(51, 136, 255, 0.3));
-}
-.resize-handle::after {
-  content: '';
-  position: absolute;
-  top: 1px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 32px;
-  height: 2px;
-  border-radius: 1px;
-  background: transparent;
-  transition: background-color 0.2s ease;
-}
-.resize-handle:hover::after,
-.resize-handle.active::after {
-  background: var(--n-primary-color, #3888ff);
 }
 </style>

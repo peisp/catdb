@@ -11,10 +11,11 @@
 //     entirely. The gap between min (150) and the collapse threshold (50)
 //     is intentional: it lets you snap to min without accidentally
 //     collapsing — you have to clearly intend to drag further.
-import { NSplit, useThemeVars } from 'naive-ui'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { NSplit } from 'naive-ui'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import ConnectionSidebar from './ConnectionSidebar.vue'
 import ObjectTree from './ObjectTree.vue'
+import ResizeHandle from './ResizeHandle.vue'
 import type { ConnectionProfile, DriverInfo } from '../api/connections'
 
 defineProps<{ activeConn: ConnectionProfile | null }>()
@@ -33,16 +34,6 @@ const DEFAULT_WIDTH = 200
 const MIN_WIDTH = 180
 const COLLAPSE_THRESHOLD = 50
 const maxWidth = () => Math.max(MIN_WIDTH, Math.floor(window.innerWidth * 0.3))
-
-// Pull real theme colors so the resize handle matches <n-split>'s trigger
-// exactly. Scoped `var(--n-border-color)` does NOT resolve here — those vars
-// are component-local in Naive UI's CSS-in-JS, so we have to bind them
-// inline from the merged theme.
-const themeVars = useThemeVars()
-const handleStyle = computed(() => ({
-  '--handle-idle': themeVars.value.borderColor,
-  '--handle-hover': themeVars.value.primaryColorHover,
-}))
 
 const width = ref(DEFAULT_WIDTH)
 const dragging = ref(false)
@@ -118,6 +109,7 @@ onBeforeUnmount(() => {
         :max="0.7"
         :min="0.2"
         :default-size="0.4"
+        :resize-trigger-size="4"
         class="sider-split"
       >
         <template #1>
@@ -135,6 +127,9 @@ onBeforeUnmount(() => {
             @open-tables-overview="(p) => emit('openTablesOverview', p)"
           />
         </template>
+        <template #resize-trigger>
+          <ResizeHandle orientation="horizontal" />
+        </template>
       </n-split>
       <ConnectionSidebar
         v-else
@@ -143,10 +138,9 @@ onBeforeUnmount(() => {
         @edit="(c) => emit('edit', c)"
       />
     </div>
-    <div
-      class="resize-handle"
-      :class="{ active: dragging }"
-      :style="handleStyle"
+    <ResizeHandle
+      orientation="vertical"
+      :active="dragging"
       title="拖动调整宽度，拖出最小宽度可折叠"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
@@ -163,6 +157,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  border-right: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
   background: var(--n-color);
   display: flex;
   flex-direction: column;
@@ -181,24 +176,10 @@ onBeforeUnmount(() => {
 .sider-split { height: 100%; min-height: 0; }
 .sider-split :deep(.n-split-pane) { overflow: hidden; min-width: 0; min-height: 0; }
 
-/* Mirrors <n-split>'s resize-trigger so the sidebar's right-edge drag
-   affordance feels identical to the vertical split above it: a 3px bar
-   that's always visible in border-color and transitions to
-   primary-color-hover while hovered or dragging. */
-.resize-handle {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 3px;
-  height: 100%;
-  cursor: col-resize;
-  z-index: 10;
-  touch-action: none;
-  background-color: var(--handle-idle);
-  transition: background-color 0.3s cubic-bezier(.4, 0, .2, 1);
-}
-.resize-handle:hover,
-.resize-handle.active {
-  background-color: var(--handle-hover);
-}
+/* n-split's resize-trigger slot positions our ResizeHandle inside the
+   trigger wrapper. The wrapper is a flex item (position: static by
+   default); promote it to a positioning context so the handle's
+   absolute layout doesn't escape. Wrapper height already matches the
+   handle (set via :resize-trigger-size). */
+.sider-split :deep(.n-split__resize-trigger-wrapper) { position: relative; }
 </style>

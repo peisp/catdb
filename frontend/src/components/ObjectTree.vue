@@ -395,7 +395,8 @@ async function onRefresh() {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  border-bottom: 1px solid var(--n-border-color);
+  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border-bottom: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
   min-height: 30px;
 }
 .header .title { opacity: 0.75; }
