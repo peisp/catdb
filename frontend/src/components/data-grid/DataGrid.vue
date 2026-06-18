@@ -217,8 +217,7 @@ const tableTheme = computed(() => {
       hover: { cellBgColor: vars.hoverColor },
     },
     frameStyle: {
-      borderColor: vars.borderColor,
-      borderLineWidth: 1,
+      borderLineWidth: 0,
       cornerRadius: 3,
     },
     columnResize: {
@@ -543,7 +542,6 @@ watch(
   min-height: 0;
   position: relative;
   overflow: hidden;
-  border: 1px solid var(--n-border-color);
   border-radius: 3px;
   background: var(--n-card-color, transparent);
 }
