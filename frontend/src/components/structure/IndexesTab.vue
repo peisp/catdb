@@ -13,6 +13,7 @@
 // truth for PK is the column-level checkbox in ColumnsTab.
 import { computed, ref, watch } from 'vue'
 import { NCheckbox, NInput } from 'naive-ui'
+import ResizeHandle from '../ResizeHandle.vue'
 import {
   emptyIndexDraft,
   type ColumnDraft,
@@ -33,6 +34,49 @@ const emit = defineEmits<{
 
 const selectedKey = ref<string | null>(null)
 const selectedColIdx = ref<number>(0)
+
+// ---- aside resize ---------------------------------------------------------
+
+const ixTabRef = ref<HTMLElement | null>(null)
+
+const SIDE_MIN = 20
+const SIDE_MAX = 50
+const sidePct = ref(25)
+const dragging = ref(false)
+
+let startX = 0
+let startPct = 0
+
+/** Capture pointer on the drag handle so move/up fire even outside it. */
+function onPointerDown(e: PointerEvent) {
+  dragging.value = true
+  startX = e.clientX
+  startPct = sidePct.value
+  const handle = e.currentTarget as HTMLElement
+  handle.setPointerCapture(e.pointerId)
+  handle.addEventListener('pointermove', onPointerMove)
+  handle.addEventListener('pointerup', onPointerUp)
+  handle.addEventListener('pointercancel', onPointerUp)
+}
+
+function calcSidePct(currentX: number, containerEl: HTMLElement) {
+  const rect = containerEl.getBoundingClientRect()
+  const dx = currentX - startX
+  return Math.round(startPct + (dx / rect.width) * 100)
+}
+
+function onPointerMove(e: PointerEvent) {
+  if (!ixTabRef.value) return
+  sidePct.value = Math.max(SIDE_MIN, Math.min(SIDE_MAX, calcSidePct(e.clientX, ixTabRef.value)))
+}
+
+function onPointerUp(e: PointerEvent) {
+  dragging.value = false
+  const handle = e.currentTarget as HTMLElement
+  handle.removeEventListener('pointermove', onPointerMove)
+  handle.removeEventListener('pointerup', onPointerUp)
+  handle.removeEventListener('pointercancel', onPointerUp)
+}
 
 const selectedIndex = computed(() =>
   props.modelValue.find((ix) => ix._key === selectedKey.value) ?? null,
@@ -179,9 +223,9 @@ const TYPE_OPTIONS = [
 </script>
 
 <template>
-  <div class="ix-tab">
+  <div ref="ixTabRef" class="ix-tab">
     <!-- Sidebar: index list -->
-    <aside class="ix-side">
+    <aside class="ix-side" :style="{ flex: `0 0 ${sidePct}%` }">
       <div class="ix-side-head">
         <span>索引</span>
         <div class="ix-side-tools">
@@ -215,11 +259,12 @@ const TYPE_OPTIONS = [
           <span class="ix-icon" :class="{ 'is-unique': ix.unique || ix.primary }">
             {{ ix.unique || ix.primary ? 'iu' : 'i' }}
           </span>
-          <span class="ix-name">{{ ix.name || '(未命名)' }}</span>
-          <span class="ix-detail">{{ previewLine(ix) }}</span>
+          <span class="ix-name" :title="ix.name || '(未命名)'">{{ ix.name || '(未命名)' }}</span>
+          <span class="ix-detail" :title="previewLine(ix)">{{ previewLine(ix) }}</span>
         </div>
         <div v-if="modelValue.length === 0" class="ix-empty">暂无索引</div>
       </div>
+      <ResizeHandle orientation="vertical" :active="dragging" @pointerdown="onPointerDown" />
     </aside>
 
     <!-- Detail pane -->
@@ -379,11 +424,14 @@ const TYPE_OPTIONS = [
 
 /* ---- sidebar ---- */
 .ix-side {
-  flex: 0 0 240px;
+  flex: 0 0 25%;
+  min-width: 180px;
+  max-width: 50%;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
   min-height: 0;
+  position: relative;
 }
 .ix-side-head {
   display: flex;
