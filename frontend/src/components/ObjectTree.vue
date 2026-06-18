@@ -89,7 +89,7 @@ watch(
   { immediate: true },
 )
 
-async function onLoad(node: TreeOption): Promise<void> {
+async function onLoad(node: TreeOption): Promise<boolean> {
   const meta = (node as any).extra as TreeMeta
   try {
     if (meta.kind === 'database') {
@@ -98,7 +98,7 @@ async function onLoad(node: TreeOption): Promise<void> {
         mkNode('Tables', { kind: 'tableGroup', db: meta.db }),
         mkNode('Views', { kind: 'viewGroup', db: meta.db }),
       ]
-      return
+      return true
     }
     if (meta.kind === 'tableGroup') {
       const tables = await store.ensureTables(props.connection.id, meta.db!)
@@ -107,14 +107,14 @@ async function onLoad(node: TreeOption): Promise<void> {
         child.isLeaf = false
         return child
       })
-      return
+      return true
     }
     if (meta.kind === 'viewGroup') {
       // Views are lighter — we expose them as leaves for now (M3 doesn't
       // need columns under a view to satisfy MVP acceptance).
       const views = await metaApi.listViews(props.connection.id, meta.db!)
       node.children = (views ?? []).map((v) => mkNode(v.name, { kind: 'view', db: meta.db, table: v.name }, true))
-      return
+      return true
     }
     if (meta.kind === 'table') {
       const cols = await store.ensureColumns(props.connection.id, meta.db!, meta.table!)
@@ -125,10 +125,19 @@ async function onLoad(node: TreeOption): Promise<void> {
           true,
         ),
       )
-      return
+      return true
     }
+    return true
   } catch (e) {
     message.error(`load failed: ${String(e)}`)
+    // 失败时必须把 children 写成空数组 + 返回 false，否则会陷入无限重试：
+    //   1) children 留空 → treemate 认为 shallowLoaded=false → n-tree
+    //      内部 watchEffect 每次 expandedKeys 变动都会再次 triggerLoading
+    //   2) 返回 undefined → n-tree 的 TreeNode.handleSwitcherClick 视为
+    //      加载成功，把 key push 到 expandedKeys，又触发上一条
+    // 设为空数组 + return false 同时切断两条触发路径；想重试走顶部 Refresh。
+    node.children = []
+    return false
   }
 }
 
@@ -201,15 +210,10 @@ function onDblclick(_: MouseEvent, node: TreeOption) {
     emit('open-data', { db: m.db!, table: m.table! })
     return
   }
-  // Toggle expand for non-leaf nodes (databases, groups).
-  if (node.isLeaf) return
-  const key = node.key as string
-  const idx = expandedKeys.value.indexOf(key)
-  if (idx === -1) {
-    expandedKeys.value.push(key)
-  } else {
-    expandedKeys.value.splice(idx, 1)
-  }
+  // 非叶子节点的展开/收起交给 n-tree 自带的 expandOnClick 处理。
+  // 这里再手动 toggle expandedKeys 会和 n-tree 在 dblclick 的两次 click
+  // 中分别 toggle 的行为打架（最终展开状态翻转回原状），同时多余的
+  // expandedKeys 变动还会触发 n-tree 内部的 onLoad 重扫。
 }
 
 function onClick(_: MouseEvent, node: TreeOption) {
