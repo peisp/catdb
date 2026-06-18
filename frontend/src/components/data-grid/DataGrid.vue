@@ -131,6 +131,44 @@ function pickEditor(col: ColumnMeta): string | undefined {
   }
 }
 
+// ---- 表头最小宽度：能完整放下「文本 + 排序 icon」 ----
+//
+// VTable 默认 headerStyle padding = [10, 16, 10, 16]（见 header-helper/style/Style.ts
+// 的 _defaultPadding），排序 icon 默认 16×16、marginLeft=3（见 icons.ts 的
+// sort_downward/sort_upward/sort_normal）。我们的 headerStyle 没覆盖 padding，
+// 所以左右各 16；不强行硬编码这些常量没意义，但变了再来同步。
+//
+// 字体取自上面 headerStyle：12px / weight 500 / 系统字体栈。
+const HEADER_PADDING_LR = 32 // 左右 padding 之和（16 + 16）
+const SORT_ICON_W = 16
+const SORT_ICON_GAP = 3 // icon.marginLeft
+const HEADER_FONT =
+  '500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif'
+
+let _measureCtx: CanvasRenderingContext2D | null = null
+function getMeasureCtx(): CanvasRenderingContext2D | null {
+  if (_measureCtx) return _measureCtx
+  const c = document.createElement('canvas')
+  const ctx = c.getContext('2d')
+  if (!ctx) return null
+  ctx.font = HEADER_FONT
+  _measureCtx = ctx
+  return ctx
+}
+
+function measureHeaderTextWidth(text: string): number {
+  const ctx = getMeasureCtx()
+  if (!ctx) return text.length * 8 // fallback：等宽近似
+  return ctx.measureText(text).width
+}
+
+function headerMinWidth(col: ColumnMeta): number {
+  const textW = measureHeaderTextWidth(col.name)
+  const iconW = props.sortable ? SORT_ICON_W + SORT_ICON_GAP : 0
+  // +1 px 留余量，避免亚像素渲染导致最后一个字符被裁。
+  return Math.ceil(textW + iconW + HEADER_PADDING_LR + 1)
+}
+
 // ---- 列类型 → 对齐方式 ----
 function pickAlign(col: ColumnMeta): 'left' | 'right' | 'center' {
   switch (col.logicalType) {
@@ -209,7 +247,7 @@ const tableOptions = computed<any>(() => {
     field: idx,
     title: c.name,
     width: props.defaultColumnWidth,
-    minWidth: 60,
+    minWidth: headerMinWidth(c),
     editor: props.editable ? pickEditor(c) : undefined,
     style: (args: any) => {
       const align = pickAlign(c)
