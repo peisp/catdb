@@ -162,7 +162,7 @@ function openCtx(e: MouseEvent, tab: QueryTabInfo) {
 }
 .ws :deep(.n-tabs-tab-pad), .ws :deep(.n-tabs-tab) { padding-top: 4px; padding-bottom: 4px; }
 .ws :deep(.n-tabs-tab) { padding-left: 8px; }
-.ws :deep(.n-tabs-nav) { background: var(--n-color); flex: 0 0 auto; padding: 6px;}
+.ws :deep(.n-tabs-nav) { flex: 0 0 auto; padding: 6px;}
 /* Pane wrapper is the actual culprit when broken — give it explicit
    flex: 1 1 0 so the wrapper has a definite height equal to (n-tabs height
    - nav height). With overflow: hidden anything taller inside is clipped. */
