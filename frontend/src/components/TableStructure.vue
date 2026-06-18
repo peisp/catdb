@@ -1,19 +1,38 @@
 <script setup lang="ts">
-// TableStructure — Columns | Indexes | Foreign Keys | DDL panels driven by
-// MetadataService.GetTableSummary + GetCreateTable. Read-only — actual
-// schema changes (ALTER TABLE) are M5+ territory.
+// TableStructure — editable Columns / Indexes / Foreign Keys / Options
+// panels driven by MetadataService.GetTableSummary + GetCreateTable.
+//
+// Editing happens against a local StructureDraft (see lib/alterPlan.ts) that
+// snapshots the original column/index/FK lists when the table is loaded. As
+// the user edits, buildAlterPlan() diffs original-vs-draft and emits MySQL
+// ALTER statements; those statements land in the AlterSqlPanel under each
+// tab. Apply executes them sequentially via QueryService and reloads.
+//
+// We chose front-end-side ALTER generation deliberately: instant preview, no
+// IPC roundtrip on each keystroke, and the diff is a pure-TS module that can
+// be unit-tested. When a second driver lands (e.g. PostgreSQL), this should
+// move to a Dialect.BuildAlterTable on the Go side. For MVP it lives here.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { NEmpty, NSpin, NTabPane, NTabs, useMessage } from 'naive-ui'
+import { NSpin, NTabPane, NTabs, useMessage } from 'naive-ui'
 import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { sql, MySQL } from '@codemirror/lang-sql'
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
 import { oneDark } from '@codemirror/theme-one-dark'
-import { metadata as metaApi } from '../api'
-import { LogicalType } from '../../bindings/catdb/internal/dbdriver/models'
-import type { ColumnMeta, TableSummary } from '../api/metadata'
+import { metadata as metaApi, query as queryApi } from '../api'
+import type { TableSummary } from '../api/metadata'
 import { useThemeStore } from '../stores/theme'
-import DataGrid from './data-grid/DataGrid.vue'
+import {
+  buildAlterPlan,
+  parseTableCommentFromDDL,
+  summaryToDraft,
+  type StructureDraft,
+} from '../lib/alterPlan'
+import AlterSqlPanel from './structure/AlterSqlPanel.vue'
+import ColumnsTab from './structure/ColumnsTab.vue'
+import IndexesTab from './structure/IndexesTab.vue'
+import ForeignKeysTab from './structure/ForeignKeysTab.vue'
+import OptionsTab from './structure/OptionsTab.vue'
 
 const props = defineProps<{
   connId: string
@@ -23,9 +42,20 @@ const props = defineProps<{
 
 const message = useMessage()
 const summary = ref<TableSummary | null>(null)
+const origComment = ref<string>('')
 const ddl = ref<string>('')
 const loading = ref(false)
+const busy = ref(false)
 const activeTab = ref('cols')
+
+// Draft state — the user-edited mirror of summary + origComment.
+// Re-built whenever load() runs (initial mount, table switch, after Apply).
+const draft = ref<StructureDraft>({
+  columns: [],
+  indexes: [],
+  foreignKeys: [],
+  options: { comment: '' },
+})
 
 async function load() {
   loading.value = true
@@ -36,6 +66,8 @@ async function load() {
     ])
     summary.value = s
     ddl.value = d
+    origComment.value = parseTableCommentFromDDL(d)
+    resetDraft()
   } catch (e) {
     message.error(`load structure failed: ${String(e)}`)
   } finally {
@@ -43,76 +75,57 @@ async function load() {
   }
 }
 
+function resetDraft() {
+  if (!summary.value) return
+  draft.value = summaryToDraft(summary.value, origComment.value)
+}
+
 onMounted(load)
 watch(() => [props.connId, props.db, props.table], load)
 
-function formatColName(c: ColumnMeta): string {
-  const tags: string[] = []
-  if (c.isPrimaryKey) tags.push('PK')
-  if (c.isAutoIncrement) tags.push('AI')
-  return tags.length ? `${c.name}  [${tags.join(', ')}]` : c.name
+// ---- alter plan (live diff) -----------------------------------------------
+
+const plan = computed(() => {
+  if (!summary.value) {
+    return { columns: [], indexes: [], foreignKeys: [], options: [], all: [] }
+  }
+  return buildAlterPlan({
+    db: props.db,
+    table: props.table,
+    origSummary: summary.value,
+    origComment: origComment.value,
+    draft: draft.value,
+  })
+})
+
+// ---- apply ----------------------------------------------------------------
+
+async function applyStatements(stmts: string[]) {
+  if (stmts.length === 0 || busy.value) return
+  busy.value = true
+  let executed = 0
+  try {
+    for (const raw of stmts) {
+      const trimmed = raw.trim().replace(/;$/, '')
+      if (!trimmed) continue
+      await queryApi.runQuery(props.connId, trimmed)
+      executed++
+    }
+    message.success(`已应用 ${executed} 条语句`)
+    await load()
+  } catch (e) {
+    message.error(
+      `应用失败（已执行 ${executed}/${stmts.length} 条）：${String(e)}`,
+    )
+    // Reload anyway so the UI reflects whatever did land.
+    await load()
+  } finally {
+    busy.value = false
+  }
 }
 
-// ---- Columns DataGrid ----
-const colHeaders: ColumnMeta[] = [
-  { name: 'Name', nativeType: 'VARCHAR', logicalType: LogicalType.TypeString, nullable: false },
-  { name: 'Type', nativeType: 'VARCHAR', logicalType: LogicalType.TypeString, nullable: false },
-  { name: 'Null', nativeType: 'VARCHAR', logicalType: LogicalType.TypeString, nullable: false },
-  { name: 'Default', nativeType: 'VARCHAR', logicalType: LogicalType.TypeString, nullable: true },
-  { name: 'Extra', nativeType: 'VARCHAR', logicalType: LogicalType.TypeString, nullable: true },
-  { name: 'Comment', nativeType: 'VARCHAR', logicalType: LogicalType.TypeString, nullable: true },
-]
+// ---- DDL read-only CodeMirror (kept as-is) --------------------------------
 
-const colRows = computed<any[][]>(() =>
-  summary.value?.columns.map(c => [
-    formatColName(c),
-    c.nativeType,
-    c.nullable ? 'YES' : 'NO',
-    c.default ?? '',
-    c.isAutoIncrement ? 'auto_increment' : '',
-    c.comment ?? '',
-  ]) ?? []
-)
-
-// ---- Indexes DataGrid ----
-const ixHeaders: ColumnMeta[] = [
-  { name: 'Name', nativeType: 'VARCHAR', logicalType: LogicalType.TypeString, nullable: false },
-  { name: 'Columns', nativeType: 'VARCHAR', logicalType: LogicalType.TypeString, nullable: false },
-  { name: 'Unique', nativeType: 'VARCHAR', logicalType: LogicalType.TypeString, nullable: false },
-  { name: 'Primary', nativeType: 'VARCHAR', logicalType: LogicalType.TypeString, nullable: false },
-  { name: 'Type', nativeType: 'VARCHAR', logicalType: LogicalType.TypeString, nullable: true },
-]
-
-const ixRows = computed<any[][]>(() =>
-  summary.value?.indexes.map(ix => [
-    ix.name,
-    (ix.columns ?? []).join(', '),
-    ix.unique ? 'YES' : 'NO',
-    ix.primary ? 'YES' : 'NO',
-    ix.type ?? '',
-  ]) ?? []
-)
-
-// ---- Foreign Keys DataGrid ----
-const fkHeaders: ColumnMeta[] = [
-  { name: 'Name', nativeType: 'VARCHAR', logicalType: LogicalType.TypeString, nullable: false },
-  { name: 'Columns', nativeType: 'VARCHAR', logicalType: LogicalType.TypeString, nullable: false },
-  { name: 'References', nativeType: 'VARCHAR', logicalType: LogicalType.TypeString, nullable: false },
-  { name: 'On Update', nativeType: 'VARCHAR', logicalType: LogicalType.TypeString, nullable: true },
-  { name: 'On Delete', nativeType: 'VARCHAR', logicalType: LogicalType.TypeString, nullable: true },
-]
-
-const fkRows = computed<any[][]>(() =>
-  summary.value?.foreignKeys.map(fk => [
-    fk.name,
-    (fk.columns ?? []).join(', '),
-    (fk.referencedSchema ? fk.referencedSchema + '.' : '') + fk.referencedTable + '(' + (fk.referencedColumns ?? []).join(', ') + ')',
-    fk.onUpdate ?? '',
-    fk.onDelete ?? '',
-  ]) ?? []
-)
-
-// ---- DDL read-only CodeMirror ----------------------------------------------
 const themeStore = useThemeStore()
 const ddlHost = ref<HTMLDivElement | null>(null)
 const ddlView = ref<EditorView | null>(null)
@@ -142,12 +155,10 @@ function initDdlEditor() {
   })
 }
 
-// Init the editor when DDL host element first appears (lazy pane mount).
 watch(ddlHost, (el) => {
   if (el && !ddlView.value) initDdlEditor()
 })
 
-// Update content when DDL changes (e.g. table switch).
 watch(ddl, (val) => {
   if (!ddlView.value) return
   const cur = ddlView.value.state.doc.toString()
@@ -158,7 +169,6 @@ watch(ddl, (val) => {
   }
 })
 
-// Follow theme changes.
 watch(() => themeStore.mode, (mode) => {
   if (!ddlView.value) return
   ddlView.value.dispatch({
@@ -169,7 +179,6 @@ watch(() => themeStore.mode, (mode) => {
 onBeforeUnmount(() => {
   ddlView.value?.destroy()
 })
-
 </script>
 
 <template>
@@ -180,18 +189,72 @@ onBeforeUnmount(() => {
       size="small"
       class="group-tabs"
     >
+      <!-- Columns -->
       <n-tab-pane name="cols" tab="Columns" display-directive="show:lazy">
-        <DataGrid v-if="colRows.length" :columns="colHeaders" :rows="colRows" />
-        <div v-else class="empty"><n-empty size="small" /></div>
+        <div class="tab-body">
+          <ColumnsTab v-model="draft.columns" :busy="busy" />
+          <AlterSqlPanel
+            :statements="plan.columns"
+            :busy="busy"
+            apply-confirm-title="应用字段变更"
+            @apply="applyStatements(plan.columns)"
+            @reset="resetDraft"
+          />
+        </div>
       </n-tab-pane>
+
+      <!-- Indexes -->
       <n-tab-pane name="ix" tab="Indexes" display-directive="show:lazy">
-        <DataGrid v-if="ixRows.length" :columns="ixHeaders" :rows="ixRows" />
-        <div v-else class="empty"><n-empty size="small" /></div>
+        <div class="tab-body">
+          <IndexesTab
+            v-model="draft.indexes"
+            :columns-draft="draft.columns"
+            :busy="busy"
+          />
+          <AlterSqlPanel
+            :statements="plan.indexes"
+            :busy="busy"
+            apply-confirm-title="应用索引变更"
+            @apply="applyStatements(plan.indexes)"
+            @reset="resetDraft"
+          />
+        </div>
       </n-tab-pane>
+
+      <!-- Foreign Keys -->
       <n-tab-pane name="fk" tab="Foreign Keys" display-directive="show:lazy">
-        <DataGrid v-if="fkRows.length" :columns="fkHeaders" :rows="fkRows" />
-        <div v-else class="empty"><n-empty size="small" /></div>
+        <div class="tab-body">
+          <ForeignKeysTab
+            v-model="draft.foreignKeys"
+            :columns-draft="draft.columns"
+            :current-db="db"
+            :busy="busy"
+          />
+          <AlterSqlPanel
+            :statements="plan.foreignKeys"
+            :busy="busy"
+            apply-confirm-title="应用外键变更"
+            @apply="applyStatements(plan.foreignKeys)"
+            @reset="resetDraft"
+          />
+        </div>
       </n-tab-pane>
+
+      <!-- Options (table-level: comment etc.) -->
+      <n-tab-pane name="opts" tab="Options" display-directive="show:lazy">
+        <div class="tab-body">
+          <OptionsTab v-model="draft.options" :busy="busy" />
+          <AlterSqlPanel
+            :statements="plan.options"
+            :busy="busy"
+            apply-confirm-title="应用表选项"
+            @apply="applyStatements(plan.options)"
+            @reset="resetDraft"
+          />
+        </div>
+      </n-tab-pane>
+
+      <!-- DDL (read-only) -->
       <n-tab-pane name="ddl" tab="DDL" display-directive="show:lazy">
         <div ref="ddlHost" class="ddl-cm" />
       </n-tab-pane>
@@ -237,11 +300,18 @@ onBeforeUnmount(() => {
 .group-tabs :deep(.n-tab-pane) {
   height: 100%;
   overflow: hidden;
-  padding: 8px;
+  padding: 0;
 }
 
-/* ---- shared ---- */
-.empty { padding: 16px; display: flex; justify-content: center; }
+/* tab-body: editor on top, AlterSqlPanel pinned at the bottom */
+.tab-body {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* ---- DDL read-only editor ---- */
 .ddl-cm {
   height: 100%;
@@ -251,5 +321,6 @@ onBeforeUnmount(() => {
   background: var(--n-card-color);
   user-select: text;
   -webkit-user-select: text;
+  margin: 8px;
 }
 </style>
