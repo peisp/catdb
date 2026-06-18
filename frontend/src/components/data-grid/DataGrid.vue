@@ -234,7 +234,7 @@ const tableOptions = computed<any>(() => {
     rowSeriesNumber: {
       title: '#',
       width: 50,
-      style: { textAlign: 'right' },
+      style: { textAlign: 'right', color: '#aaa', fontSize: 10 },
     },
     select: {
       disableSelect: false,
