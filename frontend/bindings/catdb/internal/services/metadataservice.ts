@@ -33,17 +33,21 @@ export function AutocompleteFor(connID: string, db: string): $CancellablePromise
 }
 
 /**
- * BrowseTable runs `SELECT * FROM db.table ORDER BY … LIMIT … OFFSET …` and
- * returns the rows + columns + primary-key info needed by the data browser.
+ * BrowseTable runs `SELECT * FROM db.table [WHERE …] [ORDER BY …] LIMIT … OFFSET …`
+ * and returns the rows + columns + primary-key info needed by the data browser.
  * 
  * Pass orderBy to request an ORDER BY clause (the column name is quoted via the
  * active Dialect). orderDir defaults to "ASC" when empty; valid values are
  * "ASC" and "DESC" (case-insensitive).
+ * whereClause and orderByClause are raw SQL snippets injected directly after
+ * WHERE and ORDER BY respectively — supplied by the FilterBar component.
+ * When orderByClause is non-empty it takes precedence over the simple
+ * orderBy/orderDir pair.
  * Pass limit < 0 to fetch all rows (no LIMIT/OFFSET clause). limit == 0 is
  * reserved as "use default" and resolves to 200.
  */
-export function BrowseTable(connID: string, db: string, table: string, orderBy: string, orderDir: string, limit: number, offset: number): $CancellablePromise<$models.BrowseResult> {
-    return $Call.ByName("catdb/internal/services.MetadataService.BrowseTable", connID, db, table, orderBy, orderDir, limit, offset).then(($result: any) => {
+export function BrowseTable(connID: string, db: string, table: string, orderBy: string, orderDir: string, limit: number, offset: number, whereClause: string, orderByClause: string): $CancellablePromise<$models.BrowseResult> {
+    return $Call.ByName("catdb/internal/services.MetadataService.BrowseTable", connID, db, table, orderBy, orderDir, limit, offset, whereClause, orderByClause).then(($result: any) => {
         return $$createType1($result);
     });
 }

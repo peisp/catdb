@@ -32,9 +32,8 @@ const activeId = computed({
 })
 
 function ensureTab() {
-  if (!tabs.value.length) {
-    store.addTab(props.connection.id, { title: 'Query 1', kind: 'query' })
-  }
+  // Per-connection pinned overview tab is always the first/default tab.
+  store.ensureOverviewTab(props.connection.id)
 }
 
 onMounted(ensureTab)
@@ -47,7 +46,7 @@ function addTab() {
 
 async function closeTab(id: string) {
   await store.closeTab(id)
-  if (tabs.value.length === 0) ensureTab()
+  // The pinned overview tab is always present, so we never end up with 0 tabs.
 }
 
 const tabsRef = ref<InstanceType<typeof NTabs> | null>(null)
@@ -68,17 +67,24 @@ watch(activeId, () => {
 // --- 原生右键菜单 ---
 function openCtx(e: MouseEvent, tab: QueryTabInfo) {
   e.preventDefault()
+
+  // 固定（pinned）的 tab 不展示右键菜单 —— 不可关闭。
+  if (tab.pinned) {
+    wsRef.value?.style.removeProperty('--custom-contextmenu')
+    return
+  }
+
   setActiveTabContext(tab.id, tab.connId)
 
-  // 根据 tab 位置选择合适的菜单名
-  const connTabs = store.tabsForConn(tab.connId)
-  const idx = connTabs.findIndex((t) => t.id === tab.id)
+  // 在「可关闭」tab 集合内判定位置（忽略固定 tab）
+  const closable = store.tabsForConn(tab.connId).filter((t) => !t.pinned)
+  const idx = closable.findIndex((t) => t.id === tab.id)
   let menuName = 'catdb-tab'
-  if (connTabs.length <= 1) {
+  if (closable.length <= 1) {
     menuName = 'catdb-tab-only'
   } else if (idx <= 0) {
     menuName = 'catdb-tab-first'
-  } else if (idx >= connTabs.length - 1) {
+  } else if (idx >= closable.length - 1) {
     menuName = 'catdb-tab-last'
   }
   wsRef.value?.style.setProperty('--custom-contextmenu', menuName)
@@ -104,6 +110,7 @@ function openCtx(e: MouseEvent, tab: QueryTabInfo) {
         v-for="t in tabs"
         :key="t.id"
         :name="t.id"
+        :closable="!t.pinned"
         display-directive="show:lazy"
       >
         <template #tab>
@@ -128,9 +135,9 @@ function openCtx(e: MouseEvent, tab: QueryTabInfo) {
           :table="t.table"
         />
         <TablesOverview
-          v-else-if="t.kind === 'tables-overview' && t.db"
+          v-else-if="t.kind === 'tables-overview'"
           :conn-id="t.connId"
-          :db="t.db"
+          :db="t.db ?? ''"
         />
       </n-tab-pane>
     </n-tabs>
@@ -153,7 +160,7 @@ function openCtx(e: MouseEvent, tab: QueryTabInfo) {
   min-width: 0;
   min-height: 0;
 }
-.ws :deep(.n-tabs-tab-pad), .ws :deep(.n-tabs-tab) { padding: 4px 1px; }
+.ws :deep(.n-tabs-tab-pad), .ws :deep(.n-tabs-tab) { padding-top: 4px; padding-bottom: 4px; }
 .ws :deep(.n-tabs-tab) { padding-left: 8px; }
 .ws :deep(.n-tabs-nav) { background: var(--n-color); flex: 0 0 auto; padding: 6px;}
 /* Pane wrapper is the actual culprit when broken — give it explicit

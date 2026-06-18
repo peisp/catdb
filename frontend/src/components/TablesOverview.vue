@@ -4,7 +4,7 @@
 // 在 ObjectTree 中点击一个数据库（schema）节点时，在右侧打开一个 tab，
 // 用 DataGrid 列出该数据库下的所有表及其元信息（Name / Engine / Rows / Comment）。
 // 双击表所在的行跳转到该表的数据浏览 tab。
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { NButton, NSpin, useMessage } from 'naive-ui'
 import { metadata as metaApi } from '../api'
 import { useQueryStore } from '../stores/query'
@@ -112,6 +112,10 @@ const rows = computed<any[][]>(() => {
 })
 
 async function load() {
+  if (!props.db) {
+    tables.value = []
+    return
+  }
   loading.value = true
   try {
     tables.value = await metaApi.listTables(props.connId, props.db)
@@ -122,7 +126,13 @@ async function load() {
   }
 }
 
-onMounted(load)
+// 监听 db 切换 —— 同一个固定的 Overview tab 在 ObjectTree 点不同库时会复用，
+// 此处随 props.db 变化重新拉取。
+watch(
+  () => [props.connId, props.db] as const,
+  () => { void load() },
+  { immediate: true },
+)
 
 // 双击单元格 → 跳到该表的数据浏览 tab
 function onDblClickCell(p: { row: number }) {
@@ -135,13 +145,16 @@ function onDblClickCell(p: { row: number }) {
 <template>
   <div class="to">
     <div class="toolbar">
-      <span class="title mono">{{ db }}</span>
-      <span class="mute">· {{ tables.length }} 张表</span>
+      <span class="title mono">{{ db || '数据库概览' }}</span>
+      <span v-if="db" class="mute">· {{ tables.length }} 张表</span>
       <span class="grow" />
-      <n-button size="tiny" @click="load" :disabled="loading">刷新</n-button>
+      <n-button size="tiny" :disabled="loading || !db" @click="load">刷新</n-button>
     </div>
 
-    <n-spin :show="loading" class="data-spin">
+    <div v-if="!db" class="empty">
+      <span class="mute">在左侧对象树点击一个数据库以查看表概览。</span>
+    </div>
+    <n-spin v-else :show="loading" class="data-spin">
       <DataGrid
         :columns="columns"
         :rows="rows"
@@ -178,4 +191,13 @@ function onDblClickCell(p: { row: number }) {
   min-width: 0;
   min-height: 0;
 }
+.empty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  padding: 24px;
+}
+.empty .mute { opacity: 0.55; }
 </style>

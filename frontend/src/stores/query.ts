@@ -44,6 +44,11 @@ export interface QueryTab {
   kind: TabKind
   sql: string
 
+  // Pinned tabs are non-closable and always sort first. Used for the
+  // per-connection "database overview" tab — there is at most one
+  // pinned tab per connection.
+  pinned?: boolean
+
   // For 'table' / 'structure' kinds, the object reference.
   db?: string
   table?: string
@@ -68,12 +73,13 @@ export interface QueryTab {
   fetching: boolean
 }
 
-function freshTab(connId: string, opts?: { kind?: TabKind; title?: string; db?: string; table?: string }): QueryTab {
+function freshTab(connId: string, opts?: { kind?: TabKind; title?: string; db?: string; table?: string; pinned?: boolean }): QueryTab {
   return {
     id: nextTabId(),
     connId,
     kind: opts?.kind ?? 'query',
     title: opts?.title ?? 'Query',
+    pinned: opts?.pinned ?? false,
     db: opts?.db,
     table: opts?.table,
     sql: '',
@@ -141,24 +147,53 @@ export const useQueryStore = defineStore('query', () => {
     })
   }
 
-  function openTablesOverviewTab(connId: string, db: string): QueryTab {
+  /**
+   * Ensure the pinned "database overview" tab exists for a connection. Inserts
+   * a new pinned tab at the front of the connection's tab list if absent.
+   * Does NOT change the active tab unless none is currently active.
+   */
+  function ensureOverviewTab(connId: string, db?: string): QueryTab {
     const existing = tabs.value.find(
-      (t) => t.connId === connId && t.kind === 'tables-overview' && t.db === db,
+      (t) => t.connId === connId && t.kind === 'tables-overview' && t.pinned,
     )
     if (existing) {
-      setActive(connId, existing.id)
+      if (db && existing.db !== db) {
+        existing.db = db
+        existing.title = `📋 ${db}`
+      }
       return existing
     }
-    return addTab(connId, {
+    const t = freshTab(connId, {
       kind: 'tables-overview',
       db,
-      title: `📋 ${db}`,
+      title: db ? `📋 ${db}` : '📋 数据库概览',
+      pinned: true,
     })
+    // Splice in at the front of this connection's run of tabs so it sorts first.
+    const firstIdx = tabs.value.findIndex((x) => x.connId === connId)
+    if (firstIdx === -1) tabs.value.push(t)
+    else tabs.value.splice(firstIdx, 0, t)
+    if (!activeByConn.value[connId]) setActive(connId, t.id)
+    return t
+  }
+
+  /**
+   * Click a database in the object tree → focus the pinned overview tab and
+   * point it at this db. Always exactly one overview tab per connection.
+   */
+  function openTablesOverviewTab(connId: string, db: string): QueryTab {
+    const t = ensureOverviewTab(connId, db)
+    if (t.db !== db) {
+      t.db = db
+      t.title = `📋 ${db}`
+    }
+    setActive(connId, t.id)
+    return t
   }
 
   async function closeTab(id: string) {
     const t = getTab(id)
-    if (!t) return
+    if (!t || t.pinned) return
     t.controller?.abort()
     if (t.handle) {
       try { await queryApi.closeHandle(t.handle) } catch { /* idempotent */ }
@@ -173,7 +208,7 @@ export const useQueryStore = defineStore('query', () => {
   }
 
   async function closeAllForConn(connId: string) {
-    const ids = tabsForConn(connId).map((t) => t.id)
+    const ids = tabsForConn(connId).filter((t) => !t.pinned).map((t) => t.id)
     for (const id of ids) {
       await closeTab(id)
     }
@@ -184,7 +219,7 @@ export const useQueryStore = defineStore('query', () => {
     if (!t) return
     const connTabs = tabsForConn(t.connId)
     for (const tab of connTabs) {
-      if (tab.id !== id) {
+      if (tab.id !== id && !tab.pinned) {
         await closeTab(tab.id)
       }
     }
@@ -196,7 +231,7 @@ export const useQueryStore = defineStore('query', () => {
     const connTabs = tabsForConn(t.connId)
     for (const tab of connTabs) {
       if (tab.id === id) break
-      await closeTab(tab.id)
+      if (!tab.pinned) await closeTab(tab.id)
     }
   }
 
@@ -207,7 +242,7 @@ export const useQueryStore = defineStore('query', () => {
     const idx = connTabs.findIndex((x) => x.id === id)
     if (idx === -1) return
     for (let i = idx + 1; i < connTabs.length; i++) {
-      await closeTab(connTabs[i].id)
+      if (!connTabs[i].pinned) await closeTab(connTabs[i].id)
     }
   }
 
@@ -360,6 +395,7 @@ export const useQueryStore = defineStore('query', () => {
     addTab,
     openTableTab,
     openTablesOverviewTab,
+    ensureOverviewTab,
     closeTab,
     closeAllForConn,
     closeOthers,

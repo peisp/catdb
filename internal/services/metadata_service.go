@@ -207,15 +207,19 @@ type BrowseResult struct {
 	SQL string `json:"sql"`
 }
 
-// BrowseTable runs `SELECT * FROM db.table ORDER BY … LIMIT … OFFSET …` and
-// returns the rows + columns + primary-key info needed by the data browser.
+// BrowseTable runs `SELECT * FROM db.table [WHERE …] [ORDER BY …] LIMIT … OFFSET …`
+// and returns the rows + columns + primary-key info needed by the data browser.
 //
 // Pass orderBy to request an ORDER BY clause (the column name is quoted via the
 // active Dialect). orderDir defaults to "ASC" when empty; valid values are
 // "ASC" and "DESC" (case-insensitive).
+// whereClause and orderByClause are raw SQL snippets injected directly after
+// WHERE and ORDER BY respectively — supplied by the FilterBar component.
+// When orderByClause is non-empty it takes precedence over the simple
+// orderBy/orderDir pair.
 // Pass limit < 0 to fetch all rows (no LIMIT/OFFSET clause). limit == 0 is
 // reserved as "use default" and resolves to 200.
-func (s *MetadataService) BrowseTable(ctx context.Context, connID, db, table, orderBy, orderDir string, limit, offset int) (BrowseResult, error) {
+func (s *MetadataService) BrowseTable(ctx context.Context, connID, db, table, orderBy, orderDir string, limit, offset int, whereClause, orderByClause string) (BrowseResult, error) {
 	var empty BrowseResult
 	if connID == "" || db == "" || table == "" {
 		return empty, fmt.Errorf("MetadataService: connID, db and table are required")
@@ -243,7 +247,14 @@ func (s *MetadataService) BrowseTable(ctx context.Context, connID, db, table, or
 		return empty, fmt.Errorf("MetadataService: connection has no querier")
 	}
 	base := fmt.Sprintf("SELECT * FROM %s.%s", dia.QuoteIdentifier(db), dia.QuoteIdentifier(table))
-	if orderBy != "" {
+
+	if whereClause != "" {
+		base = fmt.Sprintf("%s WHERE %s", base, whereClause)
+	}
+
+	if orderByClause != "" {
+		base = fmt.Sprintf("%s ORDER BY %s", base, orderByClause)
+	} else if orderBy != "" {
 		dir := strings.ToUpper(orderDir)
 		if dir != "DESC" {
 			dir = "ASC"

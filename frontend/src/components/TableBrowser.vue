@@ -17,6 +17,7 @@ import { useTableSelection, type SelectionRange } from '../composables/useTableS
 import type { BrowseResult, ColumnMeta } from '../api/metadata'
 import DataGrid from './data-grid/DataGrid.vue'
 import ExportDialog from './ExportDialog.vue'
+import FilterBar from './FilterBar.vue'
 
 const props = defineProps<{
   connId: string
@@ -43,6 +44,10 @@ const pageSizeOptions = [
 interface SortState { field: number; order: 'asc' | 'desc' }
 const sortColumn = ref<number>(-1)  // -1 = 未排序; 列下标
 const sortOrder = ref<'asc' | 'desc' | ''>('')
+
+// ---- filter state ----
+const filterWhere = ref('')
+const filterOrderBy = ref('')
 
 const browse = ref<BrowseResult | null>(null)
 const loading = ref(false)
@@ -119,7 +124,10 @@ async function load() {
     const offset = isAll ? 0 : (page.value - 1) * pageSize.value
     browse.value = await metaApi.browseTable(
       props.connId, props.db, props.table, limit, offset,
-      orderByName.value, sortOrder.value,
+      filterOrderBy.value ? '' : orderByName.value,
+      filterOrderBy.value ? '' : sortOrder.value,
+      filterWhere.value,
+      filterOrderBy.value,
     )
   } catch (e) {
     message.error(`browse failed: ${String(e)}`)
@@ -135,22 +143,26 @@ onMounted(() => { unsubDataChanged = on('ctx:grid-data-changed', load) })
 onBeforeUnmount(() => unsubDataChanged?.())
 
 watch(
-  () => [props.connId, props.db, props.table, page.value, pageSize.value, orderByName.value, sortOrder.value],
+  () => [props.connId, props.db, props.table, page.value, pageSize.value, orderByName.value, sortOrder.value, filterWhere.value, filterOrderBy.value],
   load,
 )
 
-// 切换表/数据库时清除排序状态
+// 切换表/数据库时清除排序和过滤状态
 watch(
   () => [props.connId, props.db, props.table],
   () => {
     sortColumn.value = -1
     sortOrder.value = ''
+    filterWhere.value = ''
+    filterOrderBy.value = ''
     page.value = 1
   },
 )
 
 // 排序变化处理：来自 DataGrid 表头点击
 function onSortChange(sort: { field: number; order: 'asc' | 'desc' } | null) {
+  // 过滤条 ORDER BY 激活时忽略列头点击，阻止与过滤条 ORDER BY 冲突
+  if (filterOrderBy.value) return
   if (!sort) {
     sortColumn.value = -1
     sortOrder.value = ''
@@ -247,6 +259,19 @@ async function onEditCommit(p: {
     await load()
   }
 }
+
+// ---- filter handlers ----
+function onFilterApply(where: string, orderByClause: string) {
+  filterWhere.value = where
+  filterOrderBy.value = orderByClause
+  page.value = 1  // 回到第1页
+}
+
+function onFilterClear() {
+  filterWhere.value = ''
+  filterOrderBy.value = ''
+  page.value = 1  // 回到第1页
+}
 </script>
 
 <template>
@@ -263,6 +288,15 @@ async function onEditCommit(p: {
     <ExportDialog
       v-model:show="exportOpen"
       :source="{ kind: 'table', connId, db, table, defaultName: `${db}.${table}` }"
+    />
+
+    <FilterBar
+      :conn-id="connId"
+      :db="db"
+      :table="table"
+      :columns="columns"
+      @apply="onFilterApply"
+      @clear="onFilterClear"
     />
 
     <n-alert v-if="readOnly" type="warning" :show-icon="false" class="banner">
