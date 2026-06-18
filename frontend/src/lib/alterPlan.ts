@@ -87,8 +87,29 @@ export interface ColumnDraft {
   origPos: number
 
   name: string
-  /** Native type incl. width/length, e.g. "VARCHAR(255)", "INT UNSIGNED". */
-  nativeType: string
+  /**
+   * Base SQL type, uppercased, no params or modifiers — e.g. "VARCHAR", "INT",
+   * "DECIMAL". UNSIGNED is *not* part of this string (kept as a separate flag),
+   * so the type select doesn't have to list "INT" / "INT UNSIGNED" / "BIGINT" /
+   * "BIGINT UNSIGNED" as different entries.
+   */
+  baseType: string
+  /**
+   * Parameters inside the parens, as a free-form string. Meaning depends on
+   * the base type:
+   *   VARCHAR/CHAR/...     → length          ("255")
+   *   DECIMAL/NUMERIC      → precision,scale ("10,2")
+   *   FLOAT/DOUBLE         → precision[,scale] (rarely used)
+   *   DATETIME/TIMESTAMP/TIME → fractional-seconds precision ("6")
+   *   TINYINT/.../BIGINT/BIT → display width (legacy/optional)
+   *   ENUM/SET             → value list (`'a','b'`)
+   *   TEXT/BLOB/JSON/DATE  → empty (no params accepted)
+   * Empty string means "no params" — the parens are omitted in the emitted
+   * DDL.
+   */
+  typeParams: string
+  /** UNSIGNED modifier; only meaningful on numeric base types. */
+  unsigned: boolean
   nullable: boolean
   /** undefined = no DEFAULT clause; '' = DEFAULT ''; 'NULL' = DEFAULT NULL. */
   default?: string
@@ -96,6 +117,182 @@ export interface ColumnDraft {
   isAutoIncrement: boolean
   comment: string
 }
+
+// ---- native-type parsing / formatting -------------------------------------
+//
+// The backend returns information_schema.COLUMN_TYPE verbatim (e.g.
+// "varchar(255)", "int(10) unsigned", "decimal(10,2)", "datetime(6)",
+// "enum('a','b')"). We split that into baseType + typeParams + unsigned so
+// the editor's three fields are independent, then reassemble on the way out.
+
+export interface ParsedNativeType {
+  baseType: string
+  typeParams: string
+  unsigned: boolean
+}
+
+/** Parse a MySQL COLUMN_TYPE string into base/params/unsigned. */
+export function parseNativeType(raw: string): ParsedNativeType {
+  let s = (raw ?? '').trim()
+  if (!s) return { baseType: '', typeParams: '', unsigned: false }
+  // Strip ZEROFILL first (it's rare but MySQL appends it after UNSIGNED).
+  s = s.replace(/\s+ZEROFILL\b/gi, '')
+  let unsigned = false
+  if (/\s+UNSIGNED\b/i.test(s)) {
+    unsigned = true
+    s = s.replace(/\s+UNSIGNED\b/gi, '')
+  }
+  s = s.trim()
+  // Greedy match on the LAST `(...)` so types whose params themselves contain
+  // parens (none in MySQL today, but defensive) still split cleanly. We
+  // anchor the closing paren to end-of-string after the unsigned strip.
+  const m = s.match(/^([^()]+?)\s*\((.+)\)\s*$/)
+  if (m) {
+    return {
+      baseType: m[1].trim().toUpperCase(),
+      typeParams: m[2].trim(),
+      unsigned,
+    }
+  }
+  return { baseType: s.toUpperCase(), typeParams: '', unsigned }
+}
+
+/** Reassemble the canonical native-type string from the split fields. */
+export function buildNativeType(c: {
+  baseType: string
+  typeParams: string
+  unsigned: boolean
+}): string {
+  const base = (c.baseType || 'VARCHAR').toUpperCase()
+  let s = base
+  if (c.typeParams && c.typeParams.trim() !== '') {
+    s += `(${c.typeParams.trim()})`
+  }
+  if (c.unsigned && baseTypeSupportsUnsigned(base)) {
+    s += ' UNSIGNED'
+  }
+  return s
+}
+
+/**
+ * Canonicalize a native-type string for equality comparison: uppercase, drop
+ * whitespace inside parens, normalize the UNSIGNED suffix. So that drafts
+ * built from split fields ("DECIMAL(10,2)") compare equal to backend strings
+ * the server happens to return as "decimal(10, 2)" or "decimal(10,2) unsigned".
+ */
+export function normNativeType(s: string): string {
+  if (!s) return ''
+  const p = parseNativeType(s)
+  return buildNativeType(p)
+}
+
+/** Whether a base type accepts the UNSIGNED modifier (numeric types only). */
+export function baseTypeSupportsUnsigned(base: string): boolean {
+  switch ((base || '').toUpperCase()) {
+    case 'TINYINT':
+    case 'SMALLINT':
+    case 'MEDIUMINT':
+    case 'INT':
+    case 'INTEGER':
+    case 'BIGINT':
+    case 'DECIMAL':
+    case 'NUMERIC':
+    case 'FLOAT':
+    case 'DOUBLE':
+    case 'REAL':
+      return true
+    default:
+      return false
+  }
+}
+
+/**
+ * Categorize the params field for a base type. The UI uses `kind` to pick a
+ * placeholder + whether to disable the input, and `supportsUnsigned` to show
+ * the UNSIGNED toggle.
+ */
+export type TypeParamKind =
+  | 'length' // VARCHAR(255), CHAR(64), VARBINARY(64), BINARY(16)
+  | 'displayWidth' // INT(11), BIT(8) — legacy display width
+  | 'precisionScale' // DECIMAL(10,2), NUMERIC(10,2), FLOAT(10,2), DOUBLE(10,2)
+  | 'fractionalSeconds' // DATETIME(6), TIMESTAMP(3), TIME(6)
+  | 'enumValues' // ENUM('a','b'), SET('a','b')
+  | 'none' // TEXT/BLOB/JSON/DATE/YEAR/GEOMETRY etc.
+
+export interface TypeFormat {
+  kind: TypeParamKind
+  supportsUnsigned: boolean
+  placeholder: string
+  /** Whether typeParams is required for the type to be valid (e.g. VARCHAR). */
+  paramsRequired: boolean
+}
+
+export function typeFormatFor(base: string): TypeFormat {
+  const supportsUnsigned = baseTypeSupportsUnsigned(base)
+  switch ((base || '').toUpperCase()) {
+    case 'VARCHAR':
+    case 'VARBINARY':
+      return { kind: 'length', supportsUnsigned, placeholder: '长度', paramsRequired: true }
+    case 'CHAR':
+    case 'BINARY':
+      return { kind: 'length', supportsUnsigned, placeholder: '长度', paramsRequired: false }
+    case 'TINYINT':
+    case 'SMALLINT':
+    case 'MEDIUMINT':
+    case 'INT':
+    case 'INTEGER':
+    case 'BIGINT':
+      return { kind: 'displayWidth', supportsUnsigned, placeholder: '宽度', paramsRequired: false }
+    case 'BIT':
+      return { kind: 'displayWidth', supportsUnsigned, placeholder: '位数', paramsRequired: false }
+    case 'DECIMAL':
+    case 'NUMERIC':
+    case 'FLOAT':
+    case 'DOUBLE':
+    case 'REAL':
+      return { kind: 'precisionScale', supportsUnsigned, placeholder: '精度,小数', paramsRequired: false }
+    case 'DATETIME':
+    case 'TIMESTAMP':
+    case 'TIME':
+      return { kind: 'fractionalSeconds', supportsUnsigned, placeholder: '秒精度', paramsRequired: false }
+    case 'ENUM':
+    case 'SET':
+      return { kind: 'enumValues', supportsUnsigned, placeholder: "'a','b'", paramsRequired: true }
+    default:
+      return { kind: 'none', supportsUnsigned, placeholder: '—', paramsRequired: false }
+  }
+}
+
+/**
+ * Grouped catalog of base types for the type-select dropdown. Order matters:
+ * the first option of the first group is what newly-created columns default to.
+ */
+export const BASE_TYPE_GROUPS: { label: string; types: string[] }[] = [
+  {
+    label: '字符串',
+    types: ['VARCHAR', 'CHAR', 'TEXT', 'TINYTEXT', 'MEDIUMTEXT', 'LONGTEXT'],
+  },
+  {
+    label: '整数',
+    types: ['INT', 'BIGINT', 'TINYINT', 'SMALLINT', 'MEDIUMINT'],
+  },
+  {
+    label: '小数',
+    types: ['DECIMAL', 'FLOAT', 'DOUBLE'],
+  },
+  {
+    label: '日期时间',
+    types: ['DATETIME', 'TIMESTAMP', 'DATE', 'TIME', 'YEAR'],
+  },
+  {
+    label: '二进制',
+    types: ['BINARY', 'VARBINARY', 'BLOB', 'TINYBLOB', 'MEDIUMBLOB', 'LONGBLOB'],
+  },
+  {
+    label: '其他',
+    types: ['JSON', 'BIT', 'ENUM', 'SET', 'GEOMETRY'],
+  },
+]
 
 export interface IndexDraft {
   _key: string
@@ -140,12 +337,15 @@ let _keySeq = 0
 const nextKey = () => `k${++_keySeq}`
 
 export function columnToDraft(c: ColumnMeta, pos: number): ColumnDraft {
+  const parsed = parseNativeType(c.nativeType ?? '')
   return {
     _key: nextKey(),
     origName: c.name,
     origPos: pos,
     name: c.name,
-    nativeType: c.nativeType ?? '',
+    baseType: parsed.baseType,
+    typeParams: parsed.typeParams,
+    unsigned: parsed.unsigned,
     nullable: !!c.nullable,
     default: c.default == null ? undefined : c.default,
     isPrimaryKey: !!c.isPrimaryKey,
@@ -195,7 +395,9 @@ export function emptyColumnDraft(): ColumnDraft {
     origName: '',
     origPos: -1,
     name: '',
-    nativeType: 'VARCHAR(255)',
+    baseType: 'VARCHAR',
+    typeParams: '255',
+    unsigned: false,
     nullable: true,
     default: undefined,
     isPrimaryKey: false,
@@ -239,7 +441,7 @@ export function emptyForeignKeyDraft(): ForeignKeyDraft {
  */
 export function columnDefBody(c: ColumnDraft): string {
   const parts: string[] = []
-  parts.push(c.nativeType || 'VARCHAR(255)')
+  parts.push(buildNativeType(c) || 'VARCHAR(255)')
   parts.push(c.nullable ? 'NULL' : 'NOT NULL')
   if (c.default !== undefined) {
     parts.push(`DEFAULT ${formatDefaultExpr(c.default)}`)
@@ -257,7 +459,10 @@ function fullColumnDef(c: ColumnDraft): string {
 
 function columnDefBodiesEqual(a: ColumnDraft, b: ColumnMeta): boolean {
   // Compare every non-name, non-position attribute that ends up in the DDL.
-  if ((a.nativeType ?? '') !== (b.nativeType ?? '')) return false
+  // We compare the *built* native type so cosmetic param whitespace differences
+  // (e.g. "decimal(10, 2)" vs "decimal(10,2)") in user input don't generate a
+  // bogus MODIFY when the column hasn't really changed.
+  if (normNativeType(buildNativeType(a)) !== normNativeType(b.nativeType ?? '')) return false
   if (!!a.nullable !== !!b.nullable) return false
   const ad = a.default ?? null
   const bd = b.default ?? null

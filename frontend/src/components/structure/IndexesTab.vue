@@ -4,7 +4,7 @@
 // PRIMARY KEY is owned by the column-level PK checkbox in ColumnsTab; we
 // filter the primary entry out here both for display and on edit.
 import { computed } from 'vue'
-import { NButton, NCheckbox, NInput, NSelect } from 'naive-ui'
+import { NButton, NCheckbox, NInput } from 'naive-ui'
 import {
   emptyIndexDraft,
   type ColumnDraft,
@@ -34,6 +34,12 @@ function deleteRow(idx: number) {
   emit('update:modelValue', list)
 }
 
+/** Parse comma-separated column names into string array. */
+function onColsInput(row: IndexDraft, val: string) {
+  row.columns = val.split(',').map((s) => s.trim()).filter(Boolean)
+  commit()
+}
+
 // Column option list, filtered to rows with a non-blank name. Sourced from the
 // CURRENT columns draft, so a freshly-added column appears in the index editor.
 const columnOptions = computed(() =>
@@ -41,12 +47,6 @@ const columnOptions = computed(() =>
     .filter((c) => c.name.trim() !== '')
     .map((c) => ({ label: c.name, value: c.name })),
 )
-
-const TYPE_OPTIONS = [
-  { label: 'BTREE (default)', value: '' },
-  { label: 'HASH', value: 'HASH' },
-  { label: 'FULLTEXT', value: 'FULLTEXT' },
-]
 
 const editable = computed(() => props.modelValue.filter((ix) => !ix.primary))
 const primaryDisplay = computed(() => props.modelValue.find((ix) => ix.primary))
@@ -96,15 +96,18 @@ const primaryDisplay = computed(() => props.modelValue.find((ix) => ix.primary))
               />
             </td>
             <td>
-              <n-select
-                v-model:value="row.columns"
-                multiple
-                size="tiny"
-                :options="columnOptions"
-                :disabled="busy"
-                placeholder="选择列…"
-                @update:value="commit"
-              />
+              <!-- Column multi-select: comma-separated text + datalist hints -->
+            <input
+              :value="(row.columns ?? []).join(', ')"
+              placeholder="col1, col2, …"
+              :disabled="busy"
+              class="native-input"
+              list="ixColsDatalist"
+              @input="onColsInput(row, ($event.target as HTMLInputElement).value)"
+            />
+            <datalist id="ixColsDatalist">
+              <option v-for="opt in columnOptions" :key="opt.value" :value="opt.value" />
+            </datalist>
             </td>
             <td class="td-center">
               <n-checkbox
@@ -114,13 +117,17 @@ const primaryDisplay = computed(() => props.modelValue.find((ix) => ix.primary))
               />
             </td>
             <td>
-              <n-select
-                :value="(row.type || '').toUpperCase() === 'BTREE' ? '' : (row.type || '').toUpperCase()"
-                size="tiny"
-                :options="TYPE_OPTIONS"
-                :disabled="busy"
-                @update:value="(v: string) => { row.type = v; commit() }"
-              />
+              <!-- Index type -->
+            <select
+              :value="(row.type || '').toUpperCase() === 'BTREE' ? '' : (row.type || '').toUpperCase()"
+              :disabled="busy"
+              class="native-sel"
+              @change="(e: any) => { row.type = e.target.value; commit() }"
+            >
+              <option value="">BTREE (default)</option>
+              <option value="HASH">HASH</option>
+              <option value="FULLTEXT">FULLTEXT</option>
+            </select>
             </td>
             <td class="td-actions">
               <n-button size="tiny" quaternary :disabled="busy" title="删除" @click="deleteRow(modelValue.indexOf(row))">✕</n-button>
@@ -147,6 +154,8 @@ const primaryDisplay = computed(() => props.modelValue.find((ix) => ix.primary))
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+  padding-left: 6px;
+  padding-right: 6px;
 }
 .primary-hint {
   flex: 0 0 auto;
@@ -184,7 +193,7 @@ const primaryDisplay = computed(() => props.modelValue.find((ix) => ix.primary))
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--n-table-header-color);
+  background: var(--n-color-segment);
   color: var(--n-text-color-2);
   font-weight: 500;
   text-align: left;
@@ -193,7 +202,7 @@ const primaryDisplay = computed(() => props.modelValue.find((ix) => ix.primary))
   white-space: nowrap;
   user-select: none;
 }
-.ix-table thead th.th-idx { text-align: right; color: var(--n-text-color-3); }
+.ix-table thead th.th-idx { text-align: right; color: var(--n-text-color-2); }
 .ix-table tbody td {
   padding: 3px 6px;
   vertical-align: middle;
@@ -222,5 +231,35 @@ const primaryDisplay = computed(() => props.modelValue.find((ix) => ix.primary))
   padding: 6px 8px;
   border-top: 1px solid var(--n-divider-color);
   flex: 0 0 auto;
+}
+
+/* ---- native select / input ---- */
+.native-sel,
+.native-input {
+  font-size: 12px;
+  font-family: inherit;
+  width: 100%;
+  padding: 2px 4px;
+  border: 1px solid var(--n-border-color);
+  border-radius: 3px;
+  background: var(--n-input-color, var(--n-card-color));
+  color: var(--n-text-color-1);
+  outline: none;
+  box-sizing: border-box;
+  cursor: pointer;
+  line-height: 1.5;
+}
+.native-sel:disabled,
+.native-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 120ms ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

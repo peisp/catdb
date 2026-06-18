@@ -22,15 +22,11 @@
 //     computed final landing slot (post-splice compensation), so the user can
 //     double-check the destination before releasing.
 import { computed, ref } from 'vue'
+import { NButton, NCheckbox, NInput, NTooltip } from 'naive-ui'
 import {
-  NButton,
-  NCheckbox,
-  NInput,
-  NPopover,
-  NText,
-} from 'naive-ui'
-import {
+  BASE_TYPE_GROUPS,
   emptyColumnDraft,
+  typeFormatFor,
   type ColumnDraft,
 } from '../../lib/alterPlan'
 
@@ -274,35 +270,108 @@ function setDefault(row: ColumnDraft, val: string) {
   commit()
 }
 
-// ---- type quick-pick options ----------------------------------------------
-// User can still type any string in n-input; the popover is just a hint list.
+// ---- type dropdown + params input + UNSIGNED toggle -----------------------
+//
+// The draft now stores baseType + typeParams + unsigned as three independent
+// fields (see lib/alterPlan.ts). buildNativeType reassembles the canonical
+// string when generating DDL — the UI never has to do string surgery on
+// nativeType. typeFormatFor tells us, per base type, what the params field
+// means (length / precision,scale / fractional-seconds / none / …) so we can
+// pick a placeholder and disable the input for types that don't take params.
 
-const COMMON_TYPES = [
+/** Type-aware metadata for the params input of a given draft row. */
+function fmtFor(row: ColumnDraft) {
+  return typeFormatFor(row.baseType)
+}
+
+function onTypeChange(row: ColumnDraft, base: string) {
+  const prev = typeFormatFor(row.baseType)
+  const next = typeFormatFor(base)
+  row.baseType = base.toUpperCase()
+  // Clear params when moving to a type that can't carry them, OR when the
+  // param shape changes incompatibly (e.g. length "255" stays meaningful when
+  // switching VARCHAR→CHAR, but "10,2" makes no sense when switching DECIMAL→INT).
+  if (next.kind === 'none') {
+    row.typeParams = ''
+  } else if (prev.kind !== next.kind && row.typeParams) {
+    row.typeParams = ''
+  }
+  // Clear UNSIGNED if the new type doesn't accept it.
+  if (!next.supportsUnsigned) row.unsigned = false
+  // Drop AI when moving off an integer type (the checkbox would be disabled
+  // anyway, but the model needs to follow so the value doesn't ghost in DDL).
+  maybeClearAiOnTypeChange(row)
+  commit()
+}
+
+function onParamsChange(row: ColumnDraft, value: string) {
+  row.typeParams = value
+  commit()
+}
+
+function onUnsignedChange(row: ColumnDraft, v: boolean) {
+  row.unsigned = v
+  commit()
+}
+
+// ---- AUTO_INCREMENT constraints --------------------------------------------
+//
+// MySQL enforces two rules on AUTO_INCREMENT that the UI mirrors to avoid the
+// user ever staging a DDL the server will reject:
+//   1. only integer columns can be AUTO_INCREMENT
+//   2. each table has at most one AUTO_INCREMENT column
+// We treat the checkbox as disabled when either rule blocks it for that row.
+
+const INTEGER_BASE_TYPES = new Set([
   'TINYINT',
   'SMALLINT',
+  'MEDIUMINT',
   'INT',
+  'INTEGER',
   'BIGINT',
-  'INT UNSIGNED',
-  'BIGINT UNSIGNED',
-  'DECIMAL(10,2)',
-  'FLOAT',
-  'DOUBLE',
-  'VARCHAR(255)',
-  'CHAR(64)',
-  'TEXT',
-  'LONGTEXT',
-  'JSON',
-  'DATE',
-  'TIME',
-  'DATETIME',
-  'TIMESTAMP',
-  'TINYINT(1)',
-  'BLOB',
-  'LONGBLOB',
-] as const
-function applyType(row: ColumnDraft, t: string) {
-  row.nativeType = t
+])
+
+function isIntegerType(row: ColumnDraft): boolean {
+  return INTEGER_BASE_TYPES.has((row.baseType || '').toUpperCase())
+}
+
+/**
+ * Whether the AI checkbox renders on this row. Non-integer rows show "—"
+ * (the type can never carry AI); every integer row always renders a live
+ * checkbox — the AI flag behaves like a radio across integer rows (checking
+ * one auto-clears the others), so we never need to disable them.
+ */
+function aiSelectable(row: ColumnDraft): boolean {
+  return isIntegerType(row)
+}
+
+function aiTitle(row: ColumnDraft): string {
+  if (!isIntegerType(row)) return '仅整型字段可设置 AUTO_INCREMENT'
+  return COL_TITLES.ai
+}
+
+function onAiChange(row: ColumnDraft, v: boolean) {
+  // Defensive: shouldn't fire on non-integer rows (UI hides the checkbox),
+  // but guard anyway so the model can't drift.
+  if (v && !isIntegerType(row)) return
+  if (v) {
+    // Radio-style: checking a row auto-clears every other row's AI in one
+    // pass. Without this MySQL would reject the resulting ALTER (only one
+    // AUTO_INCREMENT per table).
+    for (const r of props.modelValue) {
+      if (r !== row && r.isAutoIncrement) r.isAutoIncrement = false
+    }
+  }
+  row.isAutoIncrement = v
   commit()
+}
+
+// When a row's type changes away from an integer type, drop AI silently so
+// the model stays consistent with the visible disabled state.
+function maybeClearAiOnTypeChange(row: ColumnDraft) {
+  if (row.isAutoIncrement && !isIntegerType(row)) {
+    row.isAutoIncrement = false
+  }
 }
 
 // ---- header tooltips ------------------------------------------------------
@@ -310,9 +379,11 @@ function applyType(row: ColumnDraft, t: string) {
 const COL_TITLES: Record<string, string> = {
   pk: '主键 — 启用后字段进入 PRIMARY KEY 子句',
   ai: '自增 — 仅整型列有效，且每表只能有一个',
-  null: '允许 NULL',
+  nn: 'NOT NULL — 勾选后该字段不允许为 NULL',
   default: '默认值；勾选后启用输入框，输入 NULL/CURRENT_TIMESTAMP 等不会被加引号',
   drag: '按住此处拖动以重新排序字段',
+  params: '类型参数：VARCHAR/CHAR 用长度、DECIMAL 用 精度,小数、DATETIME 用秒精度',
+  unsigned: 'UNSIGNED — 仅数值型可用',
 }
 </script>
 
@@ -328,13 +399,15 @@ const COL_TITLES: Record<string, string> = {
         <colgroup>
           <col style="width: 22px" />
           <col style="width: 32px" />
-          <col style="width: 28%" />
           <col style="width: 22%" />
+          <col style="width: 13%" />
+          <col style="width: 11%" />
+          <col style="width: 52px" />
           <col style="width: 44px" />
           <col style="width: 44px" />
           <col style="width: 44px" />
+          <col style="width: 22%" />
           <col style="width: 24%" />
-          <col style="width: 26%" />
           <col style="width: 40px" />
         </colgroup>
         <thead>
@@ -343,10 +416,42 @@ const COL_TITLES: Record<string, string> = {
             <th class="th-idx">#</th>
             <th>列名</th>
             <th>类型</th>
-            <th :title="COL_TITLES.pk">PK</th>
-            <th :title="COL_TITLES.null">NN</th>
-            <th :title="COL_TITLES.ai">AI</th>
-            <th :title="COL_TITLES.default">默认值</th>
+            <th>
+              <n-tooltip placement="top" :delay="300" :show-arrow="false">
+                <template #trigger><span class="th-tip">长度/参数</span></template>
+                {{ COL_TITLES.params }}
+              </n-tooltip>
+            </th>
+            <th class="th-center">
+              <n-tooltip placement="top" :delay="300" :show-arrow="false">
+                <template #trigger><span class="th-tip">UN</span></template>
+                {{ COL_TITLES.unsigned }}
+              </n-tooltip>
+            </th>
+            <th class="th-center">
+              <n-tooltip placement="top" :delay="300" :show-arrow="false">
+                <template #trigger><span class="th-tip">PK</span></template>
+                {{ COL_TITLES.pk }}
+              </n-tooltip>
+            </th>
+            <th class="th-center">
+              <n-tooltip placement="top" :delay="300" :show-arrow="false">
+                <template #trigger><span class="th-tip">NN</span></template>
+                {{ COL_TITLES.nn }}
+              </n-tooltip>
+            </th>
+            <th class="th-center">
+              <n-tooltip placement="top" :delay="300" :show-arrow="false">
+                <template #trigger><span class="th-tip">AI</span></template>
+                {{ COL_TITLES.ai }}
+              </n-tooltip>
+            </th>
+            <th>
+              <n-tooltip placement="top" :delay="300" :show-arrow="false">
+                <template #trigger><span class="th-tip">默认值</span></template>
+                {{ COL_TITLES.default }}
+              </n-tooltip>
+            </th>
             <th>注释</th>
             <th></th>
           </tr>
@@ -377,53 +482,75 @@ const COL_TITLES: Record<string, string> = {
                 @update:value="commit"
               />
             </td>
-            <td>
-              <n-popover trigger="focus" placement="bottom-start" :show-arrow="false" :width="220">
-                <template #trigger>
-                  <n-input
-                    v-model:value="row.nativeType"
-                    size="tiny"
-                    placeholder="VARCHAR(255)"
-                    :disabled="busy"
-                    @update:value="commit"
-                  />
-                </template>
-                <div class="type-picker">
-                  <div class="type-picker-hint">
-                    <n-text depth="3" style="font-size: 11px">常用类型（点选填入）</n-text>
-                  </div>
-                  <div class="type-picker-grid">
-                    <n-button
-                      v-for="t in COMMON_TYPES"
-                      :key="t"
-                      size="tiny"
-                      quaternary
-                      @click="applyType(row, t)"
-                    >{{ t }}</n-button>
-                  </div>
-                </div>
-              </n-popover>
+            <td class="td-type">
+              <select
+                :value="row.baseType"
+                class="native-sel type-sel"
+                :disabled="busy"
+                @change="onTypeChange(row, ($event.target as HTMLSelectElement).value)"
+              >
+                <optgroup
+                  v-for="g in BASE_TYPE_GROUPS"
+                  :key="g.label"
+                  :label="g.label"
+                >
+                  <option v-for="bt in g.types" :key="bt" :value="bt">{{ bt }}</option>
+                </optgroup>
+                <!-- Custom/legacy types not in the catalog: render a single
+                     extra option so they round-trip cleanly. -->
+                <option
+                  v-if="row.baseType && !BASE_TYPE_GROUPS.some(g => g.types.includes(row.baseType))"
+                  :value="row.baseType"
+                >
+                  {{ row.baseType }}
+                </option>
+              </select>
             </td>
-            <td class="td-center">
+            <td class="td-params">
+              <input
+                :value="row.typeParams"
+                class="native-input params-input"
+                :class="{ 'is-required': fmtFor(row).paramsRequired && !row.typeParams.trim() }"
+                :placeholder="fmtFor(row).placeholder"
+                :disabled="busy || fmtFor(row).kind === 'none'"
+                :title="COL_TITLES.params"
+                @input="onParamsChange(row, ($event.target as HTMLInputElement).value)"
+              />
+            </td>
+            <td
+              class="td-center"
+              :title="fmtFor(row).supportsUnsigned ? COL_TITLES.unsigned : '此类型不支持 UNSIGNED'"
+            >
+              <n-checkbox
+                v-if="fmtFor(row).supportsUnsigned"
+                :checked="row.unsigned"
+                :disabled="busy"
+                @update:checked="(v) => onUnsignedChange(row, !!v)"
+              />
+              <span v-else class="td-na">—</span>
+            </td>
+            <td class="td-center" :title="COL_TITLES.pk">
               <n-checkbox
                 :checked="row.isPrimaryKey"
                 :disabled="busy"
                 @update:checked="(v) => { row.isPrimaryKey = !!v; commit() }"
               />
             </td>
-            <td class="td-center">
+            <td class="td-center" :title="COL_TITLES.nn">
               <n-checkbox
                 :checked="!row.nullable"
                 :disabled="busy"
                 @update:checked="(v) => { row.nullable = !v; commit() }"
               />
             </td>
-            <td class="td-center">
+            <td class="td-center" :title="aiTitle(row)">
               <n-checkbox
+                v-if="aiSelectable(row)"
                 :checked="row.isAutoIncrement"
                 :disabled="busy"
-                @update:checked="(v) => { row.isAutoIncrement = !!v; commit() }"
+                @update:checked="(v) => onAiChange(row, !!v)"
               />
+              <span v-else class="td-na">—</span>
             </td>
             <td>
               <div class="default-cell">
@@ -455,7 +582,7 @@ const COL_TITLES: Record<string, string> = {
             </td>
           </tr>
           <tr v-if="modelValue.length === 0" class="empty-row">
-            <td colspan="10" style="text-align: center; color: var(--n-text-color-3); padding: 16px">
+            <td colspan="12" style="text-align: center; color: var(--n-text-color-3); padding: 16px">
               暂无字段，点击下方“添加字段”
             </td>
           </tr>
@@ -481,6 +608,8 @@ const COL_TITLES: Record<string, string> = {
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+  padding-left: 6px;
+  padding-right: 6px;
 }
 .cols-table-wrap {
   flex: 1 1 auto;
@@ -498,7 +627,7 @@ const COL_TITLES: Record<string, string> = {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--n-table-header-color);
+  background: var(--n-color-segment);
   color: var(--n-text-color-2);
   font-weight: 500;
   text-align: left;
@@ -514,6 +643,18 @@ const COL_TITLES: Record<string, string> = {
 .cols-table thead th.th-idx {
   text-align: right;
   color: var(--n-text-color-3);
+}
+.cols-table thead th.th-center {
+  text-align: center;
+}
+/* Inline trigger for n-tooltip on header cells. The underline cue makes it
+   discoverable that hovering shows an explanation; without it the bare "UN"/
+   "NN"/etc. read as static labels. */
+.th-tip {
+  display: inline-block;
+  cursor: help;
+  border-bottom: 1px dotted var(--n-text-color-3);
+  line-height: 1.2;
 }
 .cols-table tbody td {
   padding: 3px 6px;
@@ -580,7 +721,7 @@ const COL_TITLES: Record<string, string> = {
 }
 .cols-table tbody tr.is-dragging td {
   opacity: 0.4;
-  background: var(--n-table-header-color) !important;
+  background: var(--n-color) !important;
   box-shadow: inset 0 0 0 1px var(--n-divider-color);
 }
 .cols-table tbody tr.is-dragging td.td-drag {
@@ -634,22 +775,49 @@ const COL_TITLES: Record<string, string> = {
   flex: 1 1 auto;
   min-width: 0;
 }
-.type-picker {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+
+/* ---- native type cell: base type select ---- */
+.td-type,
+.td-params {
+  /* Each lives in its own column now; keep them simple so the cells stay
+     vertically centered with the n-input siblings on the row. */
+  vertical-align: middle;
 }
-.type-picker-hint {
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--n-divider-color);
+.type-sel,
+.params-input {
+  width: 100%;
+  min-width: 0;
 }
-.type-picker-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 2px;
+.native-sel,
+.native-input {
+  font-size: 12px;
+  font-family: inherit;
+  padding: 2px 4px;
+  border: 1px solid var(--n-border-color);
+  border-radius: 3px;
+  background: var(--n-input-color, var(--n-card-color));
+  color: var(--n-text-color-1);
+  outline: none;
+  box-sizing: border-box;
+  line-height: 1.5;
 }
-.type-picker-grid :deep(.n-button) {
-  justify-content: flex-start;
+.native-sel { cursor: pointer; }
+.native-sel:disabled,
+.native-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* Soft red outline when a required param is missing — VARCHAR / VARBINARY /
+   ENUM / SET all need params; the visual nudges the user to fill them in. */
+.params-input.is-required {
+  border-color: var(--n-error-color, #d03050);
+  background: color-mix(in srgb, var(--n-error-color, #d03050) 6%, transparent);
+}
+/* "—" placeholder shown in the UN column when the row's type doesn't support
+   UNSIGNED — keeps the column readable instead of looking empty/broken. */
+.td-na {
+  color: var(--n-text-color-3);
+  user-select: none;
 }
 .cols-toolbar {
   padding: 6px 8px;

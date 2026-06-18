@@ -5,7 +5,7 @@
 // exposes Copy / Apply / Reset actions. The parent owns the draft state and
 // passes in the freshly-diffed statements via :statements. Applying just
 // shells out to the parent (it knows the connId and how to refresh after).
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NButton, NEmpty, NFlex, NText, useDialog, useMessage } from 'naive-ui'
 import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
@@ -37,6 +37,43 @@ const themeStore = useThemeStore()
 const host = ref<HTMLDivElement | null>(null)
 const view = ref<EditorView | null>(null)
 const themeComp = new Compartment()
+
+// ---- vertical resize handle ------------------------------------------------
+const MIN_PANEL_H = 60
+const MAX_PANEL_H = 400
+const panelHeight = ref(0)
+const dragging = ref(false)
+let dragStartY = 0
+let dragStartH = 0
+
+onMounted(() => {
+  panelHeight.value = Math.round(window.innerHeight * 0.15)
+  panelHeight.value = Math.max(MIN_PANEL_H, Math.min(MAX_PANEL_H, panelHeight.value))
+})
+
+function onResizePointerDown(ev: PointerEvent) {
+  if (ev.button !== 0) return
+  dragging.value = true
+  dragStartY = ev.clientY
+  dragStartH = panelHeight.value
+  const el = ev.currentTarget as HTMLDivElement
+  el.setPointerCapture(ev.pointerId)
+  document.body.style.cursor = 'row-resize'
+  document.body.style.userSelect = 'none'
+}
+
+function onResizePointerMove(ev: PointerEvent) {
+  if (!dragging.value) return
+  const raw = dragStartH + (dragStartY - ev.clientY)
+  panelHeight.value = Math.max(MIN_PANEL_H, Math.min(MAX_PANEL_H, raw))
+}
+
+function onResizePointerUp() {
+  if (!dragging.value) return
+  dragging.value = false
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+}
 
 const joined = computed(() => props.statements.join('\n'))
 const isEmpty = computed(() => props.statements.length === 0)
@@ -126,7 +163,18 @@ function onReset() {
 </script>
 
 <template>
-  <section class="alter-panel">
+  <section
+    class="alter-panel"
+    :style="{ height: panelHeight + 'px' }"
+  >
+    <div
+      class="resize-handle"
+      :class="{ active: dragging }"
+      @pointerdown="onResizePointerDown"
+      @pointermove="onResizePointerMove"
+      @pointerup="onResizePointerUp"
+      @pointercancel="onResizePointerUp"
+    />
     <header class="alter-panel-head">
       <n-text depth="3" :class="{ 'has-changes': !isEmpty }">
         <template v-if="isEmpty">未检测到变更</template>
@@ -171,6 +219,7 @@ function onReset() {
   flex-direction: column;
   flex: 0 0 auto;
   min-height: 0;
+  position: relative;
   border-top: 1px solid var(--n-border-color);
   background: var(--n-card-color);
 }
@@ -180,16 +229,15 @@ function onReset() {
   justify-content: space-between;
   padding: 4px 8px;
   font-size: 11px;
-  border-bottom: 1px solid var(--n-divider-color);
-  background: var(--n-table-header-color, var(--n-color));
+  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border-bottom: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
 }
 .has-changes :deep(.n-text) {
   color: var(--n-warning-color);
 }
 .alter-panel-cm {
-  height: 160px;
-  min-height: 100px;
-  max-height: 240px;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   user-select: text;
   -webkit-user-select: text;
@@ -200,5 +248,39 @@ function onReset() {
   justify-content: center;
   align-items: center;
   min-height: 60px;
+}
+
+/* ---- resize handle ---- */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  cursor: row-resize;
+  z-index: 10;
+  touch-action: none;
+  background: transparent;
+  transition: background-color 0.2s ease;
+}
+.resize-handle:hover,
+.resize-handle.active {
+  background-color: var(--n-primary-color-hover, rgba(51, 136, 255, 0.3));
+}
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background-color 0.2s ease;
+}
+.resize-handle:hover::after,
+.resize-handle.active::after {
+  background: var(--n-primary-color, #3888ff);
 }
 </style>

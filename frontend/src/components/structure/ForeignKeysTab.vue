@@ -1,12 +1,13 @@
 <script setup lang="ts">
 // ForeignKeysTab — editable list of FK constraints.
 //
-// Referenced columns are entered as free-form tags (n-select tag mode)
-// because catdb can't reasonably fetch every referenced table's columns just
-// for hint completion. The diff layer composes the DDL verbatim from whatever
-// the user typed, then MySQL validates at apply time.
+// Referenced columns are entered as comma-separated text in a native <input>
+// (with <datalist> hints from the current table's column names) because catdb
+// can't reasonably fetch every referenced table's columns just for completion.
+// The diff layer composes the DDL verbatim from whatever the user typed, then
+// MySQL validates at apply time.
 import { computed } from 'vue'
-import { NButton, NInput, NSelect } from 'naive-ui'
+import { NButton, NInput } from 'naive-ui'
 import {
   emptyForeignKeyDraft,
   type ColumnDraft,
@@ -36,6 +37,18 @@ function deleteRow(idx: number) {
   const list = props.modelValue.slice()
   list.splice(idx, 1)
   emit('update:modelValue', list)
+}
+
+/** Parse comma-separated text input into string array. */
+function onRefColsInput(row: ForeignKeyDraft, val: string) {
+  row.referencedColumns = val.split(',').map((s) => s.trim()).filter(Boolean)
+  commit()
+}
+
+/** Parse comma-separated local column names. */
+function onLocalColsInput(row: ForeignKeyDraft, val: string) {
+  row.columns = val.split(',').map((s) => s.trim()).filter(Boolean)
+  commit()
 }
 
 const columnOptions = computed(() =>
@@ -97,15 +110,18 @@ const ACTIONS = [
               />
             </td>
             <td>
-              <n-select
-                v-model:value="row.columns"
-                multiple
-                size="tiny"
-                :options="columnOptions"
-                :disabled="busy"
-                placeholder="选择列…"
-                @update:value="commit"
-              />
+                          <!-- Local column multi-select: comma-separated text + datalist -->
+            <input
+              :value="(row.columns ?? []).join(', ')"
+              placeholder="col1, col2, …"
+              :disabled="busy"
+              class="native-input"
+              list="fkLocalColsDatalist"
+              @input="onLocalColsInput(row, ($event.target as HTMLInputElement).value)"
+            />
+            <datalist id="fkLocalColsDatalist">
+              <option v-for="opt in columnOptions" :key="opt.value" :value="opt.value" />
+            </datalist>
             </td>
             <td>
               <n-input
@@ -126,36 +142,42 @@ const ACTIONS = [
               />
             </td>
             <td>
-              <n-select
-                v-model:value="row.referencedColumns"
-                multiple
-                tag
-                filterable
-                size="tiny"
-                :disabled="busy"
-                placeholder="输入列名 + Enter"
-                @update:value="commit"
-              />
+                          <!-- Referenced columns: text input with datalist hints (comma-separated) -->
+            <input
+              :value="(row.referencedColumns ?? []).join(', ')"
+              placeholder="col1, col2, …"
+              :disabled="busy"
+              class="native-input"
+              list="refColsDatalist"
+              @input="onRefColsInput(row, ($event.target as HTMLInputElement).value)"
+            />
+            <datalist id="refColsDatalist">
+              <option v-for="opt in columnOptions" :key="opt.value" :value="opt.value" />
+            </datalist>
             </td>
             <td>
-              <n-select
-                v-model:value="row.onUpdate"
-                size="tiny"
-                :options="ACTIONS"
-                :disabled="busy"
-                placeholder="RESTRICT"
-                @update:value="commit"
-              />
+                          <!-- ON UPDATE -->
+            <select
+              v-model="row.onUpdate"
+              :disabled="busy"
+              class="native-sel"
+              @change="commit"
+            >
+              <option value="">RESTRICT (default)</option>
+              <option v-for="a in ACTIONS" :key="a.value" :value="a.value">{{ a.label }}</option>
+            </select>
             </td>
             <td>
-              <n-select
-                v-model:value="row.onDelete"
-                size="tiny"
-                :options="ACTIONS"
-                :disabled="busy"
-                placeholder="RESTRICT"
-                @update:value="commit"
-              />
+                          <!-- ON DELETE -->
+            <select
+              v-model="row.onDelete"
+              :disabled="busy"
+              class="native-sel"
+              @change="commit"
+            >
+              <option value="">RESTRICT (default)</option>
+              <option v-for="a in ACTIONS" :key="a.value" :value="a.value">{{ a.label }}</option>
+            </select>
             </td>
             <td class="td-actions">
               <n-button size="tiny" quaternary :disabled="busy" title="删除" @click="deleteRow(i)">✕</n-button>
@@ -182,6 +204,8 @@ const ACTIONS = [
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+  padding-left: 6px;
+  padding-right: 6px;
 }
 .fk-table-wrap {
   flex: 1 1 auto;
@@ -199,7 +223,7 @@ const ACTIONS = [
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--n-table-header-color);
+  background: var(--n-color-segment);
   color: var(--n-text-color-2);
   font-weight: 500;
   text-align: left;
@@ -208,7 +232,7 @@ const ACTIONS = [
   white-space: nowrap;
   user-select: none;
 }
-.fk-table thead th.th-idx { text-align: right; color: var(--n-text-color-3); }
+.fk-table thead th.th-idx { text-align: right; color: var(--n-text-color-2); }
 .fk-table tbody td {
   padding: 3px 6px;
   vertical-align: middle;
@@ -234,5 +258,35 @@ const ACTIONS = [
   padding: 6px 8px;
   border-top: 1px solid var(--n-divider-color);
   flex: 0 0 auto;
+}
+
+/* ---- native select / input ---- */
+.native-sel,
+.native-input {
+  font-size: 12px;
+  font-family: inherit;
+  width: 100%;
+  padding: 2px 4px;
+  border: 1px solid var(--n-border-color);
+  border-radius: 3px;
+  background: var(--n-input-color, var(--n-card-color));
+  color: var(--n-text-color-1);
+  outline: none;
+  box-sizing: border-box;
+  line-height: 1.5;
+}
+.native-sel { cursor: pointer; }
+.native-sel:disabled,
+.native-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 120ms ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>
