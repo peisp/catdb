@@ -183,7 +183,10 @@ function applyCompletion(mode: 'where' | 'orderBy') {
   const { start, end } = getLastWord(inp.value, cursorPos)
   const before = inp.value.slice(0, start)
   const after = inp.value.slice(end)
-  const newValue = before + item + after
+  // 尾部已有空格或接分隔符时不追加空格
+  const needsSpace = after === '' || !/^[\s(),]/.test(after)
+  const suffix = needsSpace ? ' ' : ''
+  const newValue = before + item + suffix + after
 
   if (mode === 'where') {
     whereValue.value = newValue
@@ -193,7 +196,7 @@ function applyCompletion(mode: 'where' | 'orderBy') {
 
   showCompletions.value = false
   nextTick(() => {
-    const pos = before.length + item.length
+    const pos = before.length + item.length + suffix.length
     inp.focus()
     inp.setSelectionRange(pos, pos)
   })
