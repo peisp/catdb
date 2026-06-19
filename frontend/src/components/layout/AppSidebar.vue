@@ -175,7 +175,7 @@ onBeforeUnmount(() => {
   position: relative;
   /* Reserve top space for the floating window controls (toggle button +
      macOS traffic lights), so sidebar content lines up below them. */
-  padding-top: 38px;
+  padding-top: 50px;
   /* Smooth collapse/expand animation matching the demo's cadence. */
   transition:
     width 0.35s cubic-bezier(0.4, 0, 0.2, 1),

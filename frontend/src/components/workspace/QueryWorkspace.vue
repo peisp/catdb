@@ -152,7 +152,15 @@ function openCtx(e: MouseEvent, tab: QueryTabInfo) {
    explicit height) and push the tab body out of the viewport. Basis: 0
    means the slot's height is determined ENTIRELY by grow distribution
    against the definite parent height — content size has no influence. */
-.ws { display: flex; flex-direction: column; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
+.ws {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+}
 .ws :deep(.n-tabs) {
   flex: 1 1 0;
   display: flex;

@@ -244,7 +244,7 @@ function toggleMaximise() {
   top: 0;
   left: 0;
   right: 0;
-  height: 38px;
+  height: 50px;
   z-index: 5;
   --wails-draggable: drag;
 }
@@ -254,17 +254,19 @@ function toggleMaximise() {
    over whichever pane is below — matching the macOS demo. */
 .floating-controls {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  left: 110px;
   z-index: 10;
   display: flex;
   align-items: center;
   gap: 8px;
   --wails-draggable: drag;
 }
+/* clear of system traffic lights */
+
 .floating-controls.mac {
-  left: 110px; /* clear of system traffic lights */
+  top: 10px;
 }
+
 
 .main {
   flex: 1 1 0;
@@ -274,7 +276,7 @@ function toggleMaximise() {
   display: flex;
   flex-direction: column;
   background: var(--n-color);
-  padding-top: 38px; /* keep tabs/content clear of floating controls */
+  padding-top: 50px; /* keep tabs/content clear of floating controls */
 }
 
 /* --- Round liquid-glass sidebar toggle ---
