@@ -69,6 +69,30 @@ const readOnly = computed(() => {
   return !browse.value.hasUniqueKey
 })
 
+// ---- add row state ----
+const addingRow = ref(false)
+const newRowValues = ref<any[]>([])
+
+// When adding, append newRowValues as the last row so VTable edits go directly
+// into the newRowValues ref (persistent reference across recomputes).
+const allRows = computed<any[][]>(() => {
+  if (!addingRow.value) return rows.value
+  return [...rows.value, newRowValues.value]
+})
+
+// ---- pending changes (cell edits queued for batch save) ----
+interface PendingChange {
+  row: number
+  col: number
+  oldValue: any
+  newValue: any
+  columnName: string
+}
+const pendingChanges = ref<Map<string, PendingChange>>(new Map())
+const hasPendingChanges = computed(() => pendingChanges.value.size > 0)
+// Set of "row:col" keys for cells with unsaved edits (body coords)
+const dirtyCells = computed(() => new Set(pendingChanges.value.keys()))
+
 // ---- export dropdown ----
 function onExportSelect(ev: Event) {
   const val = (ev.target as HTMLSelectElement).value
@@ -124,6 +148,9 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeyDown))
 // ---- load + pagination ----
 
 async function load() {
+  pendingChanges.value = new Map()
+  dmlSql.value = ''
+  dmlLabel.value = ''
   loading.value = true
   try {
     const isAll = pageSize.value === ALL_ROWS
@@ -163,6 +190,7 @@ watch(
     filterWhere.value = ''
     filterOrderBy.value = ''
     page.value = 1
+    addingRow.value = false
   },
 )
 
@@ -197,8 +225,15 @@ function commitPageInput() {
 }
 
 const sqlHover = ref(false)
+const dmlSql = ref('')
+const dmlLabel = ref('')
+
+function displaySql(): string {
+  return dmlSql.value || browse.value?.sql || ''
+}
+
 async function copySql() {
-  const sql = browse.value?.sql
+  const sql = displaySql()
   if (!sql) return
   try { await navigator.clipboard.writeText(sql); message.success('SQL copied') }
   catch (e) { message.error(`copy failed: ${String(e)}`) }
@@ -247,24 +282,106 @@ async function onEditCommit(p: {
   row: number; col: number; oldValue: any; newValue: any; column: ColumnMeta
 }) {
   const newValue = coerceForType(p.newValue, p.column)
-  if (newValue === p.oldValue) return
-  // VTable 已乐观更新了它的内部 record。我们的 rows 是 computed 但拿到的是
-  // 同一个底层数组，所以 VTable 的修改也反映到我们这边 —— 这是我们想要的。
+  // null → "" = 单元格原本为 NULL，用户点进去未做修改就退出，不算变更
+  if (newValue === p.oldValue || (p.oldValue == null && newValue === '')) return
+  // New row edit: update newRowValues in-place, no pending tracking.
+  if (addingRow.value && p.row >= rows.value.length) {
+    newRowValues.value[p.col] = newValue
+    return
+  }
+  // Queue the change — VTable has optimistically updated the record in-place.
+  const map = pendingChanges.value
+  const key = `${p.row}:${p.col}`
+  map.set(key, {
+    row: p.row,
+    col: p.col,
+    oldValue: p.oldValue,
+    newValue,
+    columnName: p.column.name,
+  })
+  pendingChanges.value = new Map(map) // trigger reactivity
+  // Clear previous DML display since this edit isn't saved yet
+  dmlSql.value = ''
+  dmlLabel.value = ''
+}
+
+// ---- add row handlers ----
+
+function startAddRow() {
+  newRowValues.value = columns.value.map(() => null)
+  addingRow.value = true
+}
+
+async function saveNewRow() {
+  // Collect non-null values into a column-name-keyed map.
+  const values: Record<string, any> = {}
+  for (let i = 0; i < columns.value.length; i++) {
+    const v = newRowValues.value[i]
+    if (v !== null && v !== undefined && v !== '') {
+      values[columns.value[i].name] = v
+    }
+  }
   try {
     const res = await editApi.applyChange(props.connId, {
-      op: 'update',
+      op: 'insert',
       db: props.db,
       table: props.table,
-      pk: pkValuesOf(p.row),
-      values: { [p.column.name]: newValue },
+      values,
     })
-    if (res.rowsAffected === 0) throw new Error('row not found — likely modified by another session')
-    message.success(`updated (${res.rowsAffected} row)`)
-  } catch (err) {
-    // 失败 → 重新拉本页恢复真值（既同步本地 rows 也同步 VTable）
-    message.error(`update failed: ${String(err)}`)
+    message.success('row inserted')
+    dmlSql.value = res.sql
+    dmlLabel.value = 'INSERT'
+    addingRow.value = false
     await load()
+  } catch (err) {
+    message.error(`insert failed: ${String(err)}`)
   }
+}
+
+function cancelAddRow() {
+  addingRow.value = false
+  load()
+}
+
+// ---- batch save / discard ----
+
+async function saveChanges() {
+  const changes = Array.from(pendingChanges.value.values())
+  if (!changes.length) return
+  loading.value = true
+  let saved = 0
+  let lastSQL = ''
+  for (const ch of changes) {
+    try {
+      const res = await editApi.applyChange(props.connId, {
+        op: 'update',
+        db: props.db,
+        table: props.table,
+        pk: pkValuesOf(ch.row),
+        values: { [ch.columnName]: ch.newValue },
+      })
+      if (res.rowsAffected > 0) {
+        saved++
+        lastSQL = res.sql
+      }
+    } catch (err) {
+      message.error(`保存失败: ${String(err)}`)
+      pendingChanges.value = new Map()
+      await load()
+      return
+    }
+  }
+  message.success(`已保存 ${saved} 处修改`)
+  dmlSql.value = lastSQL
+  dmlLabel.value = 'UPDATE'
+  pendingChanges.value = new Map()
+  if (!addingRow.value) await load()
+}
+
+function discardChanges() {
+  if (!hasPendingChanges.value) return
+  pendingChanges.value = new Map()
+  load()
 }
 
 // ---- filter handlers ----
@@ -288,7 +405,16 @@ function onFilterClear() {
       <n-tag v-if="readOnly" size="small" type="warning">read-only · no primary key</n-tag>
       <n-tag v-else size="small" type="info">PK: {{ pk.join(', ') }}</n-tag>
       <span class="grow" />
-      <n-button size="tiny" @click="load" :disabled="loading">Refresh</n-button>
+      <template v-if="addingRow">
+        <n-button size="tiny" type="primary" :disabled="loading" @click="saveNewRow">保存</n-button>
+        <n-button size="tiny" :disabled="loading" @click="cancelAddRow">取消</n-button>
+      </template>
+      <n-button v-else size="tiny" :disabled="loading || readOnly" @click="startAddRow">+ 新增</n-button>
+      <template v-if="hasPendingChanges && !addingRow">
+        <n-button size="tiny" type="primary" :disabled="loading" @click="saveChanges">保存</n-button>
+        <n-button size="tiny" :disabled="loading" @click="discardChanges">取消</n-button>
+      </template>
+      <n-button size="tiny" @click="load" :disabled="loading">{{ hasPendingChanges && !addingRow ? '放弃更改' : 'Refresh' }}</n-button>
       <select class="export-select" @change="onExportSelect">
         <option value="" disabled selected>Export…</option>
         <option value="csv">CSV</option>
@@ -315,9 +441,10 @@ function onFilterClear() {
     <n-spin :show="loading" class="data-spin">
       <DataGrid
         :columns="columns"
-        :rows="rows"
+        :rows="allRows"
         :editable="!readOnly"
         :pk-columns="pk"
+        :dirty-cells="dirtyCells"
         :fetching="loading"
         :sort-remote="true"
         :sort-state="sortState"
@@ -357,9 +484,17 @@ function onFilterClear() {
         @mouseenter="sqlHover = true"
         @mouseleave="sqlHover = false"
       >
-        <code class="sql-text mono" :title="browse?.sql || ''">{{ browse?.sql || '' }}</code>
+        <div class="sql-lines">
+          <div v-if="dmlSql" class="sql-line">
+            <code class="sql-text mono" :title="dmlSql">{{ dmlSql }}</code>
+            <n-tag size="tiny" :bordered="false" class="sql-tag">{{ dmlLabel }}</n-tag>
+          </div>
+          <div class="sql-line">
+            <code class="sql-text mono" :title="browse?.sql || ''">{{ browse?.sql || '' }}</code>
+          </div>
+        </div>
         <button
-          v-if="browse?.sql"
+          v-if="displaySql()"
           class="copy-btn"
           :class="{ visible: sqlHover }"
           title="复制 SQL"
@@ -490,6 +625,25 @@ function onFilterClear() {
   align-items: center;
   gap: 6px;
   position: relative;
+}
+.sql-lines {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.sql-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.sql-tag {
+  flex: 0 0 auto;
+  line-height: 1;
+  opacity: 0.6;
+  font-size: 9px;
 }
 .sql-text {
   flex: 1 1 0;

@@ -15,7 +15,7 @@
 //
 // VTable 的 row 索引把 header 算在内（row=0 是表头），所以对外发出的 row
 // 一律减去 columnHeaderLevelCount 得到 body 行号。
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { ListTable, register } from '@visactor/vue-vtable'
 import { InputEditor, TextAreaEditor, DateInputEditor } from '@visactor/vtable-editors'
 import { useThemeVars } from 'naive-ui'
@@ -43,6 +43,8 @@ function ensureEditorsRegistered() {
 }
 ensureEditorsRegistered()
 
+let _pasteHandler: ((e: ClipboardEvent) => void) | null = null
+
 interface Props {
   columns: ColumnMeta[]
   rows: any[][]
@@ -63,6 +65,8 @@ interface Props {
   sortRemote?: boolean
   /** 当前服务端排序状态，用于同步 VTable 排序指示器。sortRemote=true 时使用。 */
   sortState?: SortState | null
+  /** 未保存的脏单元格集合（"row:col" 格式的 key），用于灰色渲染提示 */
+  dirtyCells?: Set<string>
   /** Wails 原生右键菜单名（覆盖默认的 catdb-grid-cell / catdb-grid-cell-edit 切换逻辑）。
    *  传入非空字符串时，DataGrid 直接使用该名字，不再根据 pkColumns 推断。 */
   contextMenuName?: string
@@ -71,6 +75,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   editable: false,
   pkColumns: () => [],
+  dirtyCells: () => new Set<string>(),
   fetching: false,
   rowHeight: 24,
   defaultColumnWidth: 160,
@@ -257,6 +262,15 @@ const tableOptions = computed<any>(() => {
       const align = pickAlign(c)
       // dataValue 是 fieldFormat 前的原始值，value 是格式化后的
       if (args?.dataValue == null) return { textAlign: align, color: '#aaa', fontStyle: 'italic' }
+      // 未保存的脏单元格显示灰色（VTable 可视坐标 → body 坐标）
+      if (props.dirtyCells?.size && args.table) {
+        const t = args.table
+        const colOff = (t.rowHeaderLevelCount ?? 0) + (t.leftRowSeriesNumberCount ?? 0)
+        const rowOff = t.columnHeaderLevelCount ?? 1
+        if (props.dirtyCells.has(`${args.row - rowOff}:${args.col - colOff}`)) {
+          return { textAlign: align, color: '#999' }
+        }
+      }
       return { textAlign: align }
     },
 
@@ -285,7 +299,7 @@ const tableOptions = computed<any>(() => {
     hover: {
       highlightMode: 'cell',
     },
-    editCellTrigger: props.editable ? 'doubleclick' : undefined,
+    editCellTrigger: props.editable ? 'click' : undefined,
     keyboardOptions: {
       // 让 parent 控制 copy 行为（保留 useTableSelection 的 TSV/INSERT/UPDATE）
       copySelected: false,
@@ -471,6 +485,100 @@ function onReady(instance: any) {
   // 滚到底部：触发分页/流式追加
   instance.on('scroll_vertical_end', () => emit('load-more'))
 
+  // Tab/Shift+Tab：移动到下一个/上一个单元格并自动进入编辑模式
+  instance.on('keydown', (args: any) => {
+    const e: KeyboardEvent = args?.event ?? args?.federatedEvent?.nativeEvent
+    if (!e || e.key !== 'Tab' || !props.editable) return
+    e.preventDefault()
+
+    const off = offsets()
+    const ranges = instance.getSelectedCellRanges?.() ?? []
+    if (!ranges.length) return
+    const cur = ranges[ranges.length - 1].end
+    const maxCol = off.col + props.columns.length - 1
+    const maxRow = off.row + props.rows.length - 1
+
+    let nextCol = cur.col
+    let nextRow = cur.row
+    if (e.shiftKey) {
+      if (cur.col > off.col) { nextCol = cur.col - 1 }
+      else if (cur.row > off.row) { nextCol = maxCol; nextRow = cur.row - 1 }
+      else return
+    } else {
+      if (cur.col < maxCol) { nextCol = cur.col + 1 }
+      else if (cur.row < maxRow) { nextCol = off.col; nextRow = cur.row + 1 }
+      else return
+    }
+
+    // 检查目标列是否允许编辑（pk/autoIncrement 列无 editor）
+    const bodyCol = nextCol - off.col
+    if (bodyCol >= 0 && bodyCol < props.columns.length && pickEditor(props.columns[bodyCol])) {
+      instance.selectCell(nextCol, nextRow)
+      instance.startEditCell(nextRow, nextCol)
+    } else {
+      instance.selectCell(nextCol, nextRow)
+    }
+  })
+
+  // 粘贴 TSV（Ctrl+V / Cmd+V）：将剪切板文本按 tab/换行分割后分布到选区
+  const pasteHandler = (e: ClipboardEvent) => {
+    if (!props.editable) return
+    e.preventDefault()
+
+    const text = e.clipboardData?.getData('text/plain')
+    if (!text) return
+
+    const off = offsets()
+    const ranges = instance.getSelectedCellRanges?.() ?? []
+    if (!ranges.length) return
+
+    // 以选区左上角为粘贴起点
+    const range = ranges[0]
+    const startRawCol = range.start.col
+    const startRawRow = range.start.row
+
+    // 解析 TSV：换行为行、制表符为列
+    const pastedLines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+    // 去掉末尾空行（来自末尾换行符）
+    if (pastedLines.length > 1 && pastedLines[pastedLines.length - 1] === '') {
+      pastedLines.pop()
+    }
+
+    for (let ri = 0; ri < pastedLines.length; ri++) {
+      const cells = pastedLines[ri].split('\t')
+      for (let ci = 0; ci < cells.length; ci++) {
+        const rawCol = startRawCol + ci
+        const rawRow = startRawRow + ri
+        const body = toBody(rawCol, rawRow)
+        if (!body) continue
+        if (body.row >= props.rows.length || body.col >= props.columns.length) continue
+
+        const colMeta = props.columns[body.col]
+        const oldValue = props.rows[body.row]?.[body.col]
+        const newValue = cells[ci]
+
+        if (newValue === oldValue) continue
+        // 跳过不可编辑列
+        if (!pickEditor(colMeta)) continue
+
+        // 直接更新数组元素（与 VTable 共享同一引用）
+        props.rows[body.row][body.col] = newValue
+
+        emit('edit-commit', {
+          row: body.row,
+          col: body.col,
+          oldValue,
+          newValue,
+          column: colMeta,
+        })
+      }
+    }
+
+    try { instance.refreshRecords() } catch { /* VTable 可能无此方法 */ }
+  }
+  _pasteHandler = pasteHandler as any
+  gridWrapRef.value?.addEventListener('paste', pasteHandler)
+
   // 排序点击：sortRemote=true 时发射给父组件做服务端排序
   instance.on('sort_click', (args: any) => {
     if (!props.sortRemote) return
@@ -525,6 +633,12 @@ watch(
   },
   { deep: false },
 )
+
+onBeforeUnmount(() => {
+  if (_pasteHandler && gridWrapRef.value) {
+    gridWrapRef.value.removeEventListener('paste', _pasteHandler)
+  }
+})
 </script>
 
 <template>

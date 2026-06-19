@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"catdb/internal/core/session"
 	"catdb/internal/dbdriver"
@@ -126,7 +128,7 @@ func (s *EditService) ApplyChange(ctx context.Context, connID string, ch RowChan
 	return RowChangeResult{
 		RowsAffected: res.RowsAffected,
 		LastInsertID: res.LastInsertID,
-		SQL:          sqlText,
+		SQL:          interpolateSQL(sqlText, args),
 	}, nil
 }
 
@@ -151,4 +153,54 @@ func tableQualified(_ dbdriver.Dialect, db, table string) string {
 		return table
 	}
 	return db + "." + table
+}
+
+// interpolateSQL replaces "?" placeholders with display-safe formatted values.
+// For display only — never use the result for execution.
+func interpolateSQL(sql string, args []any) string {
+	if len(args) == 0 {
+		return sql
+	}
+	var buf strings.Builder
+	argIdx := 0
+	for {
+		i := strings.Index(sql, "?")
+		if i < 0 || argIdx >= len(args) {
+			buf.WriteString(sql)
+			break
+		}
+		buf.WriteString(sql[:i])
+		buf.WriteString(sqlArgValue(args[argIdx]))
+		sql = sql[i+1:]
+		argIdx++
+	}
+	return buf.String()
+}
+
+// sqlArgValue formats a Go value as a SQL literal string for display.
+func sqlArgValue(v any) string {
+	if v == nil {
+		return "NULL"
+	}
+	switch val := v.(type) {
+	case int:
+		return strconv.Itoa(val)
+	case int64:
+		return strconv.FormatInt(val, 10)
+	case uint64:
+		return strconv.FormatUint(val, 10)
+	case float64:
+		return strconv.FormatFloat(val, 'f', -1, 64)
+	case bool:
+		if val {
+			return "1"
+		}
+		return "0"
+	case string:
+		return "'" + strings.ReplaceAll(val, "'", "''") + "'"
+	case []byte:
+		return "X'" + fmt.Sprintf("%x", val) + "'"
+	default:
+		return "'" + strings.ReplaceAll(fmt.Sprintf("%v", val), "'", "''") + "'"
+	}
 }
