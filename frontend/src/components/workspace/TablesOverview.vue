@@ -11,6 +11,7 @@ import { useQueryStore } from '../../stores/query'
 import { LogicalType } from '../../../bindings/catdb/internal/dbdriver/models'
 import type { ColumnMeta, TableInfo } from '../../api/metadata'
 import DataGrid from '../data-grid/DataGrid.vue'
+import { setActiveTableContext } from '../../api/tableContextMenu'
 
 const props = defineProps<{
   connId: string
@@ -140,6 +141,19 @@ function onDblClickCell(p: { row: number }) {
   if (!table) return
   queryStore.openTableTab(props.connId, props.db, table.name, 'table')
 }
+
+// 右键单元格 → 把当前行对应的表名注入 catdb-tables-overview 菜单上下文。
+// 实际的 打开 / 修改 / 清空 / 删除 由 api/tablesOverviewContextMenu.ts 监听并执行。
+function onCellContextMenu(p: { row: number }) {
+  const table = tables.value[p.row]
+  if (!table) return
+  setActiveTableContext({
+    connId: props.connId,
+    db: props.db,
+    table: table.name,
+    onAfterMutate: load,
+  })
+}
 </script>
 
 <template>
@@ -162,7 +176,9 @@ function onDblClickCell(p: { row: number }) {
         :sortable="true"
         :sort-remote="false"
         :row-height="28"
+        context-menu-name="catdb-tables-overview"
         @cell-dblclick="onDblClickCell"
+        @cell-context-menu="onCellContextMenu"
       />
     </n-spin>
   </div>

@@ -2,13 +2,12 @@
 // ObjectTree — per-connection database/table/column tree. Lazy loads each
 // level via MetadataService. Single-click a database node → open the
 // tables overview tab. Double-click any non-leaf node → expand/collapse
-// it. Right-click → action menu (M4 will replace this with the native
-// Wails context menu).
+// it. Right-click → Wails native context menu (registered in
+// wailsbridge/contextmenu.go as `catdb-tree-*`, dispatched via
+// api/{table,tree}ContextMenu.ts).
 import { computed, ref, watch } from 'vue'
 import {
   NButton,
-  NDropdown,
-  NIcon,
   NScrollbar,
   NSpin,
   NTree,
@@ -19,13 +18,14 @@ import type { ConnectionProfile } from '../../api/connections'
 import { metadata as metaApi } from '../../api'
 import { useMetadataStore } from '../../stores/metadata'
 import { useConnectionsStore } from '../../stores/connections'
+import { setActiveTableContext } from '../../api/tableContextMenu'
+import { setActiveTreeContext } from '../../api/treeContextMenu'
 
 const props = defineProps<{ connection: ConnectionProfile }>()
 const emit = defineEmits<{
   (e: 'open-data', payload: { db: string; table: string }): void
   (e: 'open-structure', payload: { db: string; table: string }): void
   (e: 'open-tables-overview', payload: { db: string }): void
-  (e: 'open-new-table', payload: { db: string }): void
 }>()
 
 const store = useMetadataStore()
@@ -142,77 +142,133 @@ async function onLoad(node: TreeOption): Promise<boolean> {
   }
 }
 
-// --- context menu (NDropdown manual) ---
+// --- context menu (Wails native) ---
+//
+// Per CLAUDE.md rule 11, right-click uses Wails native menus, not HTML
+// overlays. The flow:
+//   1. onContextMenu sets `--custom-contextmenu` on `paneRef` based on the
+//      node kind (table / view / tableGroup / viewGroup / database).
+//   2. setActiveTableContext / setActiveTreeContext push the node identity
+//      and per-action callbacks into shared module singletons.
+//   3. The corresponding listener (api/tableContextMenu.ts, api/treeContextMenu.ts)
+//      receives the `ctx:tbl-*` / `ctx:tree-*` event from Go and acts.
+const paneRef = ref<HTMLElement | null>(null)
 
-const ctxX = ref(0)
-const ctxY = ref(0)
-const ctxOpen = ref(false)
-const ctxNode = ref<TreeMeta | null>(null)
-
-const ctxOptions = computed(() => {
-  const m = ctxNode.value
-  if (!m) return []
-  if (m.kind === 'table') {
-    return [
-      { label: 'Browse data', key: 'browse' },
-      { label: 'View structure', key: 'structure' },
-      { label: 'Refresh columns', key: 'refresh-cols' },
-    ]
+function setMenu(name: string) {
+  if (name) {
+    paneRef.value?.style.setProperty('--custom-contextmenu', name)
+  } else {
+    paneRef.value?.style.removeProperty('--custom-contextmenu')
   }
-  if (m.kind === 'view') {
-    return [{ label: 'Browse data', key: 'browse' }]
-  }
-  if (m.kind === 'tableGroup') {
-    return [
-      { label: '新建表', key: 'new-table' },
-      { label: 'Refresh', key: 'refresh-group' },
-    ]
-  }
-  if (m.kind === 'viewGroup') {
-    return [{ label: 'Refresh', key: 'refresh-group' }]
-  }
-  if (m.kind === 'database') {
-    return [
-      { label: '新建表', key: 'new-table' },
-      { label: 'Refresh', key: 'refresh-db' },
-    ]
-  }
-  return []
-})
-
-function onContextMenu(event: MouseEvent, node: TreeOption) {
-  event.preventDefault()
-  ctxNode.value = (node as any).extra as TreeMeta
-  ctxX.value = event.clientX
-  ctxY.value = event.clientY
-  ctxOpen.value = false
-  requestAnimationFrame(() => (ctxOpen.value = true))
 }
 
-async function onCtxSelect(key: string) {
-  ctxOpen.value = false
-  const m = ctxNode.value
-  if (!m) return
-  switch (key) {
-    case 'browse':
-      if (m.db && m.table) emit('open-data', { db: m.db, table: m.table })
+// Walk the reactive tree to find a node by key. Returns the node (so callers
+// can mutate `children`) or null.
+function findNodeByKey(key: string): TreeOption | null {
+  const stack: TreeOption[] = [...treeData.value]
+  while (stack.length) {
+    const n = stack.shift()!
+    if (n.key === key) return n
+    if (n.children) stack.push(...(n.children as TreeOption[]))
+  }
+  return null
+}
+
+async function refreshTableGroup(db: string) {
+  await store.ensureTables(props.connection.id, db, true)
+  const node = findNodeByKey(nodeKey({ kind: 'tableGroup', db }))
+  if (!node) return
+  node.children = undefined
+  await onLoad(node)
+}
+
+async function refreshViewGroup(db: string) {
+  const node = findNodeByKey(nodeKey({ kind: 'viewGroup', db }))
+  if (!node) return
+  node.children = undefined
+  await onLoad(node)
+}
+
+async function refreshColumns(db: string, table: string) {
+  await store.ensureColumns(props.connection.id, db, table, true)
+  const node = findNodeByKey(nodeKey({ kind: 'table', db, table }))
+  if (!node) return
+  node.children = undefined
+  if (expandedKeys.value.includes(node.key as string)) {
+    await onLoad(node)
+  }
+}
+
+async function refreshDatabase() {
+  await store.ensureDatabases(props.connection.id, true)
+  await loadRoot()
+}
+
+function onContextMenu(event: MouseEvent, node: TreeOption) {
+  // Always preventDefault so the WebView's developer-tools menu never shows.
+  // Wails' native menu opens off `--custom-contextmenu`, NOT off the default
+  // browser menu, so suppressing the latter is safe.
+  event.preventDefault()
+  const m = (node as any).extra as TreeMeta
+  const connId = props.connection.id
+
+  switch (m.kind) {
+    case 'table':
+      if (!m.db || !m.table) return
+      setActiveTableContext({
+        connId,
+        db: m.db,
+        table: m.table,
+        onAfterMutate: () => refreshTableGroup(m.db!),
+      })
+      setActiveTreeContext({
+        connId,
+        db: m.db,
+        table: m.table,
+        onRefreshColumns: () => refreshColumns(m.db!, m.table!),
+      })
+      setMenu('catdb-tree-table')
       break
-    case 'structure':
-      if (m.db && m.table) emit('open-structure', { db: m.db, table: m.table })
+    case 'view':
+      if (!m.db || !m.table) return
+      // Reuse the table-open event — "打开" on a view also opens a data tab.
+      setActiveTableContext({
+        connId,
+        db: m.db,
+        table: m.table,
+      })
+      setMenu('catdb-tree-view')
       break
-    case 'new-table':
-      if (m.db) emit('open-new-table', { db: m.db })
+    case 'tableGroup':
+      if (!m.db) return
+      setActiveTreeContext({
+        connId,
+        db: m.db,
+        onRefreshTables: () => refreshTableGroup(m.db!),
+      })
+      setMenu('catdb-tree-table-group')
       break
-    case 'refresh-cols':
-      if (m.db && m.table) await store.ensureColumns(props.connection.id, m.db, m.table, true)
+    case 'viewGroup':
+      if (!m.db) return
+      setActiveTreeContext({
+        connId,
+        db: m.db,
+        onRefreshViews: () => refreshViewGroup(m.db!),
+      })
+      setMenu('catdb-tree-view-group')
       break
-    case 'refresh-group':
-      if (m.kind === 'tableGroup' && m.db) await store.ensureTables(props.connection.id, m.db, true)
-      // re-trigger load by clearing children handled via NTree's load callback
+    case 'database':
+      if (!m.db) return
+      setActiveTreeContext({
+        connId,
+        db: m.db,
+        onRefreshDb: () => refreshDatabase(),
+      })
+      setMenu('catdb-tree-database')
       break
-    case 'refresh-db':
-      await store.ensureDatabases(props.connection.id, true)
-      await loadRoot()
+    case 'column':
+      // Columns have no menu — clear so nothing shows.
+      setMenu('')
       break
   }
 }
@@ -299,7 +355,7 @@ async function onRefresh() {
 </script>
 
 <template>
-  <div class="tree-pane">
+  <div ref="paneRef" class="tree-pane">
     <div class="header">
       <span class="status-dot" :class="{ live: isLive }" />
       <span class="title">{{ connection.name }}</span>
@@ -393,17 +449,6 @@ async function onRefresh() {
         </n-spin>
       </n-scrollbar>
     </div>
-    <n-dropdown
-      placement="bottom-start"
-      trigger="manual"
-      size="small"
-      :show="ctxOpen"
-      :x="ctxX"
-      :y="ctxY"
-      :options="ctxOptions"
-      @select="onCtxSelect"
-      @clickoutside="ctxOpen = false"
-    />
   </div>
 </template>
 

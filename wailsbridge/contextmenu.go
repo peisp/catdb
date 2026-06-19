@@ -88,6 +88,51 @@ func RegisterContextMenus(app *application.App) {
 		}
 		m.Update()
 	}
+
+	// Table-level right-click — used by both TablesOverview (table list) and
+	// ObjectTree (table node). Open / Edit structure / Truncate / Drop.
+	// Selected table is tracked in the front-end (see api/tableContextMenu.ts).
+	overview := application.NewContextMenu("catdb-tables-overview")
+	overview.Add("打开").OnClick(emitContextEvent("ctx:tbl-open"))
+	overview.Add("修改").OnClick(emitContextEvent("ctx:tbl-edit"))
+	overview.AddSeparator()
+	overview.Add("清空").OnClick(emitContextEvent("ctx:tbl-truncate"))
+	overview.Add("删除").OnClick(emitContextEvent("ctx:tbl-drop"))
+	overview.Update()
+
+	// Object-tree right-click menus — one per node kind. The front-end
+	// (ObjectTree.vue) sets `--custom-contextmenu` based on the right-clicked
+	// node and pushes context (db/table) into the singletons before the
+	// native menu opens. Table-node Open/Edit/Truncate/Drop reuse the
+	// `ctx:tbl-*` events above. Tree-only actions emit `ctx:tree-*`.
+
+	treeTable := application.NewContextMenu("catdb-tree-table")
+	treeTable.Add("打开").OnClick(emitContextEvent("ctx:tbl-open"))
+	treeTable.Add("修改").OnClick(emitContextEvent("ctx:tbl-edit"))
+	treeTable.AddSeparator()
+	treeTable.Add("清空").OnClick(emitContextEvent("ctx:tbl-truncate"))
+	treeTable.Add("删除").OnClick(emitContextEvent("ctx:tbl-drop"))
+	treeTable.AddSeparator()
+	treeTable.Add("刷新列").OnClick(emitContextEvent("ctx:tree-refresh-cols"))
+	treeTable.Update()
+
+	treeView := application.NewContextMenu("catdb-tree-view")
+	treeView.Add("打开").OnClick(emitContextEvent("ctx:tbl-open"))
+	treeView.Update()
+
+	treeTableGroup := application.NewContextMenu("catdb-tree-table-group")
+	treeTableGroup.Add("新建表").OnClick(emitContextEvent("ctx:tree-new-table"))
+	treeTableGroup.Add("刷新").OnClick(emitContextEvent("ctx:tree-refresh-tables"))
+	treeTableGroup.Update()
+
+	treeViewGroup := application.NewContextMenu("catdb-tree-view-group")
+	treeViewGroup.Add("刷新").OnClick(emitContextEvent("ctx:tree-refresh-views"))
+	treeViewGroup.Update()
+
+	treeDb := application.NewContextMenu("catdb-tree-database")
+	treeDb.Add("新建表").OnClick(emitContextEvent("ctx:tree-new-table"))
+	treeDb.Add("刷新").OnClick(emitContextEvent("ctx:tree-refresh-db"))
+	treeDb.Update()
 }
 
 func emitContextEvent(event string) func(*application.Context) {

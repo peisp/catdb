@@ -62,6 +62,9 @@ interface Props {
   sortRemote?: boolean
   /** 当前服务端排序状态，用于同步 VTable 排序指示器。sortRemote=true 时使用。 */
   sortState?: SortState | null
+  /** Wails 原生右键菜单名（覆盖默认的 catdb-grid-cell / catdb-grid-cell-edit 切换逻辑）。
+   *  传入非空字符串时，DataGrid 直接使用该名字，不再根据 pkColumns 推断。 */
+  contextMenuName?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -73,6 +76,7 @@ const props = withDefaults(defineProps<Props>(), {
   sortable: true,
   sortRemote: false,
   sortState: null,
+  contextMenuName: '',
 })
 
 const emit = defineEmits<{
@@ -401,26 +405,29 @@ function onReady(instance: any) {
     if (!props.rows.length || !props.columns.length) return
 
     // Decide which native context menu to show:
-    //   catdb-grid-cell-edit (includes "Set to NULL") when table has a PK
-    //   and NO selected column is a PK column.
-    //   Otherwise catdb-grid-cell (copy items only).
-    let showSetNull = props.pkColumns.length > 0
-    if (showSetNull) {
-      const ranges = instance.getSelectedCellRanges?.() ?? []
-      for (const r of ranges) {
-        const sCol = Math.max(0, r.start.col - off.col)
-        const eCol = Math.max(0, r.end.col - off.col)
-        for (let c = sCol; c <= eCol && showSetNull; c++) {
-          if (props.pkColumns.includes(props.columns[c]?.name)) {
-            showSetNull = false
+    //   - props.contextMenuName 非空 → 直接采用（如 catdb-tables-overview）。
+    //   - 否则：catdb-grid-cell-edit (includes "Set to NULL") when table has a PK
+    //     and NO selected column is a PK column；否则 catdb-grid-cell（仅复制项）。
+    let menuName: string
+    if (props.contextMenuName) {
+      menuName = props.contextMenuName
+    } else {
+      let showSetNull = props.pkColumns.length > 0
+      if (showSetNull) {
+        const ranges = instance.getSelectedCellRanges?.() ?? []
+        for (const r of ranges) {
+          const sCol = Math.max(0, r.start.col - off.col)
+          const eCol = Math.max(0, r.end.col - off.col)
+          for (let c = sCol; c <= eCol && showSetNull; c++) {
+            if (props.pkColumns.includes(props.columns[c]?.name)) {
+              showSetNull = false
+            }
           }
         }
       }
+      menuName = showSetNull ? 'catdb-grid-cell-edit' : 'catdb-grid-cell'
     }
-    gridWrapRef.value?.style.setProperty(
-      '--custom-contextmenu',
-      showSetNull ? 'catdb-grid-cell-edit' : 'catdb-grid-cell',
-    )
+    gridWrapRef.value?.style.setProperty('--custom-contextmenu', menuName)
 
     const ev: MouseEvent | undefined = args.event ?? args.federatedEvent?.nativeEvent
     emit('cell-context-menu', {
@@ -520,9 +527,14 @@ watch(
 </script>
 
 <template>
-  <!-- --custom-contextmenu: catdb-grid-cell 触发 Wails 原生上下文菜单
-       （wailsbridge/contextmenu.go 中注册）。CSS 变量在画布子节点也生效。 -->
-  <div ref="gridWrapRef" class="datagrid-wrap" style="--custom-contextmenu: catdb-grid-cell">
+  <!-- --custom-contextmenu 触发 Wails 原生上下文菜单（wailsbridge/contextmenu.go 中注册）。
+       默认 catdb-grid-cell；contextMenuName prop 非空时改用该名字（如 catdb-tables-overview）。
+       CSS 变量在画布子节点也生效。 -->
+  <div
+    ref="gridWrapRef"
+    class="datagrid-wrap"
+    :style="{ '--custom-contextmenu': props.contextMenuName || 'catdb-grid-cell' }"
+  >
     <ListTable
       :options="tableOptions"
       :records="rows"
