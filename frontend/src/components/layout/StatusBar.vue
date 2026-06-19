@@ -33,6 +33,7 @@ watch(liveConn, async (conn) => {
 }, { immediate: true })
 
 const mode = computed(() => (theme.mode === 'dark' ? 'Dark' : 'Light'))
+const appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
 </script>
 
 <template>
@@ -47,7 +48,7 @@ const mode = computed(() => (theme.mode === 'dark' ? 'Dark' : 'Light'))
     <span class="grow" />
     <span class="slot mono">{{ mode }}</span>
     <span class="sep" />
-    <span class="slot mono">catdb v{{ import.meta.env.VITE_APP_VERSION || 'dev' }}</span>
+    <span class="slot mono">catdb v{{ appVersion }}</span>
   </div>
 </template>
 
