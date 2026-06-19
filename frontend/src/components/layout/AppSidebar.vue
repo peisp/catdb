@@ -18,7 +18,13 @@ import ObjectTree from './ObjectTree.vue'
 import ResizeHandle from '../shared/ResizeHandle.vue'
 import type { ConnectionProfile, DriverInfo } from '../../api/connections'
 
-defineProps<{ activeConn: ConnectionProfile | null }>()
+defineProps<{
+  activeConn: ConnectionProfile | null
+  // Driven by AppShell. When true the pane animates to width 0 and fades
+  // out — kept mounted so the user's last width and ObjectTree's expanded
+  // state survive a collapse/expand cycle.
+  collapsed?: boolean
+}>()
 
 const emit = defineEmits<{
   (e: 'select', conn: ConnectionProfile): void
@@ -100,9 +106,13 @@ onBeforeUnmount(() => {
 <template>
   <aside
     class="sider"
-    :style="{ width: width + 'px', flexBasis: width + 'px' }"
+    :class="{ collapsed, dragging }"
+    :style="{
+      width: collapsed ? '0px' : width + 'px',
+      flexBasis: collapsed ? '0px' : width + 'px',
+    }"
   >
-    <div class="sider-body">
+    <div class="sider-body" :class="{ hidden: collapsed }">
       <n-split
         v-if="activeConn"
         direction="vertical"
@@ -139,6 +149,7 @@ onBeforeUnmount(() => {
       />
     </div>
     <ResizeHandle
+      v-show="!collapsed"
       orientation="vertical"
       :active="dragging"
       title="拖动调整宽度，拖出最小宽度可折叠"
@@ -162,6 +173,30 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   position: relative;
+  /* Reserve top space for the floating window controls (toggle button +
+     macOS traffic lights), so sidebar content lines up below them. */
+  padding-top: 38px;
+  /* Smooth collapse/expand animation matching the demo's cadence. */
+  transition:
+    width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    flex-basis 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    padding 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.25s ease;
+}
+.sider.collapsed {
+  /* Hide the right divider — there's no pane edge to mark while collapsed. */
+  border-right-color: transparent;
+  /* Keep the top inset but flatten horizontal padding so width truly collapses. */
+  padding-left: 0;
+  padding-right: 0;
+}
+/* While the user is dragging the resize handle, the width changes every
+   pointermove. The 0.35s collapse/expand transition would make those
+   per-frame updates animate, so the handle feels laggy and unresponsive.
+   Suppress all transitions during drag — they snap back in once dragging
+   ends, so the collapse/expand animation still works. */
+.sider.dragging {
+  transition: none;
 }
 .sider-body {
   flex: 1 1 0;
@@ -170,6 +205,11 @@ onBeforeUnmount(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+.sider-body.hidden {
+  opacity: 0;
+  visibility: hidden;
 }
 .sider-body > * { flex: 1 1 0; min-width: 0; min-height: 0; }
 

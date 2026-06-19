@@ -9,7 +9,7 @@
 // dirty-tab counter in the Go side current.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Window } from '@wailsio/runtime'
-import { NButton, useDialog, useMessage } from 'naive-ui'
+import { useDialog, useMessage } from 'naive-ui'
 import AppSidebar from './AppSidebar.vue'
 import ConnectionWelcome from '../connection/ConnectionWelcome.vue'
 import QueryWorkspace from '../workspace/QueryWorkspace.vue'
@@ -27,6 +27,11 @@ const message = useMessage()
 const activeConn = ref<ConnectionProfile | null>(null)
 
 const sidebarVisible = ref(true)
+
+// macOS draws traffic lights at the top-left; offset the floating toggle
+// to the right of them. Other platforms have the title-bar buttons on the
+// right, so the toggle can sit flush at the top-left.
+const isMac = navigator.platform.includes('Mac')
 
 // --- menu / close-guard hookup ---
 
@@ -140,9 +145,45 @@ function toggleMaximise() {
 <template>
   <div class="root">
     <div class="shell">
+      <!-- Invisible drag strip pinned to the top of the window. Lets the user
+           drag the window (Wails consumes --wails-draggable: drag) and
+           double-click to toggle maximise. The floating-controls layer sits
+           above it (z-index) so the toggle button stays clickable. -->
+      <div class="top-drag-region" @dblclick.self="toggleMaximise"></div>
+
+      <!-- Floating controls overlay: sidebar toggle. Absolutely positioned
+           so the sidebar can extend all the way to the top of the window
+           (demo pattern). On macOS, offset right of the system traffic
+           lights; elsewhere, anchored flush at top-left. -->
+      <div class="floating-controls" :class="{ mac: isMac }">
+        <button
+          type="button"
+          class="sidebar-toggle glass"
+          :class="{ collapsed: !sidebarVisible }"
+          :title="sidebarVisible ? '隐藏侧边栏' : '显示侧边栏'"
+          @click="sidebarVisible = !sidebarVisible"
+        >
+          <span class="glass-specular" aria-hidden="true" />
+          <svg
+            class="glass-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <line x1="15" y1="9" x2="9" y2="12" />
+            <line x1="15" y1="15" x2="9" y2="12" />
+          </svg>
+        </button>
+      </div>
+
       <AppSidebar
-        v-if="sidebarVisible"
         :active-conn="activeConn"
+        :collapsed="!sidebarVisible"
         @select="onSelectConnection"
         @new="onNewConnection"
         @edit="onEditConnection"
@@ -152,42 +193,6 @@ function toggleMaximise() {
         @collapse="sidebarVisible = false"
       />
       <div class="main">
-        <header class="titlebar" @dblclick.self="toggleMaximise">
-          <n-button
-            class="sidebar-toggle"
-            size="tiny"
-            quaternary
-            :title="sidebarVisible ? '隐藏侧边栏' : '显示侧边栏'"
-            @click="sidebarVisible = !sidebarVisible"
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.2"
-              aria-hidden="true"
-            >
-              <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
-              <line :x1="sidebarVisible ? 6 : 5" :y1="2.5" :x2="sidebarVisible ? 6 : 5" :y2="13.5" />
-              <line
-                v-if="sidebarVisible"
-                x1="3"
-                y1="5"
-                x2="4.5"
-                y2="5"
-              />
-              <line
-                v-if="sidebarVisible"
-                x1="3"
-                y1="7"
-                x2="4.5"
-                y2="7"
-              />
-            </svg>
-          </n-button>
-        </header>
         <main class="content">
           <QueryWorkspace
             v-if="activeConn"
@@ -220,8 +225,10 @@ function toggleMaximise() {
   overflow: hidden;
 }
 
-/* Row 1: sider + main side-by-side. */
+/* Row 1: sider + main side-by-side. The shell is `position: relative` so
+   .top-drag-region and .floating-controls (absolute) anchor here. */
 .shell {
+  position: relative;
   flex: 1 1 0;
   min-width: 0;
   min-height: 0;
@@ -229,6 +236,36 @@ function toggleMaximise() {
   display: flex;
   flex-direction: row;
 }
+
+/* Invisible drag strip across the top of the shell. Sidebar and main
+   extend behind it — this just intercepts drag + dblclick. */
+.top-drag-region {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 38px;
+  z-index: 5;
+  --wails-draggable: drag;
+}
+
+/* Floating controls overlay (toggle button). Stays anchored to .shell
+   regardless of sidebar collapsed state, so the button visually floats
+   over whichever pane is below — matching the macOS demo. */
+.floating-controls {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  --wails-draggable: drag;
+}
+.floating-controls.mac {
+  left: 110px; /* clear of system traffic lights */
+}
+
 .main {
   flex: 1 1 0;
   min-width: 0;
@@ -237,24 +274,135 @@ function toggleMaximise() {
   display: flex;
   flex-direction: column;
   background: var(--n-color);
+  padding-top: 38px; /* keep tabs/content clear of floating controls */
 }
-.titlebar {
-  flex: 0 0 30px;
-  height: 30px;
-  border-bottom: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
-  display: flex;
-  align-items: center;
-  padding: 0 6px;
-  gap: 4px;
-  --wails-draggable: drag;
-}
-/* Interactive children must opt out of the drag region or clicks get
-   swallowed by the OS window-move handler. */
+
+/* --- Round liquid-glass sidebar toggle ---
+   1. translucent gradient fill (base material)
+   2. backdrop-filter blur+saturate (refracts behind)
+   3. inset top highlight + bottom shadow line (specular edge)
+   4. hairline outer ring + soft drop shadow (depth)
+   5. .glass-specular = top-half sheen, brightens on hover
+   6. .glass-icon rotates 180° when sidebar is collapsed */
 .sidebar-toggle {
   --wails-draggable: no-drag;
-  opacity: 0.75;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 35px;
+  height: 35px;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: default;
+  border: none;
+  border-radius: 50%;
+  background:
+    linear-gradient(180deg,
+      rgba(255, 255, 255, 0.6) 0%,
+      rgba(255, 255, 255, 0.25) 100%);
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.06),
+    0 0 0 0.5px rgba(0, 0, 0, 0.14),
+    0 1px 2px rgba(0, 0, 0, 0.1);
+  transition: background 120ms ease, box-shadow 120ms ease;
 }
-.sidebar-toggle:hover { opacity: 1; }
+.sidebar-toggle:hover {
+  background:
+    linear-gradient(180deg,
+      rgba(255, 255, 255, 0.75) 0%,
+      rgba(255, 255, 255, 0.35) 100%);
+}
+.sidebar-toggle:active {
+  background:
+    linear-gradient(180deg,
+      rgba(255, 255, 255, 0.4) 0%,
+      rgba(255, 255, 255, 0.2) 100%);
+  box-shadow:
+    inset 0 1px 1.5px rgba(0, 0, 0, 0.08),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.45),
+    0 0 0 0.5px rgba(0, 0, 0, 0.16);
+}
+.sidebar-toggle:focus-visible {
+  outline: 2px solid rgba(10, 132, 255, 0.55);
+  outline-offset: 1px;
+}
+.sidebar-toggle .glass-icon {
+  position: relative;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  opacity: 0.72;
+  transition:
+    transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 120ms ease;
+}
+.sidebar-toggle:hover .glass-icon { opacity: 1; }
+.sidebar-toggle.collapsed .glass-icon { transform: rotate(180deg); }
+
+/* Circular top-half sheen. */
+.sidebar-toggle .glass-specular {
+  position: absolute;
+  inset: 1px;
+  border-radius: 50%;
+  background: linear-gradient(180deg,
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0) 55%);
+  pointer-events: none;
+  opacity: 0.9;
+  transition: opacity 120ms ease;
+}
+.sidebar-toggle:hover .glass-specular { opacity: 1; }
+.sidebar-toggle:active .glass-specular { opacity: 0.4; }
+
+@media (prefers-color-scheme: dark) {
+  .sidebar-toggle {
+    background:
+      linear-gradient(180deg,
+        rgba(255, 255, 255, 0.14) 0%,
+        rgba(255, 255, 255, 0.05) 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+      0 0 0 0.5px rgba(255, 255, 255, 0.08),
+      0 1px 2px rgba(0, 0, 0, 0.35);
+  }
+  .sidebar-toggle:hover {
+    background:
+      linear-gradient(180deg,
+        rgba(255, 255, 255, 0.22) 0%,
+        rgba(255, 255, 255, 0.09) 100%);
+  }
+  .sidebar-toggle:active {
+    background:
+      linear-gradient(180deg,
+        rgba(255, 255, 255, 0.08) 0%,
+        rgba(255, 255, 255, 0.03) 100%);
+    box-shadow:
+      inset 0 1px 1.5px rgba(0, 0, 0, 0.4),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.1),
+      0 0 0 0.5px rgba(255, 255, 255, 0.06);
+  }
+  .sidebar-toggle .glass-specular {
+    background: linear-gradient(180deg,
+      rgba(255, 255, 255, 0.18) 0%,
+      rgba(255, 255, 255, 0) 55%);
+  }
+}
+
+/* Graceful fallback when backdrop-filter isn't supported. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sidebar-toggle { background: rgba(255, 255, 255, 0.7); }
+  @media (prefers-color-scheme: dark) {
+    .sidebar-toggle { background: rgba(255, 255, 255, 0.12); }
+  }
+}
+
 .content {
   flex: 1 1 0;
   min-width: 0;

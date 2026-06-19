@@ -22,7 +22,6 @@ const emit = defineEmits<{
 }>()
 
 const store = useConnectionsStore()
-const isMac = navigator.platform.includes('Mac')
 const message = useMessage()
 const dialog = useDialog()
 
@@ -136,7 +135,7 @@ async function onDoubleClick(conn: ConnectionProfile) {
 </script>
 
 <template>
-  <div class="sidebar" :class="{ mac: isMac }">
+  <div class="sidebar">
     <div class="header">
       <span class="title">Connections</span>
       <n-dropdown
@@ -191,7 +190,6 @@ async function onDoubleClick(conn: ConnectionProfile) {
 
 <style scoped>
 .sidebar { display: flex; flex-direction: column; height: 100%; }
-.sidebar.mac .header { padding-top: 40px; }
 .header {
   display: flex;
   align-items: center;
