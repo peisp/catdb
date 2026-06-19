@@ -443,6 +443,7 @@ function onOpenTablesOverview(payload: { db: string }) {
   min-height: 0;
   overflow: hidden;
   display: flex;
+  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
 }
 .content > * { flex: 1 1 0; min-width: 0; min-height: 0; }
 
