@@ -85,7 +85,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: '1.23'
 
       - uses: actions/setup-node@v4
         with:
@@ -103,31 +103,55 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           echo "Version: $VERSION"
-
-          # Windows Git Bash uses GNU sed → -i without arg
           sed -i "s/version: \".*\"/version: \"$VERSION\"/" build/config.yml
-
-          # Regenerate info.json from updated config
           (cd build && wails3 update build-assets \
             -name catdb -binaryname catdb -config config.yml -dir .)
 
       - name: Install NSIS
         run: |
           choco install nsis -y --no-progress
-          # Ensure NSIS is in PATH (choco cmd sometimes doesn't refresh PATH in the same session)
           echo "C:/Program Files (x86)/NSIS" >> "$GITHUB_PATH"
 
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
 
-      - name: Build and package NSIS installer
-        run: task windows:package ARCH=${{ matrix.arch }}
+      # Build steps broken out manually so go build errors are visible
+      - name: Build frontend + generate bindings
+        working-directory: frontend
+        run: npm run build
+
+      - name: Generate .syso (icon + manifest + version info)
+        working-directory: build
+        run: wails3 generate syso -arch amd64 -icon windows/icon.ico -manifest windows/wails.exe.manifest -info windows/info.json -out ../wails_windows_amd64.syso
+
+      - name: Build Go binary
+        run: |
+          go build -tags production -trimpath -buildvcs=false \
+            -ldflags="-w -s -H windowsgui" \
+            -o bin/catdb.exe . 2>&1
+
+      - name: Create NSIS installer
+        run: |
+          wails3 generate webview2bootstrapper -dir build/windows/nsis
+          cd build/windows/nsis
+          makensis \
+            -DARG_WAILS_AMD64_BINARY="${{ github.workspace }}/bin/catdb.exe" \
+            project.nsi 2>&1
+
+      - name: List build outputs
+        run: |
+          echo "=== bin/ ==="
+          ls -lh bin/
+          echo "=== NSIS ==="
+          ls -lh build/windows/nsis/*.exe 2>/dev/null || echo "(no installer yet)"
 
       - uses: actions/upload-artifact@v4
         with:
           name: catdb-windows-${{ matrix.arch }}
-          path: build/windows/nsis/*-installer.exe
+          path: |
+            bin/catdb.exe
+            build/windows/nsis/*-installer.exe
 
   # ── Release ────────────────────────────────────────────────────────────
   release:
