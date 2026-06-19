@@ -169,6 +169,7 @@ function toggleMaximise() {
    window reads as one card. The platform's native traffic lights / window
    controls overlay this strip on macOS via TitleBarHiddenInset. */
 .titlebar {
+  position: relative;
   flex: 0 0 36px;
   height: 36px;
   display: flex;
