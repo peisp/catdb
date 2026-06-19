@@ -47,7 +47,7 @@ const mode = computed(() => (theme.mode === 'dark' ? 'Dark' : 'Light'))
     <span class="grow" />
     <span class="slot mono">{{ mode }}</span>
     <span class="sep" />
-    <span class="slot mono">catdb v0.1.0</span>
+    <span class="slot mono">catdb v{{ import.meta.env.VITE_APP_VERSION || 'dev' }}</span>
   </div>
 </template>
 

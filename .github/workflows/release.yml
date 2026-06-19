@@ -42,6 +42,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           echo "Version: $VERSION"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "VITE_APP_VERSION=$VERSION" >> "$GITHUB_ENV"
 
           # Update config.yml with the tag version (macOS sed needs -i '')
           sed -i '' "s/version: \".*\"/version: \"$VERSION\"/" build/config.yml
@@ -111,6 +112,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           echo "Version: $VERSION"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "VITE_APP_VERSION=$VERSION" >> "$GITHUB_ENV"
           sed -i "s/version: \".*\"/version: \"$VERSION\"/" build/config.yml
           (cd build && wails3 update build-assets \
             -name catdb -binaryname catdb -config config.yml -dir .)
