@@ -29,9 +29,24 @@ const activeConn = ref<ConnectionProfile | null>(null)
 const sidebarVisible = ref(true)
 
 // macOS draws traffic lights at the top-left; offset the floating toggle
-// to the right of them. Other platforms have the title-bar buttons on the
-// right, so the toggle can sit flush at the top-left.
+// to the right of them. Windows (frameless) gets custom caption buttons
+// at the top-right.
 const isMac = navigator.platform.includes('Mac')
+const isWin = !isMac
+
+// Maximise state tracking for the restore/maximise toggle icon.
+const isMaximised = ref(false)
+async function onWindowCtrl(cmd: 'min' | 'max' | 'close') {
+  if (cmd === 'min') { await Window.Minimise(); return }
+  if (cmd === 'close') { await Window.Close(); return }
+  // maximise / restore
+  await Window.ToggleMaximise()
+  isMaximised.value = await Window.IsMaximised()
+}
+// Mirror double-click on drag region toggles maximise
+function toggleMaximise() {
+  void onWindowCtrl('max')
+}
 
 // --- menu / close-guard hookup ---
 
@@ -133,13 +148,6 @@ function onOpenTablesOverview(payload: { db: string }) {
   if (!activeConn.value) return
   queryStore.openTablesOverviewTab(activeConn.value.id, payload.db)
 }
-
-// Mirror the native OS gesture: double-clicking the drag strip toggles
-// between maximised and the previous size. Wails alpha-96 doesn't do this
-// for us — we have to bind it explicitly.
-function toggleMaximise() {
-  void Window.ToggleMaximise()
-}
 </script>
 
 <template>
@@ -177,6 +185,29 @@ function toggleMaximise() {
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
             <line x1="15" y1="9" x2="9" y2="12" />
             <line x1="15" y1="15" x2="9" y2="12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Windows frameless caption buttons (minimise / maximise / close).
+           Absolutely positioned at top-right, outside the drag region so
+           each button is individually clickable (--wails-draggable: no-drag). -->
+      <div v-if="isWin" class="window-controls">
+        <button type="button" class="win-btn win-btn-min" title="最小化" @click="onWindowCtrl('min')">
+          <svg viewBox="0 0 10 10" aria-hidden="true"><rect x="0" y="4.5" width="10" height="1" fill="currentColor" /></svg>
+        </button>
+        <button type="button" class="win-btn win-btn-max" :title="isMaximised ? '还原' : '最大化'" @click="onWindowCtrl('max')">
+          <svg v-if="isMaximised" viewBox="0 0 10 10" aria-hidden="true">
+            <rect x="1.5" y="3.5" width="6" height="6" rx="0.5" fill="none" stroke="currentColor" stroke-width="0.8" />
+            <path d="M3.5 3.5V2A0.5 0.5 0 0 1 4 1.5h4A0.5 0.5 0 0 1 8.5 2v4a0.5 0.5 0 0 1-.5.5H7.5" fill="none" stroke="currentColor" stroke-width="0.8" />
+          </svg>
+          <svg v-else viewBox="0 0 10 10" aria-hidden="true">
+            <rect x="1" y="1" width="8" height="8" rx="0.5" fill="none" stroke="currentColor" stroke-width="0.8" />
+          </svg>
+        </button>
+        <button type="button" class="win-btn win-btn-close" title="关闭" @click="onWindowCtrl('close')">
+          <svg viewBox="0 0 10 10" aria-hidden="true">
+            <path d="M1 1l8 8M9 1l-8 8" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" />
           </svg>
         </button>
       </div>
@@ -255,6 +286,7 @@ function toggleMaximise() {
 .floating-controls {
   position: absolute;
   left: 110px;
+  top: 10px;
   z-index: 10;
   display: flex;
   align-items: center;
@@ -262,10 +294,10 @@ function toggleMaximise() {
   --wails-draggable: drag;
 }
 /* clear of system traffic lights */
-
+/*
 .floating-controls.mac {
   top: 10px;
-}
+}*/
 
 
 .main {
@@ -420,5 +452,58 @@ function toggleMaximise() {
   height: 22px;
   border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
   background: var(--n-color, transparent);
+}
+
+/* --- Windows frameless caption buttons ---
+   Positioned at top-right, sized to match Windows 11 caption button
+   convention (46×32 hit target). Each button has a subtle hover
+   background; the close button turns red on hover. */
+.window-controls {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  height: 50px; /* match drag-region height */
+  -webkit-app-region: no-drag;
+}
+
+.win-btn {
+  --wails-draggable: no-drag;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  font: inherit;
+  color: inherit;
+  cursor: default;
+  background: transparent;
+  transition: background 80ms ease;
+}
+.win-btn svg {
+  width: 14px;
+  height: 14px;
+  opacity: 0.75;
+}
+.win-btn:hover { background: rgba(127, 127, 127, 0.15); }
+.win-btn:active { background: rgba(127, 127, 127, 0.25); }
+
+.win-btn-close:hover { background: rgba(196, 43, 28, 0.9); }
+.win-btn-close:hover svg { opacity: 1; }
+.win-btn-close:active { background: rgba(180, 30, 20, 0.95); }
+.win-btn-close:active svg { opacity: 1; }
+
+@media (prefers-color-scheme: dark) {
+  .win-btn:hover { background: rgba(255, 255, 255, 0.1); }
+  .win-btn:active { background: rgba(255, 255, 255, 0.16); }
+  .win-btn-close:hover { background: rgba(196, 43, 28, 0.9); }
+  .win-btn-close:hover svg { opacity: 1; }
+  .win-btn-close:active { background: rgba(180, 30, 20, 0.95); }
 }
 </style>

@@ -25,6 +25,9 @@ const store = useConnectionsStore()
 const message = useMessage()
 const dialog = useDialog()
 
+// Windows frameless: no title bar offset, content starts at the very top.
+const isWin = !navigator.platform.includes('Mac')
+
 onMounted(() => {
   void store.refreshAll()
 })
@@ -135,7 +138,7 @@ async function onDoubleClick(conn: ConnectionProfile) {
 </script>
 
 <template>
-  <div class="sidebar">
+  <div class="sidebar" :class="{ win: isWin }">
     <div class="header">
       <span class="title">Connections</span>
       <n-dropdown
@@ -232,4 +235,7 @@ async function onDoubleClick(conn: ConnectionProfile) {
   flex: 0 0 auto;
 }
 .dot.live { background: #18a058; }
+
+/* Windows frameless: no top padding on header so content starts flush. */
+.sidebar.win .header { padding-top: 18px; }
 </style>

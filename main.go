@@ -8,6 +8,7 @@ package main
 import (
 	"embed"
 	"log"
+	"runtime"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -70,9 +71,10 @@ func main() {
 	wailsbridge.RegisterContextMenus(app)
 
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:  "catdb",
-		Width:  1200,
-		Height: 760,
+		Title:     "catdb",
+		Width:     1200,
+		Height:    760,
+		Frameless: runtime.GOOS == "windows",
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 30,
 			Backdrop:                application.MacBackdropTranslucent,

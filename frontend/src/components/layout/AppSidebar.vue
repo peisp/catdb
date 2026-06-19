@@ -18,6 +18,11 @@ import ObjectTree from './ObjectTree.vue'
 import ResizeHandle from '../shared/ResizeHandle.vue'
 import type { ConnectionProfile, DriverInfo } from '../../api/connections'
 
+// On macOS, the traffic lights occupy the top-left corner, so we leave padding
+// above the sidebar content. On Windows (frameless) the sidebar extends to the
+// very top since custom caption buttons float at the top-right.
+const isWin = !navigator.platform.includes('Mac')
+
 defineProps<{
   activeConn: ConnectionProfile | null
   // Driven by AppShell. When true the pane animates to width 0 and fades
@@ -106,7 +111,7 @@ onBeforeUnmount(() => {
 <template>
   <aside
     class="sider"
-    :class="{ collapsed, dragging }"
+    :class="{ collapsed, dragging, win: isWin }"
     :style="{
       width: collapsed ? '0px' : width + 'px',
       flexBasis: collapsed ? '0px' : width + 'px',
@@ -182,6 +187,11 @@ onBeforeUnmount(() => {
     flex-basis 0.35s cubic-bezier(0.4, 0, 0.2, 1),
     padding 0.35s cubic-bezier(0.4, 0, 0.2, 1),
     border-color 0.25s ease;
+}
+/* Windows frameless: no traffic lights at top-left, sidebar content can
+   extend all the way to the top edge. */
+.sider.win {
+  padding-top: 0;
 }
 .sider.collapsed {
   /* Hide the right divider — there's no pane edge to mark while collapsed. */

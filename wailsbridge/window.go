@@ -1,6 +1,7 @@
 package wailsbridge
 
 import (
+	"runtime"
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -48,10 +49,11 @@ func OpenChildWindow(name, title, url string, width, height int) {
 	}
 
 	w := a.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:   name,
-		Title:  title,
-		Width:  width,
-		Height: height,
+		Name:     name,
+		Title:    title,
+		Width:    width,
+		Height:   height,
+		Frameless: runtime.GOOS == "windows",
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 30,
 			Backdrop:                application.MacBackdropTranslucent,
