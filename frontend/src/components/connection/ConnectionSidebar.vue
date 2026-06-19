@@ -22,6 +22,7 @@ const emit = defineEmits<{
 }>()
 
 const store = useConnectionsStore()
+const isMac = navigator.platform.includes('Mac')
 const message = useMessage()
 const dialog = useDialog()
 
@@ -112,7 +113,7 @@ async function onCtxSelect(key: string) {
 
 const driverMenuOpen = ref(false)
 const driverOptions = computed(() =>
-  store.drivers.map((d) => ({ label: d.name, key: d.name })),
+    store.drivers.map((d) => ({ label: d.name, key: d.name })),
 )
 function onNewDriver(key: string) {
   driverMenuOpen.value = false
@@ -135,21 +136,21 @@ async function onDoubleClick(conn: ConnectionProfile) {
 </script>
 
 <template>
-  <div class="sidebar">
+  <div class="sidebar" :class="{ mac: isMac }">
     <div class="header">
       <span class="title">Connections</span>
       <n-dropdown
-        :options="driverOptions"
-        :show="driverMenuOpen"
-        @select="onNewDriver"
-        @clickoutside="driverMenuOpen = false"
-        size="small"
+          :options="driverOptions"
+          :show="driverMenuOpen"
+          @select="onNewDriver"
+          @clickoutside="driverMenuOpen = false"
+          size="small"
       >
         <n-button
-          size="tiny"
-          quaternary
-          @click="driverMenuOpen = !driverMenuOpen"
-          :disabled="!store.drivers.length"
+            size="tiny"
+            quaternary
+            @click="driverMenuOpen = !driverMenuOpen"
+            :disabled="!store.drivers.length"
         >
           +
         </n-button>
@@ -161,11 +162,11 @@ async function onDoubleClick(conn: ConnectionProfile) {
           <div class="group-label">{{ g.label }}</div>
           <div v-if="g.items.length === 0" class="group-empty">空</div>
           <div
-            v-for="c in g.items"
-            :key="c.id"
-            class="row clickable"
-            @dblclick="onDoubleClick(c)"
-            @contextmenu="onCtx($event, c)"
+              v-for="c in g.items"
+              :key="c.id"
+              class="row clickable"
+              @dblclick="onDoubleClick(c)"
+              @contextmenu="onCtx($event, c)"
           >
             <span class="dot" :class="{ live: store.isLive(c.id) }" />
             <span class="row-name">{{ c.name }}</span>
@@ -175,21 +176,22 @@ async function onDoubleClick(conn: ConnectionProfile) {
       </n-spin>
     </n-scrollbar>
     <n-dropdown
-      placement="bottom-start"
-      trigger="manual"
-      :show="ctxOpen"
-      :x="ctxX"
-      :y="ctxY"
-      :options="ctxOptions"
-      @select="onCtxSelect"
-      @clickoutside="ctxOpen = false"
-      size="small"
+        placement="bottom-start"
+        trigger="manual"
+        :show="ctxOpen"
+        :x="ctxX"
+        :y="ctxY"
+        :options="ctxOptions"
+        @select="onCtxSelect"
+        @clickoutside="ctxOpen = false"
+        size="small"
     />
   </div>
 </template>
 
 <style scoped>
 .sidebar { display: flex; flex-direction: column; height: 100%; }
+.sidebar.mac .header { padding-top: 40px; }
 .header {
   display: flex;
   align-items: center;
