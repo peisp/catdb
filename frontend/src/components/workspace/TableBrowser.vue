@@ -379,7 +379,6 @@ async function saveChanges() {
 }
 
 function discardChanges() {
-  if (!hasPendingChanges.value) return
   pendingChanges.value = new Map()
   load()
 }
@@ -414,7 +413,7 @@ function onFilterClear() {
         <n-button size="tiny" type="primary" :disabled="loading" @click="saveChanges">保存</n-button>
         <n-button size="tiny" :disabled="loading" @click="discardChanges">取消</n-button>
       </template>
-      <n-button size="tiny" @click="load" :disabled="loading">{{ hasPendingChanges && !addingRow ? '放弃更改' : 'Refresh' }}</n-button>
+      <n-button size="tiny" @click="load" :disabled="loading">Refresh</n-button>
       <select class="export-select" @change="onExportSelect">
         <option value="" disabled selected>Export…</option>
         <option value="csv">CSV</option>
