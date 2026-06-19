@@ -221,7 +221,7 @@ function onReset() {
   flex: 0 0 auto;
   min-height: 0;
   position: relative;
-  border-top: 1px solid var(--n-border-color);
+  border-top: var(--n-border-color, rgba(127,127,127,0.2));
   background: var(--n-card-color);
 }
 .alter-panel-head {

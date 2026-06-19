@@ -379,7 +379,7 @@ function onFilterClear() {
   align-items: center;
   gap: 10px;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--n-border-color);
+  border-bottom: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
   background: var(--n-color);
   font-size: 12px;
   min-width: 0;
@@ -401,7 +401,7 @@ function onFilterClear() {
   align-items: center;
   gap: 10px;
   padding: 4px 10px;
-  border-top: 1px solid var(--n-border-color);
+  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
   background: var(--n-color);
   flex: 0 0 auto;
   min-width: 0;

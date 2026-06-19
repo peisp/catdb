@@ -159,7 +159,6 @@ function openCtx(e: MouseEvent, tab: QueryTabInfo) {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
 }
 .ws :deep(.n-tabs) {
   flex: 1 1 0;

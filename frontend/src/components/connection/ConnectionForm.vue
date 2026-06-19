@@ -454,10 +454,11 @@ function selectOptions(opts: string[]) {
 .header-item-group { flex: 0 0 220px; }
 .header-form :deep(.n-form-item-feedback-wrapper) { min-height: 0; padding: 0; }
 
-/* --- Segmented control --------------------------------------------------
-   Center the rail horizontally and constrain its width so the four-segment
-   bar reads like a real macOS Segmented Control rather than a stretched
-   tab strip. The pane content underneath remains full-width. */
+/* --- Segmented control (liquid glass) -----------------------------------
+   Replaces Naive UI's default segment styling with a frosted-glass look
+   that matches the sidebar toggle in AppShell.vue. The rail gets a
+   translucent gradient + backdrop blur + specular edge; the active pill is
+   a brighter, more opaque glass layer. */
 .tabs-wrap { display: flex; flex-direction: column; min-width: 0; }
 .group-tabs :deep(.n-tabs) {
   min-width: 0;
@@ -470,8 +471,46 @@ function selectOptions(opts: string[]) {
 .group-tabs :deep(.n-tabs-rail) {
   min-width: 0;
   margin: 0 auto;
+  padding: 3px;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg,
+      rgba(255, 255, 255, 0.5) 0%,
+      rgba(255, 255, 255, 0.18) 100%);
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.04),
+    0 0 0 0.5px rgba(0, 0, 0, 0.1),
+    0 1px 2px rgba(0, 0, 0, 0.08);
 }
-.group-tabs :deep(.n-tabs-tab) { padding: 3px 16px; }
+.group-tabs :deep(.n-tabs-tab) {
+  padding: 3px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: inherit;
+  opacity: 0.7;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+.group-tabs :deep(.n-tabs-tab:hover) {
+  opacity: 0.95;
+  background: rgba(255, 255, 255, 0.35);
+}
+.group-tabs :deep(.n-tabs-tab--active) {
+  opacity: 1;
+  font-weight: 600;
+  color: inherit;
+  background:
+    linear-gradient(180deg,
+      rgba(255, 255, 255, 0.85) 0%,
+      rgba(255, 255, 255, 0.55) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.04),
+    0 0.5px 1px rgba(0, 0, 0, 0.08);
+}
 .group-tabs :deep(.n-tab-pane) {
   padding-top: 12px;
   min-width: 0;
@@ -479,6 +518,40 @@ function selectOptions(opts: string[]) {
 }
 .group-tabs :deep(.n-tabs-pane-wrapper) {
   min-width: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .group-tabs :deep(.n-tabs-rail) {
+    background:
+      linear-gradient(180deg,
+        rgba(255, 255, 255, 0.12) 0%,
+        rgba(255, 255, 255, 0.04) 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+      0 0 0 0.5px rgba(255, 255, 255, 0.06),
+      0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+  .group-tabs :deep(.n-tabs-tab:hover) {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .group-tabs :deep(.n-tabs-tab--active) {
+    background:
+      linear-gradient(180deg,
+        rgba(255, 255, 255, 0.2) 0%,
+        rgba(255, 255, 255, 0.08) 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.25),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.25),
+      0 0.5px 1px rgba(0, 0, 0, 0.25);
+  }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .group-tabs :deep(.n-tabs-rail) { background: rgba(255, 255, 255, 0.6); }
+  @media (prefers-color-scheme: dark) {
+    .group-tabs :deep(.n-tabs-rail) { background: rgba(255, 255, 255, 0.1); }
+  }
 }
 
 /* --- Field rows --------------------------------------------------------- */

@@ -412,20 +412,17 @@ const TYPE_OPTIONS = [
 
 <style scoped>
 .ix-tab {
-  margin: 6px 6px 0px 6px;
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
   font-size: 12px;
-  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
-
 }
 
 /* ---- sidebar ---- */
 .ix-side {
   flex: 0 0 25%;
-  min-width: 180px;
+  min-width: 20%;
   max-width: 50%;
   display: flex;
   flex-direction: column;

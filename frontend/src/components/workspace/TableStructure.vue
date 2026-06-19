@@ -268,7 +268,7 @@ onBeforeUnmount(() => {
 .ts :deep(.n-spin-container),
 .ts :deep(.n-spin-content) { height: 100%; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 
-/* ---- segmented tabs (matching ConnectionForm) ---- */
+/* ---- segmented tabs (liquid glass, matching ConnectionForm) ---- */
 .group-tabs {
   flex: 1;
   display: flex;
@@ -280,18 +280,86 @@ onBeforeUnmount(() => {
 .group-tabs :deep(.n-tabs-nav) {
   display: flex;
   justify-content: center;
-  flex: 0 0 auto;
-  padding: 6px 8px 2px;
-  border-bottom: 1px solid var(--n-border-color);
+  border-bottom: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
 }
 .group-tabs :deep(.n-tabs-rail) {
   min-width: 0;
   margin: 0 auto;
+  padding: 3px;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg,
+      rgba(255, 255, 255, 0.5) 0%,
+      rgba(255, 255, 255, 0.18) 100%);
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.04),
+    0 0 0 0.5px rgba(0, 0, 0, 0.1),
+    0 1px 2px rgba(0, 0, 0, 0.08);
 }
 .group-tabs :deep(.n-tabs-tab) {
   padding: 2px 14px;
   font-size: 12px;
+  border-radius: 8px;
+  font-weight: 500;
+  color: inherit;
+  opacity: 0.7;
+  transition: opacity 120ms ease, background 120ms ease;
 }
+.group-tabs :deep(.n-tabs-tab:hover) {
+  opacity: 0.95;
+  background: rgba(255, 255, 255, 0.35);
+}
+.group-tabs :deep(.n-tabs-tab--active) {
+  opacity: 1;
+  font-weight: 600;
+  color: inherit;
+  background:
+    linear-gradient(180deg,
+      rgba(255, 255, 255, 0.85) 0%,
+      rgba(255, 255, 255, 0.55) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.04),
+    0 0.5px 1px rgba(0, 0, 0, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  .group-tabs :deep(.n-tabs-rail) {
+    background:
+      linear-gradient(180deg,
+        rgba(255, 255, 255, 0.12) 0%,
+        rgba(255, 255, 255, 0.04) 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+      0 0 0 0.5px rgba(255, 255, 255, 0.06),
+      0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+  .group-tabs :deep(.n-tabs-tab:hover) {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .group-tabs :deep(.n-tabs-tab--active) {
+    background:
+      linear-gradient(180deg,
+        rgba(255, 255, 255, 0.2) 0%,
+        rgba(255, 255, 255, 0.08) 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.25),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.25),
+      0 0.5px 1px rgba(0, 0, 0, 0.25);
+  }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .group-tabs :deep(.n-tabs-rail) { background: rgba(255, 255, 255, 0.6); }
+  @media (prefers-color-scheme: dark) {
+    .group-tabs :deep(.n-tabs-rail) { background: rgba(255, 255, 255, 0.1); }
+  }
+}
+
 .group-tabs :deep(.n-tabs-pane-wrapper) {
   flex: 1;
   overflow: hidden;
@@ -315,7 +383,6 @@ onBeforeUnmount(() => {
 /* ---- DDL read-only editor ---- */
 .ddl-cm {
   height: 100%;
-  border: 1px solid var(--n-border-color);
   border-radius: 3px;
   overflow: hidden;
   background: var(--n-card-color);

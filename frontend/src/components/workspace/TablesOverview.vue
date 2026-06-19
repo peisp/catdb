@@ -175,7 +175,7 @@ function onDblClickCell(p: { row: number }) {
   align-items: center;
   gap: 10px;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--n-border-color);
+  border-bottom: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
   background: var(--n-color);
   font-size: 12px;
   min-width: 0;
