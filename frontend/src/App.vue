@@ -30,13 +30,21 @@ onMounted(() => {
     route.value = currentRoute()
   })
 
-  // Globally disable autocomplete to suppress the macOS autofill bubble
-  // ("Root | ×") that WebKit shows on focused password / text inputs.
+  // Globally suppress the macOS WebKit AutoFill bubble (e.g. "Root | ×") that
+  // appears from saved keychain entries / Contacts. autocomplete="off" alone is
+  // ignored by WebKit on password-looking fields, so password inputs get
+  // "new-password" (tells WebKit this is a registration form → no autofill).
+  // Force-overwrite even if Naive UI set its own value.
   document.addEventListener('focusin', (e) => {
-    const el = (e.target as HTMLElement).closest('input')
-    if (el && !el.hasAttribute('autocomplete')) {
-      el.setAttribute('autocomplete', 'off')
-    }
+    const el = e.target as HTMLElement | null
+    if (!(el instanceof HTMLInputElement) && !(el instanceof HTMLTextAreaElement)) return
+    const isPassword = el instanceof HTMLInputElement && el.type === 'password'
+    el.setAttribute('autocomplete', isPassword ? 'new-password' : 'off')
+    el.setAttribute('autocorrect', 'off')
+    el.setAttribute('autocapitalize', 'off')
+    el.setAttribute('spellcheck', 'false')
+    el.setAttribute('data-1p-ignore', 'true')
+    el.setAttribute('data-lpignore', 'true')
   })
 })
 </script>
