@@ -28,6 +28,17 @@ const initial = ref<ConnectionProfile | null>(null)
 const loading = ref(true)
 const errorMessage = ref('')
 
+const isMac = navigator.platform.includes('Mac')
+const isWin = !isMac
+
+const isMaximised = ref(false)
+async function onWindowCtrl(cmd: 'min' | 'max' | 'close') {
+  if (cmd === 'min') { await Window.Minimise(); return }
+  if (cmd === 'close') { await Window.Close(); return }
+  await Window.ToggleMaximise()
+  isMaximised.value = await Window.IsMaximised()
+}
+
 const title = computed(() => {
   if (initial.value && driver.value) return `编辑 ${driver.value.name} 连接`
   if (initial.value) return '编辑连接'
@@ -101,8 +112,28 @@ function toggleMaximise() {
 
 <template>
   <div class="root">
-    <header class="titlebar" @dblclick="toggleMaximise">
+    <header class="titlebar" :class="{ win: isWin }" @dblclick="toggleMaximise">
       <span class="title">{{ title }}</span>
+      <!-- Windows frameless caption buttons -->
+      <div v-if="isWin" class="window-controls">
+        <button type="button" class="win-btn win-btn-min" title="最小化" @click="onWindowCtrl('min')">
+          <svg viewBox="0 0 10 10" aria-hidden="true"><rect x="0" y="4.5" width="10" height="1" fill="currentColor" /></svg>
+        </button>
+        <button type="button" class="win-btn win-btn-max" :title="isMaximised ? '还原' : '最大化'" @click="onWindowCtrl('max')">
+          <svg v-if="isMaximised" viewBox="0 0 10 10" aria-hidden="true">
+            <rect x="1.5" y="3.5" width="6" height="6" rx="0.5" fill="none" stroke="currentColor" stroke-width="0.8" />
+            <path d="M3.5 3.5V2A0.5 0.5 0 0 1 4 1.5h4A0.5 0.5 0 0 1 8.5 2v4a0.5 0.5 0 0 1-.5.5H7.5" fill="none" stroke="currentColor" stroke-width="0.8" />
+          </svg>
+          <svg v-else viewBox="0 0 10 10" aria-hidden="true">
+            <rect x="1" y="1" width="8" height="8" rx="0.5" fill="none" stroke="currentColor" stroke-width="0.8" />
+          </svg>
+        </button>
+        <button type="button" class="win-btn win-btn-close" title="关闭" @click="onWindowCtrl('close')">
+          <svg viewBox="0 0 10 10" aria-hidden="true">
+            <path d="M1 1l8 8M9 1l-8 8" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" />
+          </svg>
+        </button>
+      </div>
     </header>
     <main class="body">
       <div v-if="loading" class="loading">
@@ -153,6 +184,57 @@ function toggleMaximise() {
   /* Leave clear space on the macOS traffic-light side. */
   padding-left: 60px;
   padding-right: 12px;
+}
+.titlebar.win .title {
+  /* On Windows the caption buttons sit at the right side of the titlebar;
+     push the centred title clear of the 3 × 46px button strip. */
+  padding-right: 150px;
+}
+/* Window controls container — pinned to the right inside the titlebar. */
+.titlebar .window-controls {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+.titlebar .win-btn {
+  --wails-draggable: no-drag;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  font: inherit;
+  color: inherit;
+  cursor: default;
+  background: transparent;
+  transition: background 80ms ease;
+}
+.titlebar .win-btn svg {
+  width: 14px;
+  height: 14px;
+  opacity: 0.75;
+}
+.titlebar .win-btn:hover { background: rgba(127, 127, 127, 0.15); }
+.titlebar .win-btn:active { background: rgba(127, 127, 127, 0.25); }
+.titlebar .win-btn-close:hover { background: rgba(196, 43, 28, 0.9); }
+.titlebar .win-btn-close:hover svg { opacity: 1; }
+.titlebar .win-btn-close:active { background: rgba(180, 30, 20, 0.95); }
+.titlebar .win-btn-close:active svg { opacity: 1; }
+@media (prefers-color-scheme: dark) {
+  .titlebar .win-btn:hover { background: rgba(255, 255, 255, 0.1); }
+  .titlebar .win-btn:active { background: rgba(255, 255, 255, 0.16); }
+  .titlebar .win-btn-close:hover { background: rgba(196, 43, 28, 0.9); }
+  .titlebar .win-btn-close:hover svg { opacity: 1; }
+  .titlebar .win-btn-close:active { background: rgba(180, 30, 20, 0.95); }
 }
 /* Body hands the form 100% of the remaining height so the form's bottom
    action bar pins to the window bottom. Scrolling happens inside the form's
