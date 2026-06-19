@@ -187,8 +187,10 @@ function toggleMaximise() {
   padding-right: 12px;
 }
 .titlebar.win .title {
-  /* On Windows the caption buttons sit at the right side of the titlebar;
-     push the centred title clear of the 3 × 46px button strip. */
+  /* On Windows the caption buttons sit at the right side of the titlebar.
+     Use symmetric left/right padding so justify-content: center keeps the
+     title truly centred while clearing the 3 × 46px button strip. */
+  padding-left: 150px;
   padding-right: 150px;
 }
 /* Window controls container — pinned to the right inside the titlebar. */
