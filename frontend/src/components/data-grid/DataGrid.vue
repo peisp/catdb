@@ -19,7 +19,8 @@ import { computed, ref, shallowRef, watch } from 'vue'
 import { ListTable, register } from '@visactor/vue-vtable'
 import { InputEditor, TextAreaEditor, DateInputEditor } from '@visactor/vtable-editors'
 import { useThemeVars } from 'naive-ui'
-import { ColumnMeta, LogicalType } from '../../../bindings/catdb/internal/dbdriver/models'
+import type { ColumnMeta } from '../../api/metadata'
+import { LogicalType } from '../../api/metadata'
 import type { SelectionRange } from '../../composables/useTableSelection'
 
 /** Sort state for indicator sync (server-side sort). field = column index. */

@@ -133,6 +133,17 @@ func RegisterContextMenus(app *application.App) {
 	treeDb.Add("新建表").OnClick(emitContextEvent("ctx:tree-new-table"))
 	treeDb.Add("刷新").OnClick(emitContextEvent("ctx:tree-refresh-db"))
 	treeDb.Update()
+
+	// Connection-sidebar right-click — connect / disconnect / edit / delete.
+	// The front-end decides which actions apply based on connection state.
+	conn := application.NewContextMenu("catdb-connection")
+	conn.Add("打开连接").OnClick(emitContextEvent("ctx:conn-connect"))
+	conn.Add("断开连接").OnClick(emitContextEvent("ctx:conn-disconnect"))
+	conn.AddSeparator()
+	conn.Add("编辑").OnClick(emitContextEvent("ctx:conn-edit"))
+	conn.AddSeparator()
+	conn.Add("删除").OnClick(emitContextEvent("ctx:conn-delete"))
+	conn.Update()
 }
 
 func emitContextEvent(event string) func(*application.Context) {

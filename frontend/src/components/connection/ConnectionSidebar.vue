@@ -1,19 +1,16 @@
 <script setup lang="ts">
-// ConnectionSidebar — grouped list of saved connections + entry point for
-// "new connection". The native context menu (right-click on a node) lands
-// with M4; for now we use Naive UI's Dropdown for actions.
+// ConnectionSidebar — grouped list of saved connections with native
+// right-click context menu (connect / disconnect / edit / delete) and a
+// native <select> for creating new connections by driver type.
 import { computed, onMounted, ref } from 'vue'
 import {
-  NButton,
-  NDropdown,
-  NIcon,
   NScrollbar,
   NSpin,
   useMessage,
 } from 'naive-ui'
-import { Dialogs } from '@wailsio/runtime'
 import type { ConnectionProfile, DriverInfo } from '../../api/connections'
 import { useConnectionsStore } from '../../stores/connections'
+import { setActiveConnectionContext } from '../../api/connectionContextMenu'
 
 const emit = defineEmits<{
   (e: 'select', conn: ConnectionProfile): void
@@ -26,10 +23,6 @@ const message = useMessage()
 
 // Windows frameless: no title bar offset, content starts at the very top.
 const isWin = !navigator.platform.includes('Mac')
-
-onMounted(() => {
-  void store.refreshAll()
-})
 
 const grouped = computed(() => {
   const byGroup = new Map<string, ConnectionProfile[]>()
@@ -46,83 +39,21 @@ const grouped = computed(() => {
   }))
 })
 
-const ctxNode = ref<ConnectionProfile | null>(null)
-const ctxX = ref(0)
-const ctxY = ref(0)
-const ctxOpen = ref(false)
-const ctxOptions = [
-  { label: '打开连接', key: 'connect' },
-  { label: '断开连接', key: 'disconnect' },
-  { label: '编辑', key: 'edit' },
-  { type: 'divider' as const, key: 'd' },
-  { label: '删除', key: 'delete' },
-]
+const sidebarRef = ref<HTMLElement | null>(null)
 
 function onCtx(ev: MouseEvent, conn: ConnectionProfile) {
   ev.preventDefault()
-  ctxNode.value = conn
-  ctxX.value = ev.clientX
-  ctxY.value = ev.clientY
-  ctxOpen.value = false
-  // Force re-position by toggling on next tick.
-  requestAnimationFrame(() => (ctxOpen.value = true))
+  // Set native context menu + push connection identity before menu opens.
+  sidebarRef.value?.style.setProperty('--custom-contextmenu', 'catdb-connection')
+  setActiveConnectionContext({ connId: conn.id, connName: conn.name })
 }
 
-async function onCtxSelect(key: string) {
-  ctxOpen.value = false
-  const node = ctxNode.value
-  if (!node) return
-  switch (key) {
-    case 'connect':
-      try {
-        await store.connect(node.id)
-        message.success(`已连接 ${node.name}`)
-        emit('select', node)
-      } catch (e) {
-        message.error(`连接失败: ${String(e)}`)
-      }
-      break
-    case 'disconnect':
-      try {
-        await store.disconnect(node.id)
-        message.info(`已断开 ${node.name}`)
-      } catch (e) {
-        message.error(String(e))
-      }
-      break
-    case 'edit':
-      emit('edit', node)
-      break
-    case 'delete':
-      {
-        const btn = await Dialogs.Warning({
-          Title: '删除连接',
-          Message: `确定要删除 "${node.name}" 吗？此操作不可撤销。`,
-          Buttons: [
-            { Label: '取消', IsCancel: true },
-            { Label: '删除' },
-          ],
-        })
-        if (btn !== '删除') break
-        try {
-          await store.remove(node.id)
-          message.success('已删除')
-        } catch (e) {
-          message.error(String(e))
-        }
-      }
-      break
-  }
-}
-
-const driverMenuOpen = ref(false)
-const driverOptions = computed(() =>
-    store.drivers.map((d) => ({ label: d.name, key: d.name })),
-)
-function onNewDriver(key: string) {
-  driverMenuOpen.value = false
-  const d = store.drivers.find((dd) => dd.name === key)
+function onNewDriverSelect(ev: Event) {
+  const val = (ev.target as HTMLSelectElement).value
+  if (!val) return
+  const d = store.drivers.find((dd) => dd.name === val)
   if (d) emit('new', d)
+  ;(ev.target as HTMLSelectElement).value = ''
 }
 
 async function onDoubleClick(conn: ConnectionProfile) {
@@ -137,28 +68,36 @@ async function onDoubleClick(conn: ConnectionProfile) {
     message.error(`连接失败: ${String(e)}`)
   }
 }
+
+onMounted(() => {
+  void store.refreshAll()
+  // Listen for edit events from the native context menu handler.
+  document.addEventListener('conn:edit', ((e: CustomEvent<string>) => {
+    const conn = store.connections.find((c) => c.id === e.detail)
+    if (conn) emit('edit', conn)
+  }) as EventListener)
+  // Listen for connect-then-select events from the native context menu.
+  document.addEventListener('conn:select', ((e: CustomEvent<string>) => {
+    const conn = store.connections.find((c) => c.id === e.detail)
+    if (conn) emit('select', conn)
+  }) as EventListener)
+})
 </script>
 
 <template>
-  <div class="sidebar" :class="{ win: isWin }">
+  <div ref="sidebarRef" class="sidebar" :class="{ win: isWin }">
     <div class="header">
       <span class="title">Connections</span>
-      <n-dropdown
-          :options="driverOptions"
-          :show="driverMenuOpen"
-          @select="onNewDriver"
-          @clickoutside="driverMenuOpen = false"
-          size="small"
+      <select
+        class="new-conn-select mono"
+        :disabled="!store.drivers.length"
+        @change="onNewDriverSelect"
       >
-        <n-button
-            size="tiny"
-            quaternary
-            @click="driverMenuOpen = !driverMenuOpen"
-            :disabled="!store.drivers.length"
-        >
-          +
-        </n-button>
-      </n-dropdown>
+        <option value="" disabled selected>+</option>
+        <option v-for="d in store.drivers" :key="d.name" :value="d.name">
+          {{ d.name }}
+        </option>
+      </select>
     </div>
     <n-scrollbar class="list">
       <n-spin :show="store.loading">
@@ -170,7 +109,7 @@ async function onDoubleClick(conn: ConnectionProfile) {
               :key="c.id"
               class="row clickable"
               @dblclick="onDoubleClick(c)"
-              @contextmenu="onCtx($event, c)"
+              @contextmenu.prevent="onCtx($event, c)"
           >
             <span class="dot" :class="{ live: store.isLive(c.id) }" />
             <span class="row-name">{{ c.name }}</span>
@@ -179,17 +118,6 @@ async function onDoubleClick(conn: ConnectionProfile) {
         </div>
       </n-spin>
     </n-scrollbar>
-    <n-dropdown
-        placement="bottom-start"
-        trigger="manual"
-        :show="ctxOpen"
-        :x="ctxX"
-        :y="ctxY"
-        :options="ctxOptions"
-        @select="onCtxSelect"
-        @clickoutside="ctxOpen = false"
-        size="small"
-    />
   </div>
 </template>
 
@@ -237,6 +165,28 @@ async function onDoubleClick(conn: ConnectionProfile) {
   flex: 0 0 auto;
 }
 .dot.live { background: #18a058; }
+
+.new-conn-select {
+  font-size: 14px;
+  height: 20px;
+  width: 28px;
+  padding: 0 2px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  outline: none;
+  font-family: inherit;
+  text-align: center;
+}
+.new-conn-select:hover:not(:disabled) {
+  background: var(--n-color-target, rgba(127,127,127,0.12));
+}
+.new-conn-select:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 /* Windows frameless: no top padding on header so content starts flush. */
 .sidebar.win .header { padding-top: 18px; }

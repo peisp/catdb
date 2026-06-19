@@ -2,7 +2,7 @@
 // export via TransferService. No Naive UI NModal or format dialog needed.
 import { createDiscreteApi } from 'naive-ui'
 import { Dialogs } from '@wailsio/runtime'
-import { TransferFormat } from '../../bindings/catdb/internal/services/models'
+import { TransferFormat } from '../api/transfer'
 import { exportQuery, exportTable, onProgress } from '../api/transfer'
 import type { ExportOptions } from '../api/transfer'
 

@@ -5,6 +5,9 @@ import type {
   BrowseResult as BoundBrowse,
   TableSummary as BoundSummary,
 } from '../../bindings/catdb/internal/services/models'
+import {
+  LogicalType,
+} from '../../bindings/catdb/internal/dbdriver/models'
 import type {
   ColumnMeta as BoundColumn,
   ForeignKeyInfo as BoundFK,
@@ -25,6 +28,7 @@ export type RoutineInfo = BoundRoutine
 export type TableSummary = BoundSummary
 export type BrowseResult = BoundBrowse
 export type AutocompleteSnapshot = BoundSnap
+export { LogicalType }
 
 export function listDatabases(connId: string): Promise<string[]> {
   return MetadataService.ListDatabases(connId) as unknown as Promise<string[]>

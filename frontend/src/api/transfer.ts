@@ -1,5 +1,6 @@
 // api/transfer — facade over TransferService bindings.
 import { TransferService } from '../../bindings/catdb/internal/services'
+import { TransferFormat } from '../../bindings/catdb/internal/services/models'
 import type {
   ExportOptions as BoundExportOptions,
   ExportResult as BoundExportResult,
@@ -12,6 +13,7 @@ export type ExportOptions = BoundExportOptions
 export type ExportResult = BoundExportResult
 export type ImportOptions = BoundImportOptions
 export type ImportResult = BoundImportResult
+export { TransferFormat }
 
 export type TransferProgress = {
   transferId: string
