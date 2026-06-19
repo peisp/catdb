@@ -41,6 +41,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           echo "Version: $VERSION"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
           # Update config.yml with the tag version (macOS sed needs -i '')
           sed -i '' "s/version: \".*\"/version: \"$VERSION\"/" build/config.yml
@@ -56,13 +57,24 @@ jobs:
       - name: Build and package .app bundle
         run: task darwin:package ARCH=${{ matrix.arch }}
 
-      - name: Compress .app to zip
-        run: ditto -c -k --sequesterRsrc bin/catdb.app catdb-darwin-${{ matrix.arch }}.zip
+      - name: Build DMG installer
+        run: |
+          # UDZO = compressed read-only; /Applications symlink so users can
+          # drag the .app over. Uses macOS-builtin hdiutil — no extra deps.
+          STAGE=$(mktemp -d)
+          cp -R bin/catdb.app "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"
+          hdiutil create \
+            -volname "catdb" \
+            -srcfolder "$STAGE" \
+            -ov -format UDZO \
+            "catdb-${VERSION}-darwin-${{ matrix.arch }}.dmg"
 
       - uses: actions/upload-artifact@v4
         with:
           name: catdb-darwin-${{ matrix.arch }}
-          path: catdb-darwin-${{ matrix.arch }}.zip
+          path: catdb-${{ env.VERSION }}-darwin-${{ matrix.arch }}.dmg
+          if-no-files-found: error
 
   # ── Windows ────────────────────────────────────────────────────────────
   build-windows:
@@ -98,6 +110,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           echo "Version: $VERSION"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           sed -i "s/version: \".*\"/version: \"$VERSION\"/" build/config.yml
           (cd build && wails3 update build-assets \
             -name catdb -binaryname catdb -config config.yml -dir .)
@@ -134,19 +147,22 @@ jobs:
           BIN_PATH="$(cygpath -w "${{ github.workspace }}/bin/catdb.exe")"
           makensis -DARG_WAILS_AMD64_BINARY="$BIN_PATH" project.nsi 2>&1
 
+      - name: Rename installer with version
+        run: |
+          # project.nsi outputs bin/catdb-<ARCH>-installer.exe; tag with version.
+          mv "bin/catdb-${{ matrix.arch }}-installer.exe" \
+             "bin/catdb-${VERSION}-windows-${{ matrix.arch }}-installer.exe"
+
       - name: List build outputs
         run: |
           echo "=== bin/ ==="
           ls -lh bin/
-          echo "=== NSIS ==="
-          ls -lh build/windows/nsis/*.exe 2>/dev/null || echo "(no installer yet)"
 
       - uses: actions/upload-artifact@v4
         with:
           name: catdb-windows-${{ matrix.arch }}
-          path: |
-            bin/catdb.exe
-            build/windows/nsis/*-installer.exe
+          path: bin/catdb-${{ env.VERSION }}-windows-${{ matrix.arch }}-installer.exe
+          if-no-files-found: error
 
   # ── Release ────────────────────────────────────────────────────────────
   release:
@@ -180,7 +196,7 @@ jobs:
       - name: Collect release assets
         run: |
           mkdir -p assets
-          cp catdb-darwin-*/*.zip assets/ 2>/dev/null || true
+          cp catdb-darwin-*/*.dmg assets/ 2>/dev/null || true
           cp catdb-windows-*/*-installer.exe assets/ 2>/dev/null || true
           echo "=== Collected assets ==="
           ls -lh assets/
