@@ -759,6 +759,97 @@ export enum TransferFormat {
     FormatXLSX = "xlsx",
 };
 
+/**
+ * UpdateCheckResult is what the front-end sees after a CheckForUpdate.
+ */
+export class UpdateCheckResult {
+    /**
+     * Available is true when latest > current AND latest != skipped.
+     */
+    "available": boolean;
+
+    /**
+     * LatestVersion is the trimmed tag (e.g. "1.4.2").
+     */
+    "latestVersion": string;
+
+    /**
+     * CurrentVersion echoes what the front-end passed in.
+     */
+    "currentVersion": string;
+
+    /**
+     * ReleaseNotes is the GitHub Release body — markdown.
+     */
+    "releaseNotes": string;
+
+    /**
+     * ReleaseURL points at the GitHub release page.
+     */
+    "releaseUrl": string;
+
+    /**
+     * PublishedAt — RFC3339; "" if missing.
+     */
+    "publishedAt": string;
+
+    /**
+     * AssetName is the matched installer for this OS/arch; "" if none.
+     */
+    "assetName": string;
+
+    /**
+     * HasAsset is true when PickAsset succeeded — used to gate the "install" CTA.
+     */
+    "hasAsset": boolean;
+
+    /**
+     * Skipped is true when LatestVersion equals the user-skipped version.
+     */
+    "skipped": boolean;
+
+    /** Creates a new UpdateCheckResult instance. */
+    constructor($$source: Partial<UpdateCheckResult> = {}) {
+        if (!("available" in $$source)) {
+            this["available"] = false;
+        }
+        if (!("latestVersion" in $$source)) {
+            this["latestVersion"] = "";
+        }
+        if (!("currentVersion" in $$source)) {
+            this["currentVersion"] = "";
+        }
+        if (!("releaseNotes" in $$source)) {
+            this["releaseNotes"] = "";
+        }
+        if (!("releaseUrl" in $$source)) {
+            this["releaseUrl"] = "";
+        }
+        if (!("publishedAt" in $$source)) {
+            this["publishedAt"] = "";
+        }
+        if (!("assetName" in $$source)) {
+            this["assetName"] = "";
+        }
+        if (!("hasAsset" in $$source)) {
+            this["hasAsset"] = false;
+        }
+        if (!("skipped" in $$source)) {
+            this["skipped"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new UpdateCheckResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): UpdateCheckResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new UpdateCheckResult($$parsedSource as Partial<UpdateCheckResult>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = AutocompleteTable.createFrom;
 const $$createType1 = $Create.Array($$createType0);

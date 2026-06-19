@@ -92,6 +92,10 @@ func (s *Store) migrate(ctx context.Context) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_connection_group ON connection(group_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_connection_driver ON connection(driver)`,
+		`CREATE TABLE IF NOT EXISTS app_settings (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL DEFAULT ''
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
@@ -262,6 +266,32 @@ func (s *Store) SaveConnection(ctx context.Context, p ConnectionProfile) (Connec
 		return ConnectionProfile{}, ErrNotFound
 	}
 	return p, nil
+}
+
+// --- settings (key/value blobs, e.g. skipped update version) ---
+
+// GetSetting returns the stored value for key, or "" if not set.
+func (s *Store) GetSetting(ctx context.Context, key string) (string, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT value FROM app_settings WHERE key=?`, key)
+	var v string
+	if err := row.Scan(&v); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", nil
+		}
+		return "", err
+	}
+	return v, nil
+}
+
+// SetSetting upserts the value for key.
+func (s *Store) SetSetting(ctx context.Context, key, value string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO app_settings(key, value) VALUES(?, ?)
+		 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+		key, value)
+	return err
 }
 
 // DeleteConnection removes a profile by ID.

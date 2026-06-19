@@ -14,14 +14,17 @@ import AppSidebar from './AppSidebar.vue'
 import ConnectionWelcome from '../connection/ConnectionWelcome.vue'
 import QueryWorkspace from '../workspace/QueryWorkspace.vue'
 import StatusBar from './StatusBar.vue'
+import UpdateDialog from '../update/UpdateDialog.vue'
 import type { ConnectionProfile } from '../../api/connections'
 import { useConnectionsStore } from '../../stores/connections'
 import { useQueryStore } from '../../stores/query'
+import { useUpdatesStore } from '../../stores/updates'
 import { system as systemApi } from '../../api'
 import sidebarLeftIcon from '../../assets/icons/sidebar.left.svg?raw'
 
 const store = useConnectionsStore()
 const queryStore = useQueryStore()
+const updates = useUpdatesStore()
 const message = useMessage()
 
 const activeConn = ref<ConnectionProfile | null>(null)
@@ -96,6 +99,15 @@ onMounted(() => {
   offHandlers.push(systemApi.onConnectionSaved(() => {
     void store.refreshAll()
   }))
+
+  // Auto-check for updates 60s after the shell mounts. The store keeps the
+  // badge state; the user can also trigger a check manually by clicking the
+  // version in the StatusBar. We deliberately do NOT auto-open the dialog —
+  // the badge dot is the non-intrusive signal; opening waits for a click.
+  const checkTimer = window.setTimeout(() => {
+    void updates.check()
+  }, 60_000)
+  offHandlers.push(() => window.clearTimeout(checkTimer))
 })
 
 onBeforeUnmount(() => {
@@ -252,6 +264,7 @@ function onOpenTablesOverview(payload: { db: string }) {
         </div>
       </div>
     </div>
+    <UpdateDialog />
   </div>
 </template>
 

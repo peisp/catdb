@@ -29,6 +29,9 @@ export function openConnectionEditor(driver: string, connId = ''): Promise<void>
 export function broadcastConnectionSaved(connId: string): Promise<void> {
   return SystemService.BroadcastConnectionSaved(connId) as unknown as Promise<void>
 }
+export function openExternalURL(url: string): Promise<void> {
+  return SystemService.OpenExternalURL(url) as unknown as Promise<void>
+}
 
 export type ConnectionSavedPayload = { id: string }
 export function onConnectionSaved(cb: (p: ConnectionSavedPayload) => void): () => void {

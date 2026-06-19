@@ -7,13 +7,15 @@ import * as MetadataService from "./metadataservice.js";
 import * as QueryService from "./queryservice.js";
 import * as SystemService from "./systemservice.js";
 import * as TransferService from "./transferservice.js";
+import * as UpdateService from "./updateservice.js";
 export {
     ConnectionService,
     EditService,
     MetadataService,
     QueryService,
     SystemService,
-    TransferService
+    TransferService,
+    UpdateService
 };
 
 export {
@@ -34,5 +36,6 @@ export {
     RowChange,
     RowChangeResult,
     TableSummary,
-    TransferFormat
+    TransferFormat,
+    UpdateCheckResult
 } from "./models.js";

@@ -87,6 +87,17 @@ func (s *SystemService) OpenConnectionEditor(_ context.Context, driver, connID s
 	wailsbridge.OpenChildWindow("connection-editor", title, target, 720, 600)
 }
 
+// OpenExternalURL opens the given URL in the user's default browser.
+// Used by features like the update dialog's "view on GitHub" link — a plain
+// <a target="_blank"> inside the WebView either no-ops or navigates the
+// WebView itself, neither of which is what we want.
+func (s *SystemService) OpenExternalURL(_ context.Context, target string) error {
+	if strings.TrimSpace(target) == "" {
+		return nil
+	}
+	return wailsbridge.OpenURL(target)
+}
+
 // BroadcastConnectionSaved tells every window that a connection was saved.
 // Used by the connection-editor child window to nudge the main window into
 // refreshing its sidebar list.

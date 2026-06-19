@@ -3,15 +3,24 @@
 // changes (connect/disconnect/switch). Shows connection name, connection
 // status, server version/user, theme mode, and build tag.
 import { computed, ref, watch } from 'vue'
-import { connections as connectionsApi } from '../../api'
+import { connections as connectionsApi, system as systemApi } from '../../api'
 import { useConnectionsStore } from '../../stores/connections'
 import { useThemeStore } from '../../stores/theme'
+import { useUpdatesStore } from '../../stores/updates'
 import type { ServerInfo } from '../../api/connections'
+
+const REPO_URL = 'https://github.com/peisp/catdb'
+
+function openRepo() {
+  void systemApi.openExternalURL(REPO_URL)
+}
 
 const conns = useConnectionsStore()
 const theme = useThemeStore()
+const updates = useUpdatesStore()
 
 const serverInfo = ref<ServerInfo | null>(null)
+const checking = ref(false)
 
 const liveConn = computed(() => {
   // Reach the first live connection — for M4 the workspace only ever shows
@@ -34,6 +43,36 @@ watch(liveConn, async (conn) => {
 
 const mode = computed(() => (theme.mode === 'dark' ? 'Dark' : 'Light'))
 const appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
+
+// Click handler on the version slot: if an update is already known, open the
+// dialog directly; otherwise trigger a fresh check and open if found.
+async function onVersionClick() {
+  if (updates.hasBadge) {
+    updates.openDialog()
+    return
+  }
+  if (checking.value) return
+  checking.value = true
+  try {
+    const found = await updates.check()
+    if (found) {
+      updates.openDialog()
+    } else if (!updates.lastError) {
+      // Surface a transient "已是最新" in the dialog so the click feels
+      // responsive even when there's nothing to install.
+      updates.openDialog()
+    } else {
+      updates.openDialog()
+    }
+  } finally {
+    checking.value = false
+  }
+}
+
+const versionTitle = computed(() => {
+  if (updates.hasBadge) return `点击查看新版本 v${updates.latestVersion}`
+  return '点击检查更新'
+})
 </script>
 
 <template>
@@ -48,7 +87,38 @@ const appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
     <span class="grow" />
     <span class="slot mono">{{ mode }}</span>
     <span class="sep" />
-    <span class="slot mono">catdb v{{ appVersion }}</span>
+    <button
+      type="button"
+      class="icon-btn"
+      title="在 GitHub 查看仓库"
+      @click="openRepo"
+    >
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38
+             0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13
+             -.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66
+             .07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95
+             0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82
+             a7.5 7.5 0 0 1 2-.27c.68 0 1.36.09 2 .27
+             1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15
+             0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2
+             0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
+        />
+      </svg>
+    </button>
+    <span class="sep" />
+    <button
+      type="button"
+      class="version-btn"
+      :class="{ 'has-update': updates.hasBadge, checking: checking }"
+      :title="versionTitle"
+      @click="onVersionClick"
+    >
+      <span class="mono">catdb v{{ appVersion }}</span>
+      <span v-if="updates.hasBadge" class="badge" aria-hidden="true" />
+    </button>
   </div>
 </template>
 
@@ -65,4 +135,50 @@ const appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
 .slot { white-space: nowrap; }
 .sep { width: 1px; height: 12px; background: currentColor; opacity: 0.15; }
 .grow { flex: 1 1 auto; }
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: default;
+  opacity: 0.7;
+  transition: opacity 100ms ease;
+}
+.icon-btn:hover { opacity: 1; }
+.icon-btn svg { width: 12px; height: 12px; display: block; }
+
+.version-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+  white-space: nowrap;
+  opacity: 0.9;
+}
+.version-btn:hover { opacity: 1; }
+.version-btn.has-update { color: #f97316; opacity: 1; }
+.version-btn.checking { opacity: 0.6; }
+
+.badge {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f97316;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
 </style>

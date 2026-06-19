@@ -28,6 +28,7 @@ func init() {
 	application.RegisterEvent[map[string]any]("window:close-blocked")
 	application.RegisterEvent[map[string]any]("custom:switch-english-input")
 	application.RegisterEvent[map[string]any]("connection:saved")
+	application.RegisterEvent[map[string]any]("update:progress")
 }
 
 func main() {
@@ -51,6 +52,7 @@ func main() {
 			application.NewService(services.NewEditService(mgr)),
 			application.NewService(services.NewTransferService(mgr)),
 			application.NewService(services.NewSystemService()),
+			application.NewService(services.NewUpdateService(store, "")),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

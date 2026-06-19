@@ -48,6 +48,16 @@ export function OpenConnectionEditor(driver: string, connID: string): $Cancellab
 }
 
 /**
+ * OpenExternalURL opens the given URL in the user's default browser.
+ * Used by features like the update dialog's "view on GitHub" link — a plain
+ * <a target="_blank"> inside the WebView either no-ops or navigates the
+ * WebView itself, neither of which is what we want.
+ */
+export function OpenExternalURL(target: string): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.SystemService.OpenExternalURL", target);
+}
+
+/**
  * PickOpenFile shows the native Open dialog and returns the chosen path, or
  * "" if the user cancelled.
  */

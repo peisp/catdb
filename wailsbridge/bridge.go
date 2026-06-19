@@ -12,6 +12,7 @@ package wailsbridge
 import (
 	"sync"
 
+	"github.com/pkg/browser"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -45,4 +46,24 @@ func Emit(name string, data any) {
 		return
 	}
 	a.Event.Emit(name, data)
+}
+
+// Quit asks the Wails app to shut down cleanly. Used by the updater after
+// spawning the OS-level installer (it needs us out of the way so the swap
+// can complete). No-op if the app isn't registered yet.
+func Quit() {
+	a := App()
+	if a == nil {
+		return
+	}
+	a.Quit()
+}
+
+// OpenURL opens the given URL in the user's default browser via the OS shell.
+// Wails v3 alpha.96 doesn't expose application.Browser on the Go side — the
+// runtime's JS Browser.OpenURL just calls github.com/pkg/browser internally —
+// so we use the same lib here. Anything inside `<a target="_blank">` in the
+// WebView would otherwise either no-op or navigate the WebView itself.
+func OpenURL(url string) error {
+	return browser.OpenURL(url)
 }

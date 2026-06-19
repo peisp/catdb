@@ -11,6 +11,7 @@ function configure() {
         "connection:saved": $$createType0,
         "custom:switch-english-input": $$createType0,
         "transfer:progress": $$createType0,
+        "update:progress": $$createType0,
         "window:close-blocked": $$createType0,
     }));
 }

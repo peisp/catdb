@@ -11,6 +11,7 @@ declare module "@wailsio/runtime" {
             "connection:saved": { [_ in string]?: any };
             "custom:switch-english-input": { [_ in string]?: any };
             "transfer:progress": { [_ in string]?: any };
+            "update:progress": { [_ in string]?: any };
             "window:close-blocked": { [_ in string]?: any };
         }
     }
