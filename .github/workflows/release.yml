@@ -15,12 +15,7 @@ jobs:
     strategy:
       matrix:
         arch: [amd64, arm64]
-        include:
-          - arch: amd64
-            runs-on: macos-13
-          - arch: arm64
-            runs-on: macos-latest
-    runs-on: ${{ matrix.runs-on }}
+    runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -135,9 +130,9 @@ jobs:
         run: |
           wails3 generate webview2bootstrapper -dir build/windows/nsis
           cd build/windows/nsis
-          makensis \
-            -DARG_WAILS_AMD64_BINARY="${{ github.workspace }}/bin/catdb.exe" \
-            project.nsi 2>&1
+          # cygpath -w converts Unix-style path to Windows backslash path for makensis
+          BIN_PATH="$(cygpath -w "${{ github.workspace }}/bin/catdb.exe")"
+          makensis -DARG_WAILS_AMD64_BINARY="$BIN_PATH" project.nsi 2>&1
 
       - name: List build outputs
         run: |
