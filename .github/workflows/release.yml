@@ -1,0 +1,182 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  # ── macOS ──────────────────────────────────────────────────────────────
+  build-macos:
+    name: Build macOS (${{ matrix.arch }})
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runs-on: macos-13
+          - arch: arm64
+            runs-on: macos-latest
+    runs-on: ${{ matrix.runs-on }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install build tools
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.96
+          go install github.com/go-task/task/v3/cmd/task@latest
+          # Add GOBIN to PATH for subsequent steps
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Inject version from git tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Version: $VERSION"
+
+          # Update config.yml with the tag version (macOS sed needs -i '')
+          sed -i '' "s/version: \".*\"/version: \"$VERSION\"/" build/config.yml
+
+          # Regenerate Info.plist / info.json from updated config
+          (cd build && wails3 update build-assets \
+            -name catdb -binaryname catdb -config config.yml -dir .)
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build and package .app bundle
+        run: task darwin:package ARCH=${{ matrix.arch }}
+
+      - name: Compress .app to zip
+        run: ditto -c -k --sequesterRsrc bin/catdb.app catdb-darwin-${{ matrix.arch }}.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: catdb-darwin-${{ matrix.arch }}
+          path: catdb-darwin-${{ matrix.arch }}.zip
+
+  # ── Windows ────────────────────────────────────────────────────────────
+  build-windows:
+    name: Build Windows (${{ matrix.arch }})
+    strategy:
+      matrix:
+        arch: [amd64, 386]
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Go build tools
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.96
+          go install github.com/go-task/task/v3/cmd/task@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Inject version from git tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Version: $VERSION"
+
+          # Windows Git Bash uses GNU sed → -i without arg
+          sed -i "s/version: \".*\"/version: \"$VERSION\"/" build/config.yml
+
+          # Regenerate info.json from updated config
+          (cd build && wails3 update build-assets \
+            -name catdb -binaryname catdb -config config.yml -dir .)
+
+      - name: Install NSIS
+        run: |
+          choco install nsis -y --no-progress
+          # Ensure NSIS is in PATH (choco cmd sometimes doesn't refresh PATH in the same session)
+          echo "C:/Program Files (x86)/NSIS" >> "$GITHUB_PATH"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build and package NSIS installer
+        run: task windows:package ARCH=${{ matrix.arch }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: catdb-windows-${{ matrix.arch }}
+          path: build/windows/nsis/*-installer.exe
+
+  # ── Release ────────────────────────────────────────────────────────────
+  release:
+    name: Create Release
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need full history for release notes
+
+      - uses: actions/download-artifact@v4
+
+      - name: Generate release notes from commit log
+        run: |
+          cat > release-notes.md << 'HEADER'
+          ## Changelog
+
+          HEADER
+
+          # Get the previous tag (excluding current one)
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${GITHUB_REF_NAME}$" | head -1 || true)
+
+          if [ -n "$PREV_TAG" ]; then
+            git log --pretty=format:"* %s (%h)" "${PREV_TAG}..HEAD" >> release-notes.md
+          else
+            git log --pretty=format:"* %s (%h)" >> release-notes.md
+          fi
+
+      - name: Collect release assets
+        run: |
+          mkdir -p assets
+          cp catdb-darwin-*/*.zip assets/ 2>/dev/null || true
+          cp catdb-windows-*/*-installer.exe assets/ 2>/dev/null || true
+          echo "=== Collected assets ==="
+          ls -lh assets/
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          ASSETS=(assets/*)
+          if [ ${#ASSETS[@]} -eq 0 ]; then
+            echo "ERROR: no assets found!" >&2
+            exit 1
+          fi
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --notes-file release-notes.md \
+            "${ASSETS[@]}"

@@ -53,6 +53,8 @@ func OpenChildWindow(name, title, url string, width, height int) {
 		Title:            title,
 		Width:            width,
 		Height:           height,
+		MinWidth:         600,
+		MinHeight:        500,
 		InitialPosition:  application.WindowCentered,
 		Frameless:        runtime.GOOS == "windows",
 		Mac: application.MacWindow{

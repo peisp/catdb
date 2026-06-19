@@ -74,6 +74,8 @@ func main() {
 		Title:     "catdb",
 		Width:     1200,
 		Height:    760,
+		MinWidth:  600,
+		MinHeight: 500,
 		Frameless: runtime.GOOS == "windows",
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 30,
