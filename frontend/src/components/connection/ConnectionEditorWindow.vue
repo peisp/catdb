@@ -29,8 +29,10 @@ const loading = ref(true)
 const errorMessage = ref('')
 
 const title = computed(() => {
-  if (!driver.value) return '连接'
-  return initial.value ? `编辑 ${driver.value.name} 连接` : `新建 ${driver.value.name} 连接`
+  if (initial.value && driver.value) return `编辑 ${driver.value.name} 连接`
+  if (initial.value) return '编辑连接'
+  if (driver.value) return `新建 ${driver.value.name} 连接`
+  return '新建连接'
 })
 
 function parseHashQuery(): { driver?: string; id?: string } {
@@ -48,16 +50,17 @@ onMounted(async () => {
     const { driver: drvName, id } = parseHashQuery()
 
     // Need the driver schema for the form. Pull the full list once and pick.
+    // No drvName → form picks the first available driver from its own rail.
     await store.refreshDrivers()
-    const drv = drvName ? store.driverByName.get(drvName) : null
-    if (!drv) {
-      errorMessage.value = drvName
-        ? `未知驱动: ${drvName}`
-        : '缺少 driver 参数'
-      loading.value = false
-      return
+    if (drvName) {
+      const drv = store.driverByName.get(drvName)
+      if (!drv) {
+        errorMessage.value = `未知驱动: ${drvName}`
+        loading.value = false
+        return
+      }
+      driver.value = drv
     }
-    driver.value = drv
 
     if (id) {
       try {
@@ -110,7 +113,7 @@ function toggleMaximise() {
         {{ errorMessage }}
       </div>
       <ConnectionForm
-        v-else-if="driver"
+        v-else
         :driver="driver"
         :initial="initial"
         @saved="onSaved"

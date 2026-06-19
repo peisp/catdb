@@ -1,20 +1,22 @@
 <script setup lang="ts">
 // ConnectionSidebar — grouped list of saved connections with native
-// right-click context menu (connect / disconnect / edit / delete) and a
-// native <select> for creating new connections by driver type.
+// right-click context menu (connect / disconnect / edit / delete).
+//
+// New-connection action lives on the AppShell's top-drag region; the form
+// hosts its own driver-type picker, so the sidebar header stays purely a
+// list label.
 import { computed, onMounted, ref } from 'vue'
 import {
   NScrollbar,
   NSpin,
   useMessage,
 } from 'naive-ui'
-import type { ConnectionProfile, DriverInfo } from '../../api/connections'
+import type { ConnectionProfile } from '../../api/connections'
 import { useConnectionsStore } from '../../stores/connections'
 import { setActiveConnectionContext } from '../../api/connectionContextMenu'
 
 const emit = defineEmits<{
   (e: 'select', conn: ConnectionProfile): void
-  (e: 'new', driver: DriverInfo): void
   (e: 'edit', conn: ConnectionProfile): void
 }>()
 
@@ -46,14 +48,6 @@ function onCtx(ev: MouseEvent, conn: ConnectionProfile) {
   // Set native context menu + push connection identity before menu opens.
   sidebarRef.value?.style.setProperty('--custom-contextmenu', 'catdb-connection')
   setActiveConnectionContext({ connId: conn.id, connName: conn.name })
-}
-
-function onNewDriverSelect(ev: Event) {
-  const val = (ev.target as HTMLSelectElement).value
-  if (!val) return
-  const d = store.drivers.find((dd) => dd.name === val)
-  if (d) emit('new', d)
-  ;(ev.target as HTMLSelectElement).value = ''
 }
 
 async function onDoubleClick(conn: ConnectionProfile) {
@@ -88,16 +82,6 @@ onMounted(() => {
   <div ref="sidebarRef" class="sidebar" :class="{ win: isWin }">
     <div class="header">
       <span class="title">Connections</span>
-      <select
-        class="new-conn-select mono"
-        :disabled="!store.drivers.length"
-        @change="onNewDriverSelect"
-      >
-        <option value="" disabled selected>+</option>
-        <option v-for="d in store.drivers" :key="d.name" :value="d.name">
-          {{ d.name }}
-        </option>
-      </select>
     </div>
     <n-scrollbar class="list">
       <n-spin :show="store.loading">
@@ -126,7 +110,6 @@ onMounted(() => {
 .header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 6px 10px;
   font-size: 11px;
   text-transform: uppercase;
@@ -165,28 +148,6 @@ onMounted(() => {
   flex: 0 0 auto;
 }
 .dot.live { background: #18a058; }
-
-.new-conn-select {
-  font-size: 14px;
-  height: 20px;
-  width: 28px;
-  padding: 0 2px;
-  border: 1px solid transparent;
-  border-radius: 3px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  outline: none;
-  font-family: inherit;
-  text-align: center;
-}
-.new-conn-select:hover:not(:disabled) {
-  background: var(--n-color-target, rgba(127,127,127,0.12));
-}
-.new-conn-select:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
 
 /* Windows frameless: no top padding on header so content starts flush. */
 .sidebar.win .header { padding-top: 18px; }

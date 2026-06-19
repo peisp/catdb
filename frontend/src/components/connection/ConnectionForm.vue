@@ -7,6 +7,10 @@
 // schema by walking dotted keys: "ssl.mode" → draft.ssl.mode, etc. Secrets
 // (.password, sshTunnel.password, sshTunnel.privateKeyPass) are routed to
 // the dedicated top-level fields so they hit the keyring path on Save.
+//
+// The left rail hosts the driver-type picker (currently mysql only). When
+// editing an existing profile the picker is locked to the profile's driver
+// — swapping driver mid-edit would orphan saved credentials.
 import { computed, ref, watch } from 'vue'
 import {
   NButton,
@@ -26,7 +30,7 @@ import type { ConnectionDraft, ConnectionProfile, DriverInfo } from '../../api/c
 import { useConnectionsStore } from '../../stores/connections'
 
 const props = defineProps<{
-  driver: DriverInfo
+  driver?: DriverInfo | null
   initial?: ConnectionProfile | null
 }>()
 const emit = defineEmits<{
@@ -36,6 +40,38 @@ const emit = defineEmits<{
 
 const store = useConnectionsStore()
 const message = useMessage()
+
+const driverList = computed(() => store.drivers)
+const driverLocked = computed(() => !!props.initial)
+
+function pickInitialDriver(): DriverInfo | null {
+  if (props.driver) return props.driver
+  if (props.initial) {
+    const d = driverList.value.find((dd) => dd.name === props.initial!.driver)
+    if (d) return d
+  }
+  return driverList.value[0] ?? null
+}
+
+const selectedDriver = ref<DriverInfo | null>(pickInitialDriver())
+
+// Drivers may arrive after the form mounts (refreshDrivers is async). Promote
+// the first available driver into selection once they show up.
+watch(
+  driverList,
+  (list) => {
+    if (!selectedDriver.value && list.length) {
+      selectedDriver.value = pickInitialDriver()
+    }
+  },
+  { immediate: true },
+)
+
+function selectDriver(d: DriverInfo) {
+  if (driverLocked.value) return
+  if (selectedDriver.value?.name === d.name) return
+  selectedDriver.value = d
+}
 
 const name = ref<string>(props.initial?.name ?? '')
 const groupId = ref<string | null>(props.initial?.groupId ?? null)
@@ -62,14 +98,19 @@ function buildInitialValues(): Record<string, any> {
     sshTunnel: {},
     params: {},
   }
-  for (const f of props.driver.schema) {
+  const drv = selectedDriver.value
+  if (!drv) return v
+  for (const f of drv.schema) {
     let val: any = f.default ?? ''
     if (f.type === 'number') val = f.default ? Number(f.default) : 0
     if (f.type === 'bool') val = false
     setPath(v, f.key, val)
   }
-  // Override with the persisted profile (no secrets — keyring is opaque).
-  if (props.initial) {
+  // Override with the persisted profile (no secrets — keyring is opaque). Only
+  // seed when the active driver matches the saved profile; if the user has
+  // swapped drivers (locked editing forbids this) we'd otherwise leak fields
+  // from a foreign schema.
+  if (props.initial && props.initial.driver === drv.name) {
     if (props.initial.host !== undefined) v.host = props.initial.host
     if (props.initial.port !== undefined) v.port = props.initial.port
     if (props.initial.user !== undefined) v.user = props.initial.user
@@ -82,20 +123,20 @@ function buildInitialValues(): Record<string, any> {
 }
 
 const values = ref<Record<string, any>>(buildInitialValues())
-watch(
-  () => props.driver,
-  () => {
-    values.value = buildInitialValues()
-  },
-)
+watch(selectedDriver, () => {
+  values.value = buildInitialValues()
+})
 
 // Group fields by their declared group. Maintain a stable display order so
 // the segmented tabs always read 常规 → 高级 → SSL → SSH and any
 // driver-specific buckets land after that (alphabetical).
 const GROUP_ORDER = ['常规', '高级', 'SSL', 'SSH']
+type SchemaField = NonNullable<DriverInfo['schema']>[number]
 const grouped = computed(() => {
-  const groups = new Map<string, typeof props.driver.schema>()
-  for (const f of props.driver.schema) {
+  const groups = new Map<string, SchemaField[]>()
+  const drv = selectedDriver.value
+  if (!drv) return []
+  for (const f of drv.schema) {
     const g = f.group || '常规'
     if (!groups.has(g)) groups.set(g, [])
     groups.get(g)!.push(f)
@@ -140,7 +181,7 @@ function buildDraft(): ConnectionDraft {
   const draft: ConnectionDraft = {
     id: props.initial?.id,
     name: name.value.trim(),
-    driver: props.driver.name,
+    driver: selectedDriver.value?.name ?? '',
     groupId: groupId.value ?? undefined,
     host: v.host ?? '',
     port: v.port != null && v.port !== '' ? Number(v.port) : 0,
@@ -235,6 +276,10 @@ async function onSave() {
     message.warning('请填写连接名称')
     return
   }
+  if (!selectedDriver.value) {
+    message.warning('请选择连接类型')
+    return
+  }
   saving.value = true
   try {
     const saved = await store.save(buildDraft())
@@ -249,7 +294,24 @@ async function onSave() {
 
 function formatErr(e: any): string {
   if (!e) return 'unknown'
-  if (e instanceof Error) return e.message
+  if (e instanceof Error) {
+    // Wails v3 serialises Go errors as JSON + wraps them in new Error(text).
+    // Try to unpack the meaningful parts.
+    try {
+      const parsed = JSON.parse(e.message)
+      if (parsed.message) {
+        let msg: string = parsed.message
+        // Strip the generic Wails wrapper prefix.
+        msg = msg.replace(/^Bound method returned an error:\s*/, '')
+        if (parsed.cause) {
+          const cause = typeof parsed.cause === 'string' ? parsed.cause : JSON.stringify(parsed.cause)
+          if (cause !== msg) msg += '\n' + cause
+        }
+        return msg
+      }
+    } catch { /* not a Wails CallError JSON — fall through */ }
+    return e.message
+  }
   return String(e)
 }
 
@@ -260,11 +322,38 @@ function selectOptions(opts: string[]) {
 
 <template>
   <div class="form">
-    <!-- Scrollable form body. Three blocks:
-         1) header — name + group on a single dense row.
-         2) tab rail — segmented control, horizontally centered.
-         3) pane content — fields for the active group. -->
-    <div class="form-body">
+    <!-- Two-column layout. Left rail = driver-type picker, spans the full
+         window height. Right column = connection-info pane (scrollable) +
+         action bar pinned to the column's bottom. -->
+    <!-- Driver-type rail. Locked when editing — a saved profile's driver
+         can't be swapped without orphaning keyring credentials. -->
+    <aside class="driver-rail">
+      <div class="rail-label">类型</div>
+      <div class="rail-list">
+        <button
+          v-for="d in driverList"
+          :key="d.name"
+          type="button"
+          class="rail-item mono"
+          :class="{
+            active: selectedDriver?.name === d.name,
+            locked: driverLocked && selectedDriver?.name !== d.name,
+          }"
+          :disabled="driverLocked && selectedDriver?.name !== d.name"
+          @click="selectDriver(d)"
+        >
+          <span class="rail-dot" :class="{ active: selectedDriver?.name === d.name }" />
+          <span class="rail-name">{{ d.name }}</span>
+        </button>
+        <div v-if="driverList.length === 0" class="rail-empty">没有可用驱动</div>
+      </div>
+    </aside>
+
+    <!-- Right column: scrollable connection-info pane on top, action bar
+         pinned to the column's own bottom. -->
+    <div class="form-right">
+      <!-- Right pane: header + tabs + active group fields. -->
+      <div class="form-pane">
       <!-- Header: name (wide) + group (narrow) inline. label-left keeps the
            pattern consistent with the field rows below. -->
       <n-form
@@ -367,13 +456,13 @@ function selectOptions(opts: string[]) {
           </n-tab-pane>
         </n-tabs>
       </div>
-    </div>
+      </div>
 
-    <!-- Bottom action bar. Two rows:
-         * status strip: replaces the test-result toast — only shown when
-           a test is in flight, succeeded, failed, or was cancelled.
-         * buttons: 测试连接 / 保存 / 关闭 -->
-    <footer class="action-bar" :class="{ 'has-status': testStatus !== 'idle' }">
+      <!-- Right-column action bar. Two rows:
+           * status strip: replaces the test-result toast — only shown when
+             a test is in flight, succeeded, failed, or was cancelled.
+           * buttons: 关闭 / 测试连接 / 保存 -->
+      <footer class="action-bar" :class="{ 'has-status': testStatus !== 'idle' }">
       <div
         v-if="testStatus !== 'idle'"
         class="status-strip"
@@ -395,35 +484,46 @@ function selectOptions(opts: string[]) {
       </div>
 
       <div class="actions">
-        <!-- Secondary action (left) — separated from the primary cluster on
-             the right. Matches the standard desktop "tools | confirm" split. -->
-        <div class="actions-left">
+        <!-- All buttons clustered on the right. Order reads
+             关闭 → 测试连接 → 保存 so the primary 保存 keeps the
+             rightmost (default-action) slot. -->
+        <div class="actions-right">
           <n-button v-if="testing" size="small" @click="cancelTest">取消测试</n-button>
           <n-button v-else size="small" @click="onTest" :loading="testing">测试连接</n-button>
-        </div>
-        <div class="actions-right">
           <n-button size="small" @click="emit('cancel')">关闭</n-button>
           <n-button size="small" type="primary" :loading="saving" @click="onSave">保存</n-button>
         </div>
       </div>
     </footer>
+    </div>
   </div>
 </template>
 
 <style scoped>
 /* Form occupies the entire window body; the parent provides height via flex.
-   Inner layout = scrollable form-body (1fr) + sticky action-bar at the
-   window bottom. The grid is explicit so the action bar can never be
-   pushed off-screen by long content. */
+   Outer layout is a horizontal split: driver-rail (fixed) + right column
+   (1fr). The right column owns its own scrolling pane + action bar so the
+   rail extends from window top to window bottom. */
 .form {
-  display: grid;
-  grid-template-rows: 1fr auto;
   min-width: 0;
   min-height: 0;
   height: 100%;
   overflow: hidden;
+  display: flex;
+  flex-direction: row;
 }
-.form-body {
+/* Right column: scrollable connection-info pane stacked on top of the
+   action bar. Grid keeps the action bar pinned to the column's bottom
+   regardless of pane content height. */
+.form-right {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: 1fr auto;
+}
+.form-pane {
   min-width: 0;
   min-height: 0;
   overflow: auto;
@@ -433,6 +533,77 @@ function selectOptions(opts: string[]) {
   gap: 8px;
 }
 .hint { font-size: 11px; opacity: 0.65; }
+
+/* --- Driver-type rail (left) -------------------------------------------
+   Compact desktop list. Active item gets a soft highlight + green dot.
+   Locked items (editing mode, foreign drivers) dim and disable. */
+.driver-rail {
+  flex: 0 0 132px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--n-border-color, rgba(127,127,127,0.15));
+  background: rgba(127, 127, 127, 0.04);
+  padding: 12px 8px 10px;
+  gap: 4px;
+}
+.rail-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.55;
+  padding: 0 6px 4px;
+}
+.rail-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rail-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: default;
+  width: 100%;
+  transition: background 80ms ease;
+}
+.rail-item:hover:not(:disabled) {
+  background: rgba(127, 127, 127, 0.1);
+}
+.rail-item.active {
+  background: rgba(24, 160, 88, 0.12);
+  color: inherit;
+  font-weight: 600;
+}
+.rail-item.locked,
+.rail-item:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.rail-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: rgba(127, 127, 127, 0.35);
+}
+.rail-dot.active { background: #18a058; }
+.rail-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rail-empty {
+  padding: 6px 8px;
+  font-size: 11px;
+  opacity: 0.5;
+}
 
 /* --- Header (name + group, inline) --------------------------------------
    Two form-items share a single row. Name takes the elastic share; group
@@ -566,8 +737,8 @@ function selectOptions(opts: string[]) {
 
 /* --- Action bar --------------------------------------------------------
    Sticky at the window bottom. Status strip (optional) on top, then the
-   button row. Buttons split left (secondary: 测试连接) / right (primary
-   pair: 关闭 / 保存) for the standard desktop affordance. */
+   button row. All buttons cluster at the right
+   (关闭 / 测试连接 / 保存) so 保存 keeps the default-action position. */
 .action-bar {
   border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
   background: var(--n-color, transparent);
@@ -575,11 +746,10 @@ function selectOptions(opts: string[]) {
 .actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 10px;
   padding: 8px 18px;
 }
-.actions-left,
 .actions-right {
   display: flex;
   align-items: center;
@@ -603,7 +773,14 @@ function selectOptions(opts: string[]) {
   flex: 0 0 auto;
   background: currentColor;
 }
-.status-text { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-word;
+  white-space: pre-wrap;
+  user-select: text;
+  -webkit-user-select: text;
+}
 .status-meta {
   opacity: 0.55;
   font-size: 11px;

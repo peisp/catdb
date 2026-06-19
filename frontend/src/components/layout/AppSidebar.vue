@@ -16,7 +16,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import ConnectionSidebar from '../connection/ConnectionSidebar.vue'
 import ObjectTree from './ObjectTree.vue'
 import ResizeHandle from '../shared/ResizeHandle.vue'
-import type { ConnectionProfile, DriverInfo } from '../../api/connections'
+import type { ConnectionProfile } from '../../api/connections'
 
 // On macOS, the traffic lights occupy the top-left corner, so we leave padding
 // above the sidebar content. On Windows (frameless) the sidebar extends to the
@@ -33,7 +33,6 @@ defineProps<{
 
 const emit = defineEmits<{
   (e: 'select', conn: ConnectionProfile): void
-  (e: 'new', driver: DriverInfo): void
   (e: 'edit', conn: ConnectionProfile): void
   (e: 'openData', payload: { db: string; table: string }): void
   (e: 'openStructure', payload: { db: string; table: string }): void
@@ -130,7 +129,6 @@ onBeforeUnmount(() => {
         <template #1>
           <ConnectionSidebar
             @select="(c) => emit('select', c)"
-            @new="(d) => emit('new', d)"
             @edit="(c) => emit('edit', c)"
           />
         </template>
@@ -149,7 +147,6 @@ onBeforeUnmount(() => {
       <ConnectionSidebar
         v-else
         @select="(c) => emit('select', c)"
-        @new="(d) => emit('new', d)"
         @edit="(c) => emit('edit', c)"
       />
     </div>

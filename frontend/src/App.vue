@@ -29,6 +29,15 @@ onMounted(() => {
   window.addEventListener('hashchange', () => {
     route.value = currentRoute()
   })
+
+  // Globally disable autocomplete to suppress the macOS autofill bubble
+  // ("Root | ×") that WebKit shows on focused password / text inputs.
+  document.addEventListener('focusin', (e) => {
+    const el = (e.target as HTMLElement).closest('input')
+    if (el && !el.hasAttribute('autocomplete')) {
+      el.setAttribute('autocomplete', 'off')
+    }
+  })
 })
 </script>
 

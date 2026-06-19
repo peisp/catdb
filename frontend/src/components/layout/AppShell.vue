@@ -14,7 +14,7 @@ import AppSidebar from './AppSidebar.vue'
 import ConnectionWelcome from '../connection/ConnectionWelcome.vue'
 import QueryWorkspace from '../workspace/QueryWorkspace.vue'
 import StatusBar from './StatusBar.vue'
-import type { ConnectionProfile, DriverInfo } from '../../api/connections'
+import type { ConnectionProfile } from '../../api/connections'
 import { useConnectionsStore } from '../../stores/connections'
 import { useQueryStore } from '../../stores/query'
 import { system as systemApi } from '../../api'
@@ -122,9 +122,6 @@ watch(dirtyCount, (v) => { void systemApi.setDirtyTabs(v) }, { immediate: true }
 
 // --- existing wiring ---
 
-function onNewConnection(driver: DriverInfo) {
-  void systemApi.openConnectionEditor(driver.name, '')
-}
 function onEditConnection(conn: ConnectionProfile) {
   const d = store.driverByName.get(conn.driver)
   if (!d) return
@@ -133,9 +130,11 @@ function onEditConnection(conn: ConnectionProfile) {
 function onSelectConnection(conn: ConnectionProfile) {
   activeConn.value = conn
 }
-function pickFirstDriver() {
-  const d = store.drivers[0]
-  if (d) onNewConnection(d)
+// Open the editor with no preselected driver — the form's left rail picks
+// the first available one (currently mysql). Used by the welcome-screen
+// "新建" button and the top-bar "+" button.
+function openNewConnection() {
+  void systemApi.openConnectionEditor('', '')
 }
 function onOpenData(payload: { db: string; table: string }) {
   if (!activeConn.value) return
@@ -182,6 +181,30 @@ function onOpenTablesOverview(payload: { db: string }) {
         </button>
       </div>
 
+      <!-- Right-side floating control: "+" opens the connection editor with
+           no preselected driver. The form's left rail handles type picking. -->
+      <div class="floating-controls-right" :class="{ win: isWin }">
+        <button
+          type="button"
+          class="sidebar-toggle glass new-conn"
+          title="新建连接"
+          @click="openNewConnection"
+        >
+          <span class="glass-specular" aria-hidden="true" />
+          <span class="glass-icon" aria-hidden="true">
+            <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M8 3.2v9.6M3.2 8h9.6"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linecap="round"
+                fill="none"
+              />
+            </svg>
+          </span>
+        </button>
+      </div>
+
       <!-- Windows frameless caption buttons (minimise / maximise / close).
            Absolutely positioned at top-right, outside the drag region so
            each button is individually clickable (--wails-draggable: no-drag). -->
@@ -209,7 +232,6 @@ function onOpenTablesOverview(payload: { db: string }) {
         :active-conn="activeConn"
         :collapsed="!sidebarVisible"
         @select="onSelectConnection"
-        @new="onNewConnection"
         @edit="onEditConnection"
         @open-data="onOpenData"
         @open-structure="onOpenStructure"
@@ -223,7 +245,7 @@ function onOpenTablesOverview(payload: { db: string }) {
             :connection="activeConn"
             :tab-command="tabCmdBus"
           />
-          <ConnectionWelcome v-else @new="pickFirstDriver" />
+          <ConnectionWelcome v-else @new="openNewConnection" />
         </main>
         <div class="status">
           <StatusBar />
@@ -291,6 +313,23 @@ function onOpenTablesOverview(payload: { db: string }) {
 .floating-controls.mac {
   top: 10px;
 }*/
+
+/* Right-side floating control mirror. macOS pins to right:12px; Windows
+   pushes left of the three caption buttons (3 × 46px = 138px) so the
+   "+" doesn't sit on top of close/maximise. */
+.floating-controls-right {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  --wails-draggable: drag;
+}
+.floating-controls-right.win {
+  right: 150px;
+}
 
 
 .main {
@@ -371,6 +410,17 @@ function onOpenTablesOverview(payload: { db: string }) {
   transition: opacity 120ms ease;
 }
 .sidebar-toggle .glass-icon :deep(svg) {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* The "+" icon is square — the sidebar glyph is 17×13 — so size it 14×14
+   to read the same optical weight inside the same 35px circle. */
+.sidebar-toggle.new-conn .glass-icon {
+  width: 14px;
+  height: 14px;
+}
+.sidebar-toggle.new-conn .glass-icon svg {
   display: block;
   width: 100%;
   height: 100%;
