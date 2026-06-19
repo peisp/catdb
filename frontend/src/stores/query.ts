@@ -25,9 +25,10 @@ export type QueryStatus = 'idle' | 'running' | 'done' | 'error' | 'canceled'
  *   - 'query': SQL editor + result table
  *   - 'table': data browser for `db.table`
  *   - 'structure': structure viewer for `db.table`
+ *   - 'new-table': structure editor in "create" mode (db known, table tbd)
  *   - 'tables-overview': all tables in a database/schema
  */
-export type TabKind = 'query' | 'table' | 'structure' | 'tables-overview'
+export type TabKind = 'query' | 'table' | 'structure' | 'new-table' | 'tables-overview'
 
 let tabSeq = 0
 function nextTabId(): string {
@@ -145,6 +146,31 @@ export const useQueryStore = defineStore('query', () => {
       table,
       title: `${titlePrefix} ${db}.${table}`,
     })
+  }
+
+  /**
+   * Open a "new table" structure-editor tab anchored to `db`. The table name
+   * is decided by the user inside the tab; we don't reuse existing tabs here
+   * because each click should give a fresh blank draft.
+   */
+  function openNewTableTab(connId: string, db: string): QueryTab {
+    return addTab(connId, {
+      kind: 'new-table',
+      db,
+      title: `✚ ${db}.新建表`,
+    })
+  }
+
+  /**
+   * After a CREATE TABLE succeeds, promote the new-table tab to a regular
+   * structure tab so subsequent edits behave like editing an existing table.
+   */
+  function promoteNewTableTab(tabId: string, table: string) {
+    const t = getTab(tabId)
+    if (!t || t.kind !== 'new-table') return
+    t.kind = 'structure'
+    t.table = table
+    t.title = `⚙ ${t.db}.${table}`
   }
 
   /**
@@ -394,6 +420,8 @@ export const useQueryStore = defineStore('query', () => {
     setActive,
     addTab,
     openTableTab,
+    openNewTableTab,
+    promoteNewTableTab,
     openTablesOverviewTab,
     ensureOverviewTab,
     closeTab,

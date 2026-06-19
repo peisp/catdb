@@ -38,6 +38,7 @@ const emit = defineEmits<{
   (e: 'openData', payload: { db: string; table: string }): void
   (e: 'openStructure', payload: { db: string; table: string }): void
   (e: 'openTablesOverview', payload: { db: string }): void
+  (e: 'openNewTable', payload: { db: string }): void
   (e: 'collapse'): void
 }>()
 
@@ -140,6 +141,7 @@ onBeforeUnmount(() => {
             @open-data="(p) => emit('openData', p)"
             @open-structure="(p) => emit('openStructure', p)"
             @open-tables-overview="(p) => emit('openTablesOverview', p)"
+            @open-new-table="(p) => emit('openNewTable', p)"
           />
         </template>
         <template #resize-trigger>

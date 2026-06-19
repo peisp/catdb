@@ -148,6 +148,10 @@ function onOpenTablesOverview(payload: { db: string }) {
   if (!activeConn.value) return
   queryStore.openTablesOverviewTab(activeConn.value.id, payload.db)
 }
+function onOpenNewTable(payload: { db: string }) {
+  if (!activeConn.value) return
+  queryStore.openNewTableTab(activeConn.value.id, payload.db)
+}
 </script>
 
 <template>
@@ -221,6 +225,7 @@ function onOpenTablesOverview(payload: { db: string }) {
         @open-data="onOpenData"
         @open-structure="onOpenStructure"
         @open-tables-overview="onOpenTablesOverview"
+        @open-new-table="onOpenNewTable"
         @collapse="sidebarVisible = false"
       />
       <div class="main">

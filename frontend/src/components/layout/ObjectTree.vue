@@ -25,6 +25,7 @@ const emit = defineEmits<{
   (e: 'open-data', payload: { db: string; table: string }): void
   (e: 'open-structure', payload: { db: string; table: string }): void
   (e: 'open-tables-overview', payload: { db: string }): void
+  (e: 'open-new-table', payload: { db: string }): void
 }>()
 
 const store = useMetadataStore()
@@ -161,11 +162,20 @@ const ctxOptions = computed(() => {
   if (m.kind === 'view') {
     return [{ label: 'Browse data', key: 'browse' }]
   }
-  if (m.kind === 'tableGroup' || m.kind === 'viewGroup') {
+  if (m.kind === 'tableGroup') {
+    return [
+      { label: '新建表', key: 'new-table' },
+      { label: 'Refresh', key: 'refresh-group' },
+    ]
+  }
+  if (m.kind === 'viewGroup') {
     return [{ label: 'Refresh', key: 'refresh-group' }]
   }
   if (m.kind === 'database') {
-    return [{ label: 'Refresh', key: 'refresh-db' }]
+    return [
+      { label: '新建表', key: 'new-table' },
+      { label: 'Refresh', key: 'refresh-db' },
+    ]
   }
   return []
 })
@@ -189,6 +199,9 @@ async function onCtxSelect(key: string) {
       break
     case 'structure':
       if (m.db && m.table) emit('open-structure', { db: m.db, table: m.table })
+      break
+    case 'new-table':
+      if (m.db) emit('open-new-table', { db: m.db })
       break
     case 'refresh-cols':
       if (m.db && m.table) await store.ensureColumns(props.connection.id, m.db, m.table, true)

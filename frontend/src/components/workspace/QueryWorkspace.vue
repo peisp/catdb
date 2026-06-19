@@ -134,6 +134,14 @@ function openCtx(e: MouseEvent, tab: QueryTabInfo) {
           :db="t.db"
           :table="t.table"
         />
+        <TableStructure
+          v-else-if="t.kind === 'new-table' && t.db"
+          :conn-id="t.connId"
+          :db="t.db"
+          :table="t.table ?? ''"
+          mode="new"
+          :tab-id="t.id"
+        />
         <TablesOverview
           v-else-if="t.kind === 'tables-overview'"
           :conn-id="t.connId"

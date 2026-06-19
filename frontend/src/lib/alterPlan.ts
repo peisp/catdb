@@ -886,3 +886,90 @@ export function buildAlterPlan({
   ]
   return { columns: columnsTab, indexes, foreignKeys, options, all }
 }
+
+// ---- CREATE TABLE ---------------------------------------------------------
+
+export interface BuildCreateTableInput {
+  db: string
+  table: string
+  draft: StructureDraft
+}
+
+/**
+ * Build a single MySQL `CREATE TABLE` statement from a structure draft. Used
+ * by the "new table" flow in TableStructure.vue; reuses the same column/index/
+ * FK formatters as the ALTER path so the dialect stays in one place.
+ *
+ * Returns '' when the table name or columns are not yet sufficient to form
+ * a valid statement — the caller renders an empty preview in that case.
+ */
+export function buildCreateTable({
+  db,
+  table,
+  draft,
+}: BuildCreateTableInput): string {
+  const tableName = (table ?? '').trim()
+  if (!tableName) return ''
+  const cols = (draft.columns ?? []).filter((c) => c.name.trim() !== '')
+  if (cols.length === 0) return ''
+
+  const fq = quoteTable(db, tableName)
+  const lines: string[] = []
+
+  for (const c of cols) {
+    lines.push(`  ${quoteIdent(c.name.trim())} ${columnDefBody(c)}`)
+  }
+
+  const pkCols = cols
+    .filter((c) => c.isPrimaryKey)
+    .map((c) => c.name.trim())
+  if (pkCols.length > 0) {
+    lines.push(`  PRIMARY KEY (${pkCols.map(quoteIdent).join(', ')})`)
+  }
+
+  for (const ix of draft.indexes ?? []) {
+    if (ix.primary) continue
+    const ixCols = (ix.columns ?? []).filter((c) => c.name.trim() !== '')
+    if (!ix.name.trim() || ixCols.length === 0) continue
+    const colSpec = ixCols
+      .map((c) => {
+        const dir = (c.order ?? '').toUpperCase()
+        const suffix = dir === 'ASC' || dir === 'DESC' ? ` ${dir}` : ''
+        return `${quoteIdent(c.name.trim())}${suffix}`
+      })
+      .join(', ')
+    const kw = ix.unique ? 'UNIQUE INDEX' : 'INDEX'
+    const using = ix.type && ix.type.toUpperCase() !== 'BTREE' ? ` USING ${ix.type.toUpperCase()}` : ''
+    const comment = ix.comment && ix.comment.trim() !== '' ? ` COMMENT ${quoteString(ix.comment)}` : ''
+    lines.push(`  ${kw} ${quoteIdent(ix.name.trim())} (${colSpec})${using}${comment}`)
+  }
+
+  for (const fk of draft.foreignKeys ?? []) {
+    if (
+      !fk.name.trim() ||
+      fk.columns.length === 0 ||
+      !fk.referencedTable.trim() ||
+      fk.referencedColumns.length === 0
+    ) {
+      continue
+    }
+    const fkCols = fk.columns.map(quoteIdent).join(', ')
+    const refCols = fk.referencedColumns.map(quoteIdent).join(', ')
+    const refTable = quoteTable(fk.referencedSchema, fk.referencedTable)
+    let line = `  CONSTRAINT ${quoteIdent(fk.name.trim())} FOREIGN KEY (${fkCols}) REFERENCES ${refTable} (${refCols})`
+    if (fk.onUpdate && fk.onUpdate.toUpperCase() !== 'RESTRICT') {
+      line += ` ON UPDATE ${fk.onUpdate.toUpperCase()}`
+    }
+    if (fk.onDelete && fk.onDelete.toUpperCase() !== 'RESTRICT') {
+      line += ` ON DELETE ${fk.onDelete.toUpperCase()}`
+    }
+    lines.push(line)
+  }
+
+  const body = lines.join(',\n')
+  const tail =
+    draft.options.comment && draft.options.comment.trim() !== ''
+      ? ` COMMENT=${quoteString(draft.options.comment)}`
+      : ''
+  return `CREATE TABLE ${fq} (\n${body}\n)${tail};`
+}

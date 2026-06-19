@@ -69,6 +69,23 @@ export const useMetadataStore = defineStore('metadata', () => {
     delete snapshots.value[connId]
   }
 
+  /** Drop the cached table list for one db so the next ensureTables() refetches. */
+  function invalidateTables(connId: string, db: string) {
+    const byConn = tables.value[connId]
+    if (byConn && byConn[db]) {
+      const next = { ...byConn }
+      delete next[db]
+      tables.value = { ...tables.value, [connId]: next }
+    }
+    // The autocomplete snapshot mirrors the table list — drop it too.
+    const snapByConn = snapshots.value[connId]
+    if (snapByConn && snapByConn[db]) {
+      const next = { ...snapByConn }
+      delete next[db]
+      snapshots.value = { ...snapshots.value, [connId]: next }
+    }
+  }
+
   function snapshotFor(connId: string, db: string): AutocompleteSnapshot | undefined {
     return snapshots.value[connId]?.[db]
   }
@@ -86,6 +103,7 @@ export const useMetadataStore = defineStore('metadata', () => {
     ensureColumns,
     ensureSnapshot,
     invalidate,
+    invalidateTables,
     snapshotFor,
   }
 })

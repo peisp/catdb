@@ -350,6 +350,16 @@ function aiTitle(row: ColumnDraft): string {
   return COL_TITLES.ai
 }
 
+// MySQL requires every PRIMARY KEY column to be NOT NULL; if the user checks
+// PK we also force NOT NULL so the resulting DDL is valid without an extra
+// click. Unchecking PK does NOT re-enable nullable — the user might have
+// independently meant NOT NULL.
+function onPkChange(row: ColumnDraft, v: boolean) {
+  row.isPrimaryKey = v
+  if (v) row.nullable = false
+  commit()
+}
+
 function onAiChange(row: ColumnDraft, v: boolean) {
   // Defensive: shouldn't fire on non-integer rows (UI hides the checkbox),
   // but guard anyway so the model can't drift.
@@ -417,37 +427,37 @@ const COL_TITLES: Record<string, string> = {
             <th>列名</th>
             <th>类型</th>
             <th>
-              <n-tooltip placement="top" :delay="300" :show-arrow="false">
+              <n-tooltip placement="top" :delay="100" :show-arrow="false">
                 <template #trigger><span class="th-tip">长度/参数</span></template>
                 {{ COL_TITLES.params }}
               </n-tooltip>
             </th>
             <th class="th-center">
-              <n-tooltip placement="top" :delay="300" :show-arrow="false">
+              <n-tooltip placement="top" :delay="100" :show-arrow="false">
                 <template #trigger><span class="th-tip">UN</span></template>
                 {{ COL_TITLES.unsigned }}
               </n-tooltip>
             </th>
             <th class="th-center">
-              <n-tooltip placement="top" :delay="300" :show-arrow="false">
+              <n-tooltip placement="top" :delay="100" :show-arrow="false">
                 <template #trigger><span class="th-tip">PK</span></template>
                 {{ COL_TITLES.pk }}
               </n-tooltip>
             </th>
             <th class="th-center">
-              <n-tooltip placement="top" :delay="300" :show-arrow="false">
+              <n-tooltip placement="top" :delay="100" :show-arrow="false">
                 <template #trigger><span class="th-tip">NN</span></template>
                 {{ COL_TITLES.nn }}
               </n-tooltip>
             </th>
             <th class="th-center">
-              <n-tooltip placement="top" :delay="300" :show-arrow="false">
+              <n-tooltip placement="top" :delay="100" :show-arrow="false">
                 <template #trigger><span class="th-tip">AI</span></template>
                 {{ COL_TITLES.ai }}
               </n-tooltip>
             </th>
             <th>
-              <n-tooltip placement="top" :delay="300" :show-arrow="false">
+              <n-tooltip placement="top" :delay="100" :show-arrow="false">
                 <template #trigger><span class="th-tip">默认值</span></template>
                 {{ COL_TITLES.default }}
               </n-tooltip>
@@ -467,10 +477,12 @@ const COL_TITLES: Record<string, string> = {
             <td
               class="td-drag"
               :draggable="!busy"
-              :title="COL_TITLES.drag"
               @dragstart="onDragStart($event, i)"
             >
-              <span class="drag-handle">⋮⋮</span>
+              <n-tooltip placement="top" :delay="100" :show-arrow="false">
+                <template #trigger><span class="drag-handle">⋮⋮</span></template>
+                {{ COL_TITLES.drag }}
+              </n-tooltip>
             </td>
             <td class="td-idx">{{ i + 1 }}</td>
             <td>
@@ -507,50 +519,79 @@ const COL_TITLES: Record<string, string> = {
               </select>
             </td>
             <td class="td-params">
-              <input
-                :value="row.typeParams"
-                class="native-input params-input"
-                :class="{ 'is-required': fmtFor(row).paramsRequired && !row.typeParams.trim() }"
-                :placeholder="fmtFor(row).placeholder"
-                :disabled="busy || fmtFor(row).kind === 'none'"
-                :title="COL_TITLES.params"
-                @input="onParamsChange(row, ($event.target as HTMLInputElement).value)"
-              />
+              <n-tooltip placement="top" :delay="100" :show-arrow="false">
+                <template #trigger>
+                  <input
+                    :value="row.typeParams"
+                    class="native-input params-input"
+                    :class="{ 'is-required': fmtFor(row).paramsRequired && !row.typeParams.trim() }"
+                    :placeholder="fmtFor(row).placeholder"
+                    :disabled="busy || fmtFor(row).kind === 'none'"
+                    @input="onParamsChange(row, ($event.target as HTMLInputElement).value)"
+                  />
+                </template>
+                {{ COL_TITLES.params }}
+              </n-tooltip>
             </td>
-            <td
-              class="td-center"
-              :title="fmtFor(row).supportsUnsigned ? COL_TITLES.unsigned : '此类型不支持 UNSIGNED'"
-            >
-              <n-checkbox
-                v-if="fmtFor(row).supportsUnsigned"
-                :checked="row.unsigned"
-                :disabled="busy"
-                @update:checked="(v) => onUnsignedChange(row, !!v)"
-              />
-              <span v-else class="td-na">—</span>
+            <td class="td-center">
+              <n-tooltip placement="top" :delay="100" :show-arrow="false">
+                <template #trigger>
+                  <span class="td-tip-wrap">
+                    <n-checkbox
+                      v-if="fmtFor(row).supportsUnsigned"
+                      :checked="row.unsigned"
+                      :disabled="busy"
+                      @update:checked="(v) => onUnsignedChange(row, !!v)"
+                    />
+                    <span v-else class="td-na">—</span>
+                  </span>
+                </template>
+                {{ fmtFor(row).supportsUnsigned ? COL_TITLES.unsigned : '此类型不支持 UNSIGNED' }}
+              </n-tooltip>
             </td>
-            <td class="td-center" :title="COL_TITLES.pk">
-              <n-checkbox
-                :checked="row.isPrimaryKey"
-                :disabled="busy"
-                @update:checked="(v) => { row.isPrimaryKey = !!v; commit() }"
-              />
+            <td class="td-center">
+              <n-tooltip placement="top" :delay="100" :show-arrow="false">
+                <template #trigger>
+                  <span class="td-tip-wrap">
+                    <n-checkbox
+                      :checked="row.isPrimaryKey"
+                      :disabled="busy"
+                      @update:checked="(v) => onPkChange(row, !!v)"
+                    />
+                  </span>
+                </template>
+                {{ COL_TITLES.pk }}
+              </n-tooltip>
             </td>
-            <td class="td-center" :title="COL_TITLES.nn">
-              <n-checkbox
-                :checked="!row.nullable"
-                :disabled="busy"
-                @update:checked="(v) => { row.nullable = !v; commit() }"
-              />
+            <td class="td-center">
+              <n-tooltip placement="top" :delay="100" :show-arrow="false">
+                <template #trigger>
+                  <span class="td-tip-wrap">
+                    <n-checkbox
+                      :checked="!row.nullable"
+                      :disabled="busy"
+                      @update:checked="(v) => { row.nullable = !v; commit() }"
+                    />
+                  </span>
+                </template>
+                {{ COL_TITLES.nn }}
+              </n-tooltip>
             </td>
-            <td class="td-center" :title="aiTitle(row)">
-              <n-checkbox
-                v-if="aiSelectable(row)"
-                :checked="row.isAutoIncrement"
-                :disabled="busy"
-                @update:checked="(v) => onAiChange(row, !!v)"
-              />
-              <span v-else class="td-na">—</span>
+            <td class="td-center">
+              <n-tooltip placement="top" :delay="100" :show-arrow="false">
+                <template #trigger>
+                  <span class="td-tip-wrap">
+                    <n-checkbox
+                      v-if="aiSelectable(row)"
+                      :checked="row.isAutoIncrement"
+                      :disabled="busy"
+                      @update:checked="(v) => onAiChange(row, !!v)"
+                    />
+                    <span v-else class="td-na">—</span>
+                  </span>
+                </template>
+                {{ aiTitle(row) }}
+              </n-tooltip>
             </td>
             <td>
               <div class="default-cell">
@@ -691,6 +732,13 @@ const COL_TITLES: Record<string, string> = {
 }
 .cols-table tbody td.td-center {
   text-align: center;
+}
+/* Inline wrapper so n-tooltip's trigger slot has a single root element even
+   when the inner control swaps between n-checkbox and the "—" placeholder. */
+.td-tip-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .cols-table tbody td.td-actions {
   white-space: nowrap;
