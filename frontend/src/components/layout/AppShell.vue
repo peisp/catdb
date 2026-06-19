@@ -8,8 +8,8 @@
 // the window-close request when there are unsaved tabs, and keeps the
 // dirty-tab counter in the Go side current.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Window } from '@wailsio/runtime'
-import { useDialog, useMessage } from 'naive-ui'
+import { Dialogs, Window } from '@wailsio/runtime'
+import { useMessage } from 'naive-ui'
 import AppSidebar from './AppSidebar.vue'
 import ConnectionWelcome from '../connection/ConnectionWelcome.vue'
 import QueryWorkspace from '../workspace/QueryWorkspace.vue'
@@ -21,7 +21,6 @@ import { system as systemApi } from '../../api'
 
 const store = useConnectionsStore()
 const queryStore = useQueryStore()
-const dialog = useDialog()
 const message = useMessage()
 
 const activeConn = ref<ConnectionProfile | null>(null)
@@ -78,17 +77,18 @@ onMounted(() => {
   })
   onMenu('menu:toggle-sidebar', () => { sidebarVisible.value = !sidebarVisible.value })
 
-  offHandlers.push(systemApi.onCloseBlocked(({ dirtyTabs }) => {
-    dialog.warning({
-      title: 'Discard unsaved SQL?',
-      content: `You have ${dirtyTabs} unsaved tab(s). Closing will lose them.`,
-      positiveText: 'Discard & close',
-      negativeText: 'Cancel',
-      onPositiveClick: async () => {
-        await systemApi.allowNextClose()
-        try { await Window.Close() } catch (e) { message.error(String(e)) }
-      },
+  offHandlers.push(systemApi.onCloseBlocked(async ({ dirtyTabs }) => {
+    const btn = await Dialogs.Warning({
+      Title: 'Discard unsaved SQL?',
+      Message: `You have ${dirtyTabs} unsaved tab(s). Closing will lose them.`,
+      Buttons: [
+        { Label: 'Cancel', IsCancel: true },
+        { Label: 'Discard & close' },
+      ],
     })
+    if (btn !== 'Discard & close') return
+    await systemApi.allowNextClose()
+    try { await Window.Close() } catch (e) { message.error(String(e)) }
   }))
 
   // The standalone connection-editor window broadcasts this after Save.

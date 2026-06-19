@@ -14,6 +14,7 @@
 // 删除 / 清空 走客户端确认对话框 + 真实 SQL，刷新由调用方注入的
 // `onAfterMutate` 回调触发（重新拉取表列表 + 清理元数据缓存）。
 import { createDiscreteApi } from 'naive-ui'
+import { Dialogs } from '@wailsio/runtime'
 import { quoteTable } from '../lib/alterPlan'
 import { useQueryStore } from '../stores/query'
 import { useMetadataStore } from '../stores/metadata'
@@ -42,7 +43,7 @@ export function installTableContextMenuListener(): void {
   if (installed) return
   installed = true
 
-  const { dialog, message } = createDiscreteApi(['dialog', 'message'])
+  const { message } = createDiscreteApi(['message'])
 
   on('ctx:tbl-open', () => {
     if (!active) return
@@ -56,44 +57,46 @@ export function installTableContextMenuListener(): void {
     useQueryStore().openTableTab(connId, db, table, 'structure')
   })
 
-  on('ctx:tbl-truncate', () => {
+  on('ctx:tbl-truncate', async () => {
     if (!active) return
     const ctx = active
-    dialog.warning({
-      title: '清空表',
-      content: `确定要清空 ${ctx.db}.${ctx.table} 吗？所有数据将被删除，操作不可撤销。`,
-      positiveText: '清空',
-      negativeText: '取消',
-      onPositiveClick: async () => {
-        try {
-          await runQuery(ctx.connId, `TRUNCATE TABLE ${quoteTable(ctx.db, ctx.table)}`)
-          message.success(`已清空 ${ctx.table}`)
-          await ctx.onAfterMutate?.()
-        } catch (e) {
-          message.error(`清空失败: ${String(e)}`)
-        }
-      },
+    const btn = await Dialogs.Warning({
+      Title: '清空表',
+      Message: `确定要清空 ${ctx.db}.${ctx.table} 吗？所有数据将被删除，操作不可撤销。`,
+      Buttons: [
+        { Label: '取消', IsCancel: true },
+        { Label: '清空' },
+      ],
     })
+    if (btn !== '清空') return
+    try {
+      await runQuery(ctx.connId, `TRUNCATE TABLE ${quoteTable(ctx.db, ctx.table)}`)
+      message.success(`已清空 ${ctx.table}`)
+      await ctx.onAfterMutate?.()
+    } catch (e) {
+      message.error(`清空失败: ${String(e)}`)
+    }
   })
 
-  on('ctx:tbl-drop', () => {
+  on('ctx:tbl-drop', async () => {
     if (!active) return
     const ctx = active
-    dialog.error({
-      title: '删除表',
-      content: `确定要删除 ${ctx.db}.${ctx.table} 吗？表结构与数据都将被删除，操作不可撤销。`,
-      positiveText: '删除',
-      negativeText: '取消',
-      onPositiveClick: async () => {
-        try {
-          await runQuery(ctx.connId, `DROP TABLE ${quoteTable(ctx.db, ctx.table)}`)
-          message.success(`已删除 ${ctx.table}`)
-          useMetadataStore().invalidateTables(ctx.connId, ctx.db)
-          await ctx.onAfterMutate?.()
-        } catch (e) {
-          message.error(`删除失败: ${String(e)}`)
-        }
-      },
+    const btn = await Dialogs.Error({
+      Title: '删除表',
+      Message: `确定要删除 ${ctx.db}.${ctx.table} 吗？表结构与数据都将被删除，操作不可撤销。`,
+      Buttons: [
+        { Label: '取消', IsCancel: true },
+        { Label: '删除' },
+      ],
     })
+    if (btn !== '删除') return
+    try {
+      await runQuery(ctx.connId, `DROP TABLE ${quoteTable(ctx.db, ctx.table)}`)
+      message.success(`已删除 ${ctx.table}`)
+      useMetadataStore().invalidateTables(ctx.connId, ctx.db)
+      await ctx.onAfterMutate?.()
+    } catch (e) {
+      message.error(`删除失败: ${String(e)}`)
+    }
   })
 }

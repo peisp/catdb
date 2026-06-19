@@ -16,7 +16,7 @@ import { setActiveGridContext } from '../../api/gridContextMenu'
 import { useTableSelection, type SelectionRange } from '../../composables/useTableSelection'
 import type { BrowseResult, ColumnMeta } from '../../api/metadata'
 import DataGrid from '../data-grid/DataGrid.vue'
-import ExportDialog from './ExportDialog.vue'
+import { startExport } from '../../composables/useExport'
 import FilterBar from './FilterBar.vue'
 
 const props = defineProps<{
@@ -51,8 +51,6 @@ const filterOrderBy = ref('')
 
 const browse = ref<BrowseResult | null>(null)
 const loading = ref(false)
-const exportOpen = ref(false)
-
 const sortState = computed<SortState | null>(() => {
   if (sortColumn.value < 0) return null
   return { field: sortColumn.value, order: sortOrder.value as 'asc' | 'desc' }
@@ -70,6 +68,15 @@ const readOnly = computed(() => {
   if (!browse.value) return false  // 数据还没加载到，不显示只读提示
   return !browse.value.hasUniqueKey
 })
+
+// ---- export dropdown ----
+function onExportSelect(ev: Event) {
+  const val = (ev.target as HTMLSelectElement).value
+  if (!val) return
+  startExport({ kind: 'table', connId: props.connId, db: props.db, table: props.table, defaultName: `${props.db}.${props.table}` }, val as any)
+  // Reset so the same format can be re-selected next time.
+  ;(ev.target as HTMLSelectElement).value = ''
+}
 
 // ---- selection + copy ----
 const sel = useTableSelection()
@@ -282,13 +289,14 @@ function onFilterClear() {
       <n-tag v-else size="small" type="info">PK: {{ pk.join(', ') }}</n-tag>
       <span class="grow" />
       <n-button size="tiny" @click="load" :disabled="loading">Refresh</n-button>
-      <n-button size="tiny" @click="exportOpen = true">Export…</n-button>
+      <select class="export-select" @change="onExportSelect">
+        <option value="" disabled selected>Export…</option>
+        <option value="csv">CSV</option>
+        <option value="xlsx">Excel</option>
+        <option value="json">JSON</option>
+        <option value="sql">SQL</option>
+      </select>
     </div>
-
-    <ExportDialog
-      v-model:show="exportOpen"
-      :source="{ kind: 'table', connId, db, table, defaultName: `${db}.${table}` }"
-    />
 
     <FilterBar
       :conn-id="connId"
@@ -387,6 +395,25 @@ function onFilterClear() {
 }
 .title { font-size: 12px; }
 .grow { flex: 1 1 auto; }
+.export-select {
+  font-size: 12px;
+  height: 22px;
+  padding: 0 4px;
+  border-radius: 3px;
+  border: 1px solid var(--n-border-color, rgba(127,127,127,0.25));
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  outline: none;
+  font-family: inherit;
+}
+.export-select:hover:not(:disabled) {
+  background: var(--n-color-target, rgba(127,127,127,0.12));
+}
+.export-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .banner { margin: 6px 8px; flex: 0 0 auto; }
 .data-spin { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; padding: 6px; }
 .data-spin :deep(.n-spin-container),

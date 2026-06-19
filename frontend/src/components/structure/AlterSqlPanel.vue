@@ -6,7 +6,8 @@
 // passes in the freshly-diffed statements via :statements. Applying just
 // shells out to the parent (it knows the connId and how to refresh after).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { NButton, NEmpty, NFlex, NText, useDialog, useMessage } from 'naive-ui'
+import { NButton, NEmpty, NFlex, NText, useMessage } from 'naive-ui'
+import { Dialogs } from '@wailsio/runtime'
 import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { sql, MySQL } from '@codemirror/lang-sql'
@@ -32,7 +33,6 @@ const emit = defineEmits<{
 }>()
 
 const message = useMessage()
-const dialog = useDialog()
 const themeStore = useThemeStore()
 
 const host = ref<HTMLDivElement | null>(null)
@@ -146,14 +146,17 @@ async function onCopy() {
 
 function onApply() {
   if (isEmpty.value || props.applyDisabled || props.busy) return
-  dialog.warning({
-    title: props.applyConfirmTitle ?? '应用结构变更',
-    content:
+  void Dialogs.Warning({
+    Title: props.applyConfirmTitle ?? '应用结构变更',
+    Message:
       props.applyConfirmContent ??
       `将执行 ${props.statements.length} 条 ALTER 语句，操作不可撤销。确定继续？`,
-    positiveText: '执行',
-    negativeText: '取消',
-    onPositiveClick: () => emit('apply'),
+    Buttons: [
+      { Label: '取消', IsCancel: true },
+      { Label: '执行' },
+    ],
+  }).then((btn) => {
+    if (btn === '执行') emit('apply')
   })
 }
 

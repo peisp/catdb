@@ -9,9 +9,9 @@ import {
   NIcon,
   NScrollbar,
   NSpin,
-  useDialog,
   useMessage,
 } from 'naive-ui'
+import { Dialogs } from '@wailsio/runtime'
 import type { ConnectionProfile, DriverInfo } from '../../api/connections'
 import { useConnectionsStore } from '../../stores/connections'
 
@@ -23,7 +23,6 @@ const emit = defineEmits<{
 
 const store = useConnectionsStore()
 const message = useMessage()
-const dialog = useDialog()
 
 // Windows frameless: no title bar offset, content starts at the very top.
 const isWin = !navigator.platform.includes('Mac')
@@ -95,20 +94,23 @@ async function onCtxSelect(key: string) {
       emit('edit', node)
       break
     case 'delete':
-      dialog.warning({
-        title: '删除连接',
-        content: `确定要删除 "${node.name}" 吗？此操作不可撤销。`,
-        positiveText: '删除',
-        negativeText: '取消',
-        onPositiveClick: async () => {
-          try {
-            await store.remove(node.id)
-            message.success('已删除')
-          } catch (e) {
-            message.error(String(e))
-          }
-        },
-      })
+      {
+        const btn = await Dialogs.Warning({
+          Title: '删除连接',
+          Message: `确定要删除 "${node.name}" 吗？此操作不可撤销。`,
+          Buttons: [
+            { Label: '取消', IsCancel: true },
+            { Label: '删除' },
+          ],
+        })
+        if (btn !== '删除') break
+        try {
+          await store.remove(node.id)
+          message.success('已删除')
+        } catch (e) {
+          message.error(String(e))
+        }
+      }
       break
   }
 }
