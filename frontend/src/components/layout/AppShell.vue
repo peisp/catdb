@@ -18,6 +18,7 @@ import type { ConnectionProfile, DriverInfo } from '../../api/connections'
 import { useConnectionsStore } from '../../stores/connections'
 import { useQueryStore } from '../../stores/query'
 import { system as systemApi } from '../../api'
+import sidebarLeftIcon from '../../assets/icons/sidebar.left.svg?raw'
 
 const store = useConnectionsStore()
 const queryStore = useQueryStore()
@@ -172,20 +173,12 @@ function onOpenTablesOverview(payload: { db: string }) {
           @click="sidebarVisible = !sidebarVisible"
         >
           <span class="glass-specular" aria-hidden="true" />
-          <svg
+          <!-- SF Symbols sidebar.left -->
+          <span
             class="glass-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.6"
-            stroke-linecap="round"
-            stroke-linejoin="round"
             aria-hidden="true"
-          >
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-            <line x1="15" y1="9" x2="9" y2="12" />
-            <line x1="15" y1="15" x2="9" y2="12" />
-          </svg>
+            v-html="sidebarLeftIcon"
+          />
         </button>
       </div>
 
@@ -369,15 +362,20 @@ function onOpenTablesOverview(payload: { db: string }) {
 .sidebar-toggle .glass-icon {
   position: relative;
   z-index: 1;
-  width: 14px;
-  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 13px;
   opacity: 0.72;
-  transition:
-    transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 120ms ease;
+  transition: opacity 120ms ease;
+}
+.sidebar-toggle .glass-icon :deep(svg) {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 .sidebar-toggle:hover .glass-icon { opacity: 1; }
-.sidebar-toggle.collapsed .glass-icon { transform: rotate(180deg); }
 
 /* Circular top-half sheen. */
 .sidebar-toggle .glass-specular {
