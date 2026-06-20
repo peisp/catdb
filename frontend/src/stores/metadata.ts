@@ -69,6 +69,16 @@ export const useMetadataStore = defineStore('metadata', () => {
     delete snapshots.value[connId]
   }
 
+  /** Drop the cached column list for a single table (after rename/drop). */
+  function invalidateColumns(connId: string, db: string, table: string) {
+    const byDb = columns.value[connId]?.[db]
+    if (!byDb || !(table in byDb)) return
+    const next = { ...byDb }
+    delete next[table]
+    const byConn = { ...(columns.value[connId] ?? {}), [db]: next }
+    columns.value = { ...columns.value, [connId]: byConn }
+  }
+
   /** Drop the cached table list for one db so the next ensureTables() refetches. */
   function invalidateTables(connId: string, db: string) {
     const byConn = tables.value[connId]
@@ -104,6 +114,7 @@ export const useMetadataStore = defineStore('metadata', () => {
     ensureSnapshot,
     invalidate,
     invalidateTables,
+    invalidateColumns,
     snapshotFor,
   }
 })

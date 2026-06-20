@@ -15,6 +15,7 @@ import ConnectionWelcome from '../connection/ConnectionWelcome.vue'
 import QueryWorkspace from '../workspace/QueryWorkspace.vue'
 import StatusBar from './StatusBar.vue'
 import UpdateDialog from '../update/UpdateDialog.vue'
+import PromptOverlay from '../common/PromptOverlay.vue'
 import type { ConnectionProfile } from '../../api/connections'
 import { useConnectionsStore } from '../../stores/connections'
 import { useQueryStore } from '../../stores/query'
@@ -265,6 +266,7 @@ function onOpenTablesOverview(payload: { db: string }) {
       </div>
     </div>
     <UpdateDialog />
+    <PromptOverlay />
   </div>
 </template>
 

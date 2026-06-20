@@ -20,6 +20,7 @@ import { useQueryStore } from '../stores/query'
 import { useMetadataStore } from '../stores/metadata'
 import { runQuery } from './query'
 import { on } from './events'
+import { openTextPrompt } from './prompts'
 
 interface ActiveCtx {
   connId: string
@@ -55,6 +56,46 @@ export function installTableContextMenuListener(): void {
     if (!active) return
     const { connId, db, table } = active
     useQueryStore().openTableTab(connId, db, table, 'structure')
+  })
+
+  on('ctx:tbl-rename', async () => {
+    if (!active) return
+    const ctx = active
+    const newName = await openTextPrompt({
+      title: '重命名表',
+      label: `当前: ${ctx.db}.${ctx.table}`,
+      initial: ctx.table,
+      okText: '重命名',
+      validate: (v) => {
+        if (!v) return '表名不能为空'
+        if (v === ctx.table) return '与原名相同'
+        if (/[`\s.]/.test(v)) return '不能包含空格、点或反引号'
+        return null
+      },
+    })
+    if (newName === null) return
+    try {
+      await runQuery(
+        ctx.connId,
+        `RENAME TABLE ${quoteTable(ctx.db, ctx.table)} TO ${quoteTable(ctx.db, newName)}`,
+      )
+      // Re-point any open tabs at the new name so titles + future
+      // openTableTab lookups stay consistent.
+      const qs = useQueryStore()
+      for (const t of qs.tabs) {
+        if (t.connId !== ctx.connId || t.db !== ctx.db || t.table !== ctx.table) continue
+        t.table = newName
+        if (t.kind === 'table') t.title = `⊞ ${ctx.db}.${newName}`
+        else if (t.kind === 'structure') t.title = `⚙ ${ctx.db}.${newName}`
+      }
+      const meta = useMetadataStore()
+      meta.invalidateTables(ctx.connId, ctx.db)
+      meta.invalidateColumns(ctx.connId, ctx.db, ctx.table)
+      message.success(`已重命名为 ${newName}`)
+      await ctx.onAfterMutate?.()
+    } catch (e) {
+      message.error(`重命名失败: ${String(e)}`)
+    }
   })
 
   on('ctx:tbl-truncate', async () => {
