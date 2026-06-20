@@ -48,8 +48,8 @@ export function DeleteConnection(id: string): $CancellablePromise<void> {
 }
 
 /**
- * DeleteGroup removes a group. Member connections are left in place; their
- * group_id is nulled by the underlying schema's ON DELETE SET NULL.
+ * DeleteGroup removes a group. Refuses non-empty groups
+ * (storage.ErrGroupNotEmpty) — the user must move members elsewhere first.
  */
 export function DeleteGroup(id: string): $CancellablePromise<void> {
     return $Call.ByName("catdb/internal/services.ConnectionService.DeleteGroup", id);
@@ -115,6 +115,16 @@ export function ListGroups(): $CancellablePromise<storage$0.Group[]> {
     return $Call.ByName("catdb/internal/services.ConnectionService.ListGroups").then(($result: any) => {
         return $$createType7($result);
     });
+}
+
+/**
+ * MoveConnection reassigns a connection to a different group, or detaches
+ * it (groupID == "" → 未分组). Used by the sidebar's drag-to-group flow.
+ * This is intentionally separate from SaveConnection so the move never
+ * reads/writes secrets — only group_id changes.
+ */
+export function MoveConnection(id: string, groupID: string): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.ConnectionService.MoveConnection", id, groupID);
 }
 
 /**

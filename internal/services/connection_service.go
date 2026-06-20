@@ -155,10 +155,21 @@ func (s *ConnectionService) SaveGroup(ctx context.Context, g storage.Group) (sto
 	return s.store.SaveGroup(ctx, g)
 }
 
-// DeleteGroup removes a group. Member connections are left in place; their
-// group_id is nulled by the underlying schema's ON DELETE SET NULL.
+// DeleteGroup removes a group. Refuses non-empty groups
+// (storage.ErrGroupNotEmpty) — the user must move members elsewhere first.
 func (s *ConnectionService) DeleteGroup(ctx context.Context, id string) error {
 	return s.store.DeleteGroup(ctx, id)
+}
+
+// MoveConnection reassigns a connection to a different group, or detaches
+// it (groupID == "" → 未分组). Used by the sidebar's drag-to-group flow.
+// This is intentionally separate from SaveConnection so the move never
+// reads/writes secrets — only group_id changes.
+func (s *ConnectionService) MoveConnection(ctx context.Context, id, groupID string) error {
+	if id == "" {
+		return fmt.Errorf("ConnectionService: connection id is required")
+	}
+	return s.store.MoveConnection(ctx, id, groupID)
 }
 
 // --- runtime ---

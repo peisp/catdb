@@ -74,6 +74,9 @@ function selectDriver(d: DriverInfo) {
 }
 
 const name = ref<string>(props.initial?.name ?? '')
+// Group picker: simple dropdown bound to the group id. New groups are
+// created from the sidebar's right-click menu (新建分组) — keeping the
+// concerns separate avoids cluttering the connection form with group CRUD.
 const groupId = ref<string | null>(props.initial?.groupId ?? null)
 
 // Walk dotted-key segments. Returns undefined when the path is unset.
@@ -169,10 +172,6 @@ watch(
     }
   },
   { immediate: true },
-)
-
-const groupOptions = computed(() =>
-  store.groups.map((g) => ({ label: g.name, value: g.id })),
 )
 
 function buildDraft(): ConnectionDraft {
@@ -368,13 +367,17 @@ function selectOptions(opts: string[]) {
             <n-input v-model:value="name" size="small" placeholder="My MySQL" />
           </n-form-item>
           <n-form-item label="分组" class="header-item header-item-group">
-            <n-select
-              v-model:value="groupId"
-              :options="groupOptions"
-              size="small"
-              clearable
-              placeholder="未分组"
-            />
+            <!-- Native HTML <select> — the system's own dropdown chrome
+                 (caret, popup) reads as a real desktop control instead of a
+                 Web overlay (UI_SPEC.md "向原生靠拢"). The empty option acts
+                 as the "未分组" clearable choice. -->
+            <select
+              v-model="groupId"
+              class="group-select"
+            >
+              <option :value="null">未分组</option>
+              <option v-for="g in store.groups" :key="g.id" :value="g.id">{{ g.name }}</option>
+            </select>
           </n-form-item>
         </div>
       </n-form>
@@ -624,6 +627,32 @@ function selectOptions(opts: string[]) {
 .header-item-grow { flex: 1 1 auto; }
 .header-item-group { flex: 0 0 220px; }
 .header-form :deep(.n-form-item-feedback-wrapper) { min-height: 0; padding: 0; }
+
+/* Native <select> for the group picker — sized to align with Naive's small
+   input (28px) so the header row reads as one band. We keep the system
+   caret (no -webkit-appearance: none) since the whole point of going native
+   here is to expose the OS-drawn dropdown chrome. */
+.group-select {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  background: var(--n-color, transparent);
+  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.3));
+  border-radius: 3px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.group-select:hover {
+  border-color: var(--n-border-color-hover, rgba(127, 127, 127, 0.5));
+}
+.group-select:focus {
+  border-color: var(--n-border-color-focus, #18a058);
+  box-shadow: 0 0 0 2px rgba(24, 160, 88, 0.18);
+}
 
 /* --- Segmented control (liquid glass) -----------------------------------
    Replaces Naive UI's default segment styling with a frosted-glass look

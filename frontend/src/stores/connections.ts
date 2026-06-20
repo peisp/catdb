@@ -29,6 +29,13 @@ export const useConnectionsStore = defineStore('connections', () => {
     drivers.value = await connectionsApi.listDrivers()
   }
 
+  // refreshGroups is the lightweight counterpart of refreshAll — used by the
+  // standalone connection-editor window so its form's group dropdown isn't
+  // empty (it doesn't need the live connection list, only the groups).
+  async function refreshGroups() {
+    groups.value = (await connectionsApi.listGroups()) ?? []
+  }
+
   async function refreshAll() {
     loading.value = true
     try {
@@ -65,6 +72,38 @@ export const useConnectionsStore = defineStore('connections', () => {
     return connectionsApi.testConnection(draft, signal)
   }
 
+  // saveGroup upserts a group and keeps the local list in sync. Used by both
+  // the connection form (when picking from / creating in the dropdown) and
+  // the sidebar's right-click 新建分组 / 重命名 actions.
+  async function saveGroup(group: Partial<Group> & { name: string }): Promise<Group> {
+    const saved = await connectionsApi.saveGroup(group as Group)
+    const idx = groups.value.findIndex((g) => g.id === saved.id)
+    if (idx >= 0) groups.value.splice(idx, 1, saved)
+    else groups.value.push(saved)
+    return saved
+  }
+
+  // removeGroup deletes a group (backend refuses non-empty groups with
+  // ErrGroupNotEmpty — the sidebar suppresses the 删除 menu when not empty,
+  // so this should normally succeed).
+  async function removeGroup(id: string) {
+    await connectionsApi.deleteGroup(id)
+    groups.value = groups.value.filter((g) => g.id !== id)
+  }
+
+  // moveConnection reassigns a connection to a different group (or detaches
+  // it when groupId is empty). Patches the local list optimistically after
+  // the backend confirms — drag-and-drop targets should feel instantaneous.
+  async function moveConnection(id: string, groupId: string) {
+    await connectionsApi.moveConnection(id, groupId)
+    const idx = connections.value.findIndex((c) => c.id === id)
+    if (idx >= 0) {
+      const c = connections.value[idx]
+      // Mutate in place so any computed group buckets re-evaluate cleanly.
+      connections.value.splice(idx, 1, { ...c, groupId: groupId || undefined } as ConnectionProfile)
+    }
+  }
+
   async function connect(id: string) {
     await connectionsApi.connect(id)
     liveIds.value = new Set([...liveIds.value, id])
@@ -89,10 +128,14 @@ export const useConnectionsStore = defineStore('connections', () => {
     loading,
     driverByName,
     refreshDrivers,
+    refreshGroups,
     refreshAll,
     save,
     remove,
     test,
+    saveGroup,
+    removeGroup,
+    moveConnection,
     connect,
     disconnect,
     isLive,

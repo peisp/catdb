@@ -52,6 +52,15 @@ export function deleteGroup(id: string): Promise<void> {
   return ConnectionService.DeleteGroup(id)
 }
 
+/**
+ * Reassign a connection to a different group. Pass an empty string to
+ * detach the connection (it'll render under 未分组). Used by the sidebar
+ * drag-and-drop flow — does NOT touch secrets or any other field.
+ */
+export function moveConnection(id: string, groupId: string): Promise<void> {
+  return ConnectionService.MoveConnection(id, groupId)
+}
+
 /** Test the draft without persisting. Resolves on success, rejects on failure. */
 export function testConnection(draft: ConnectionDraft, signal?: AbortSignal): Promise<void> {
   const p = ConnectionService.TestConnection(draft)

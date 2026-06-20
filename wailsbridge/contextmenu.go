@@ -149,6 +149,24 @@ func RegisterContextMenus(app *application.App) {
 	conn.AddSeparator()
 	conn.Add("删除").OnClick(emitContextEvent("ctx:conn-delete"))
 	conn.Update()
+
+	// Sidebar blank-area right-click — only 新建分组 for now. Extracted so the
+	// menu can grow without colliding with the connection / group variants.
+	sbEmpty := application.NewContextMenu("catdb-sidebar-empty")
+	sbEmpty.Add("新建分组").OnClick(emitContextEvent("ctx:sb-new-group"))
+	sbEmpty.Update()
+
+	// Group-label right-click — always offers 重命名 and 删除. The backend
+	// (storage.ErrGroupNotEmpty) refuses deletes on non-empty groups, and the
+	// frontend handler short-circuits with a friendlier message before calling
+	// — so showing the entry unconditionally costs nothing and keeps the menu
+	// shape stable regardless of contents.
+	sbGroup := application.NewContextMenu("catdb-sidebar-group")
+	sbGroup.Add("新建分组").OnClick(emitContextEvent("ctx:sb-new-group"))
+	sbGroup.AddSeparator()
+	sbGroup.Add("重命名").OnClick(emitContextEvent("ctx:sb-group-rename"))
+	sbGroup.Add("删除").OnClick(emitContextEvent("ctx:sb-group-delete"))
+	sbGroup.Update()
 }
 
 func emitContextEvent(event string) func(*application.Context) {

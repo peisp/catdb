@@ -61,8 +61,10 @@ onMounted(async () => {
     const { driver: drvName, id } = parseHashQuery()
 
     // Need the driver schema for the form. Pull the full list once and pick.
-    // No drvName → form picks the first available driver from its own rail.
-    await store.refreshDrivers()
+    // Also pull groups so the form's 分组 dropdown is populated — this window
+    // has its own store instance (separate JS context), so the main shell's
+    // refreshAll() doesn't reach here.
+    await Promise.all([store.refreshDrivers(), store.refreshGroups()])
     if (drvName) {
       const drv = store.driverByName.get(drvName)
       if (!drv) {

@@ -24,12 +24,12 @@
 ```bash
 wails3 dev                 # 热重载开发
 wails3 build               # 生产构建（单二进制）
-wails3 generate bindings -names   # 生成 TS 绑定（改了 Service 公共方法后必跑；-names 保留字段名）
+wails3 generate bindings -ts -names   # 生成 TS 绑定（改了 Service 公共方法后必跑；-ts 输出 .ts 文件、-names 保留字段名）
 task test                  # 跑 Go 单元测试 + 契约测试
 task test:integration      # testcontainers 起真实 MySQL 的集成测试（需 Docker）
 ```
 
-> 改动任何 Service 的**公共方法签名**后，必须运行 `wails3 generate bindings -names` 重新生成前端绑定，否则前端类型会过期。
+> 改动任何 Service 的**公共方法签名**后，必须运行 `wails3 generate bindings -ts -names` 重新生成前端绑定，否则前端类型会过期。
 
 ## 目录结构（新增代码放对位置）
 

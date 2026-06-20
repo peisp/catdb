@@ -18,6 +18,10 @@ import (
 // ErrNotFound is returned when the requested record does not exist.
 var ErrNotFound = errors.New("storage: not found")
 
+// ErrGroupNotEmpty is returned when DeleteGroup is called on a group that
+// still has member connections. Callers must move/remove the members first.
+var ErrGroupNotEmpty = errors.New("storage: group is not empty")
+
 // Store is the SQLite-backed repository. Safe for concurrent use; SQLite's
 // single-writer model is fine for the volume we ever expect here.
 type Store struct {
@@ -164,12 +168,42 @@ func (s *Store) SaveGroup(ctx context.Context, g Group) (Group, error) {
 	return g, nil
 }
 
-// DeleteGroup removes the group; member connections have their group_id
-// nulled (via ON DELETE SET NULL).
+// DeleteGroup removes the group. Refuses with ErrGroupNotEmpty if any
+// connection still references it — the sidebar surfaces the 删除 entry only
+// for empty groups, and this is the backstop that enforces the same rule
+// against direct API misuse. (The schema's ON DELETE SET NULL stays in
+// place for resilience against ad-hoc admin actions.)
 func (s *Store) DeleteGroup(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	var count int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM connection WHERE group_id = ?`, id).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return ErrGroupNotEmpty
+	}
 	res, err := s.db.ExecContext(ctx, `DELETE FROM connection_group WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// MoveConnection reassigns a connection's group. An empty groupID detaches
+// the connection (group_id NULL → renders under 未分组 in the sidebar).
+// Touches only group_id + updated_at — secrets and other fields are left
+// alone, so drag-and-drop never round-trips the password.
+func (s *Store) MoveConnection(ctx context.Context, id, groupID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE connection SET group_id=?, updated_at=? WHERE id=?`,
+		nilIfEmpty(groupID), time.Now().Unix(), id)
 	if err != nil {
 		return err
 	}

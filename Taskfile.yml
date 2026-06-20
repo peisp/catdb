@@ -75,7 +75,7 @@ tasks:
   "generate:bindings":
     summary: Regenerate TypeScript bindings for Wails Services (run after any Service public method change)
     cmds:
-      - wails3 generate bindings -names ./...
+      - wails3 generate bindings -ts -names ./...
 
   tidy:
     summary: Tidy go.mod and reformat all Go sources
