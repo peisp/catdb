@@ -45,10 +45,33 @@ export const useUpdatesStore = defineStore('updates', () => {
     })
   }
 
+  /** Today's date as YYYY-MM-DD, used for the once-per-day gate. */
+  function today(): string {
+    const d = new Date()
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }
+
   async function check(): Promise<boolean> {
+    // Development builds (VITE_APP_VERSION unset → "dev") should never
+    // call the GitHub API — no rate limit to waste, no false badges.
+    if (currentVersion.value === 'dev') return false
+
+    // Once-per-day gate: skip if we already checked today.
+    try {
+      const lastDate = await updateApi.getLastCheckDate()
+      if (lastDate === today()) return false
+    } catch {
+      // Swallow — stale/missing setting is non-fatal; just proceed.
+    }
+
     lastError.value = ''
     try {
       const res = await updateApi.checkForUpdate(currentVersion.value)
+      // Persist today's date after a successful check.
+      await updateApi.setLastCheckDate(today()).catch(() => {})
       latestVersion.value = res.latestVersion
       releaseNotes.value = res.releaseNotes
       releaseUrl.value = res.releaseUrl

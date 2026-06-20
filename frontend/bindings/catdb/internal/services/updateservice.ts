@@ -36,11 +36,26 @@ export function CheckForUpdate(currentVersion: string): $CancellablePromise<$mod
 }
 
 /**
+ * GetLastCheckDate returns the date (YYYY-MM-DD) of the last successful
+ * update check, or "" if none.
+ */
+export function GetLastCheckDate(): $CancellablePromise<string> {
+    return $Call.ByName("catdb/internal/services.UpdateService.GetLastCheckDate");
+}
+
+/**
  * GetSkippedVersion returns the version the user previously chose to skip,
  * or "" if none.
  */
 export function GetSkippedVersion(): $CancellablePromise<string> {
     return $Call.ByName("catdb/internal/services.UpdateService.GetSkippedVersion");
+}
+
+/**
+ * SetLastCheckDate persists the date string after a successful check.
+ */
+export function SetLastCheckDate(date: string): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.UpdateService.SetLastCheckDate", date);
 }
 
 /**

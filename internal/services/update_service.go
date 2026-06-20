@@ -14,6 +14,10 @@ import (
 // version is stored in app_settings.
 const settingsKeySkippedVersion = "updater.skipped_version"
 
+// settingsKeyLastCheckDate stores the date (YYYY-MM-DD) of the last
+// successful check so we skip re-checking on the same calendar day.
+const settingsKeyLastCheckDate = "updater.last_check_date"
+
 // Update progress event sent over the bridge while a download is in flight.
 // Phase is one of: "downloading", "installing", "ready", "error".
 const eventUpdateProgress = "update:progress"
@@ -110,6 +114,17 @@ func (s *UpdateService) GetSkippedVersion(ctx context.Context) (string, error) {
 // SkipVersion persists version as the "ignore this release" marker.
 func (s *UpdateService) SkipVersion(ctx context.Context, version string) error {
 	return s.store.SetSetting(ctx, settingsKeySkippedVersion, version)
+}
+
+// GetLastCheckDate returns the date (YYYY-MM-DD) of the last successful
+// update check, or "" if none.
+func (s *UpdateService) GetLastCheckDate(ctx context.Context) (string, error) {
+	return s.store.GetSetting(ctx, settingsKeyLastCheckDate)
+}
+
+// SetLastCheckDate persists the date string after a successful check.
+func (s *UpdateService) SetLastCheckDate(ctx context.Context, date string) error {
+	return s.store.SetSetting(ctx, settingsKeyLastCheckDate, date)
 }
 
 // StartInstall downloads the matched asset for currentVersion→latest and

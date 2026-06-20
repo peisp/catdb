@@ -42,6 +42,14 @@ export function skipVersion(version: string): Promise<void> {
   return UpdateService.SkipVersion(version) as unknown as Promise<void>
 }
 
+export function getLastCheckDate(): Promise<string> {
+  return UpdateService.GetLastCheckDate() as unknown as Promise<string>
+}
+
+export function setLastCheckDate(date: string): Promise<void> {
+  return UpdateService.SetLastCheckDate(date) as unknown as Promise<void>
+}
+
 export function startInstall(currentVersion: string): Promise<void> {
   return UpdateService.StartInstall(currentVersion) as unknown as Promise<void>
 }

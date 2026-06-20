@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -48,16 +49,32 @@ func (r *Release) Version() string {
 	return strings.TrimPrefix(r.TagName, "v")
 }
 
+// cachedFetchLatest caches the first successful result so HMR / repeated
+// calls during the same process lifetime never hit the network again.
+var (
+	cacheMu     sync.RWMutex
+	cachedRel   *Release
+	cachedErr   error
+)
+
 // FetchLatest queries GitHub for the most recent NON-prerelease, NON-draft
 // release of the given repo (owner/name). Returns ErrNoRelease if the repo
 // has no published releases.
 //
-// The endpoint is unauthenticated — GitHub allows 60 req/hr per IP, which is
-// fine for once-per-launch checks.
+// The result is cached in-memory so that repeated calls (e.g. during dev
+// HMR) are free after the first.
 func FetchLatest(ctx context.Context, repo string) (*Release, error) {
 	if repo == "" {
 		repo = DefaultRepo
 	}
+
+	cacheMu.RLock()
+	if cachedRel != nil || cachedErr != nil {
+		r, e := cachedRel, cachedErr
+		cacheMu.RUnlock()
+		return r, e
+	}
+	cacheMu.RUnlock()
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -69,22 +86,35 @@ func FetchLatest(ctx context.Context, repo string) (*Release, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		cacheMu.Lock()
+		cachedErr = err
+		cacheMu.Unlock()
 		return nil, fmt.Errorf("updater: GitHub API: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
+		cacheMu.Lock()
+		cachedErr = ErrNoRelease
+		cacheMu.Unlock()
 		return nil, ErrNoRelease
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return nil, fmt.Errorf("updater: GitHub API %d: %s", resp.StatusCode, string(body))
+		err = fmt.Errorf("updater: GitHub API %d: %s", resp.StatusCode, string(body))
+		cacheMu.Lock()
+		cachedErr = err
+		cacheMu.Unlock()
+		return nil, err
 	}
 
 	var r Release
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
 		return nil, fmt.Errorf("updater: decode release: %w", err)
 	}
+	cacheMu.Lock()
+	cachedRel = &r
+	cacheMu.Unlock()
 	return &r, nil
 }
 
