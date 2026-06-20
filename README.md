@@ -1,8 +1,22 @@
-# catdb
+# CatDB
 
 > 一个跨平台的桌面数据库管理工具，基于 **Wails v3** 构建。后端 Go，前端 Vue 3 + TypeScript，原生 WebView。目标体验对标 Navicat / DBeaver / TablePlus。
 
 MVP 阶段 **只支持 MySQL**，其他数据库通过编译期注册的 Go 接口插件扩展。
+
+![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)
+![go](https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go&logoColor=white)
+![wails](https://img.shields.io/badge/Wails-v3.0.0--alpha.96-DF0000)
+![vue](https://img.shields.io/badge/Vue-3-42b883?logo=vue.js&logoColor=white)
+![license](https://img.shields.io/badge/license-Apache--2.0-green)
+
+## 📸 应用截图
+
+<p align="center">
+  <img src="docs/img.png" alt="catdb 主界面：左侧对象树 + 多标签 SQL 编辑器 + 虚拟滚动结果表" width="900" />
+</p>
+
+> 主界面：左侧对象树（库/表/视图懒加载） · 顶部多标签查询工作区 · CodeMirror 6 SQL 编辑器（含工具栏 Schema 下拉） · 底部 TanStack 虚拟滚动结果表。
 
 ---
 
