@@ -10,6 +10,10 @@ MVP 阶段 **暂时只支持 MySQL**，其他数据库类型待更新。
 ![vue](https://img.shields.io/badge/Vue-3-42b883?logo=vue.js&logoColor=white)
 ![license](https://img.shields.io/badge/license-Apache--2.0-green)
 
+<p align="center">
+  <img src="docs/Gemini_Generated_Image_gnr7itgnr7itgnr7.png" height="500" />
+</p>
+
 ## 📸 应用截图
 
 <p align="center">
