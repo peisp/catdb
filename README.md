@@ -2,7 +2,7 @@
 
 > 一个跨平台的桌面数据库管理工具。
 
-MVP 阶段 **只支持 MySQL**，其他数据库类型待更新。
+MVP 阶段 **暂时只支持 MySQL**，其他数据库类型待更新。
 
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)
 ![go](https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go&logoColor=white)
