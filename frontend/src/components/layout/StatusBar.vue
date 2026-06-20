@@ -3,6 +3,7 @@
 // changes (connect/disconnect/switch). Shows connection name, connection
 // status, server version/user, theme mode, and build tag.
 import { computed, ref, watch } from 'vue'
+import { useMessage } from 'naive-ui'
 import { connections as connectionsApi, system as systemApi } from '../../api'
 import { useConnectionsStore } from '../../stores/connections'
 import { useThemeStore } from '../../stores/theme'
@@ -18,6 +19,7 @@ function openRepo() {
 const conns = useConnectionsStore()
 const theme = useThemeStore()
 const updates = useUpdatesStore()
+const message = useMessage()
 
 const serverInfo = ref<ServerInfo | null>(null)
 const checking = ref(false)
@@ -45,7 +47,9 @@ const mode = computed(() => (theme.mode === 'dark' ? 'Dark' : 'Light'))
 const appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
 
 // Click handler on the version slot: if an update is already known, open the
-// dialog directly; otherwise trigger a fresh check and open if found.
+// dialog directly; otherwise trigger a fresh check and toast the outcome.
+// The dialog ONLY opens when a genuinely newer version is found — otherwise
+// we'd be showing "发现新版本" with the current version, which is the bug.
 async function onVersionClick() {
   if (updates.hasBadge) {
     updates.openDialog()
@@ -57,13 +61,17 @@ async function onVersionClick() {
     const found = await updates.check()
     if (found) {
       updates.openDialog()
-    } else if (!updates.lastError) {
-      // Surface a transient "已是最新" in the dialog so the click feels
-      // responsive even when there's nothing to install.
-      updates.openDialog()
-    } else {
-      updates.openDialog()
+      return
     }
+    if (updates.lastError) {
+      message.error(`检查更新失败：${updates.lastError}`)
+      return
+    }
+    if (updates.skipped) {
+      message.info(`v${updates.latestVersion} 已被你跳过`)
+      return
+    }
+    message.success(`已是最新版本 (v${updates.currentVersion})`)
   } finally {
     checking.value = false
   }
