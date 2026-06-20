@@ -5,7 +5,9 @@ package updater
 import (
 	"context"
 	"fmt"
-	"syscall"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 // Install on Windows spawns the freshly-downloaded NSIS installer with
@@ -20,19 +22,26 @@ import (
 // approves, the installer runs elevated. The process is automatically
 // detached (ShellExecute creates a new process tree), so it survives
 // catdb exiting.
+var shellExecute = windows.NewLazySystemDLL("shell32.dll").NewProc("ShellExecuteW")
+
 func Install(_ context.Context, exePath string) error {
-	ret, err := syscall.ShellExecute(
-		0,                                 // hwnd: no parent window
-		syscall.StringToUTF16Ptr("runas"), // verb: request elevation
-		syscall.StringToUTF16Ptr(exePath), // file: installer path
-		nil,                               // args
-		nil,                               // dir: inherit CWD
-		syscall.SW_SHOW,                   // showCmd: show window normally
-	)
+	verb, err := windows.UTF16PtrFromString("runas")
 	if err != nil {
-		return fmt.Errorf("updater: spawn installer (elevation): %w", err)
+		return fmt.Errorf("updater: encode verb: %w", err)
 	}
-	// ShellExecute returns a value > 32 on success.
+	file, err := windows.UTF16PtrFromString(exePath)
+	if err != nil {
+		return fmt.Errorf("updater: encode path: %w", err)
+	}
+
+	ret, _, _ := shellExecute.Call(
+		0,
+		uintptr(unsafe.Pointer(verb)),
+		uintptr(unsafe.Pointer(file)),
+		0,
+		0,
+		5, // SW_SHOW
+	)
 	if ret <= 32 {
 		return fmt.Errorf("updater: spawn installer (elevation): return code %d", ret)
 	}
