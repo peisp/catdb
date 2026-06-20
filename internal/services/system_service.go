@@ -87,6 +87,39 @@ func (s *SystemService) OpenConnectionEditor(_ context.Context, driver, connID s
 	wailsbridge.OpenChildWindow("connection-editor", title, target, 720, 600)
 }
 
+// OpenDatabaseEditor pops the "新建/编辑数据库" form as its own native window,
+// reusing the catdb-tree-database right-click flow. Pass an empty dbName for
+// create mode; a non-empty dbName for edit mode.
+//
+// The auxiliary window is keyed by name "database-editor" so re-opening it
+// (e.g. user right-clicks another DB while it's already open) brings the
+// existing window forward with the new params instead of stacking duplicates.
+func (s *SystemService) OpenDatabaseEditor(_ context.Context, connID, dbName string) {
+	q := url.Values{}
+	if connID != "" {
+		q.Set("connId", connID)
+	}
+	if dbName != "" {
+		q.Set("db", dbName)
+	}
+	target := "/#/database-editor"
+	if enc := q.Encode(); enc != "" {
+		target += "?" + enc
+	}
+	title := "新建数据库"
+	if dbName != "" {
+		title = "编辑数据库 — " + dbName
+	}
+	wailsbridge.OpenChildWindow("database-editor", title, target, 600, 520)
+}
+
+// BroadcastDatabaseSaved tells every window that a database was created or
+// altered. The main window's ObjectTree listens for this and refreshes the
+// matching connection's tree.
+func (s *SystemService) BroadcastDatabaseSaved(_ context.Context, connID, dbName string) {
+	wailsbridge.Emit("database:saved", map[string]any{"connId": connID, "db": dbName})
+}
+
 // OpenExternalURL opens the given URL in the user's default browser.
 // Used by features like the update dialog's "view on GitHub" link — a plain
 // <a target="_blank"> inside the WebView either no-ops or navigates the

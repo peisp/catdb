@@ -5,7 +5,7 @@
 // it. Right-click → Wails native context menu (registered in
 // wailsbridge/contextmenu.go as `catdb-tree-*`, dispatched via
 // api/{table,tree}ContextMenu.ts).
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   NButton,
   NScrollbar,
@@ -20,6 +20,7 @@ import { useMetadataStore } from '../../stores/metadata'
 import { useConnectionsStore } from '../../stores/connections'
 import { setActiveTableContext } from '../../api/tableContextMenu'
 import { setActiveTreeContext } from '../../api/treeContextMenu'
+import { system as systemApi } from '../../api'
 
 const props = defineProps<{ connection: ConnectionProfile }>()
 const emit = defineEmits<{
@@ -307,38 +308,9 @@ const nodeProps = ({ option }: { option: TreeOption }) => ({
   onDblclick: (e: MouseEvent) => onDblclick(e, option),
 })
 
-// --- header actions: disconnect / reconnect / refresh ---
-
-async function onDisconnect() {
-  if (busy.value || !isLive.value) return
-  busy.value = true
-  try {
-    await connStore.disconnect(props.connection.id)
-    // Drop cached metadata so a future reconnect refetches cleanly.
-    store.invalidate(props.connection.id)
-    treeData.value = []
-    expandedKeys.value = []
-  } catch (e) {
-    message.error(`断开失败: ${String(e)}`)
-  } finally {
-    busy.value = false
-  }
-}
-
-async function onReconnect() {
-  if (busy.value) return
-  busy.value = true
-  try {
-    if (isLive.value) await connStore.disconnect(props.connection.id)
-    await connStore.connect(props.connection.id)
-    store.invalidate(props.connection.id)
-    await loadRoot()
-  } catch (e) {
-    message.error(`重连失败: ${String(e)}`)
-  } finally {
-    busy.value = false
-  }
-}
+// --- header actions: refresh + new database ---
+//
+// 连接/断开 由侧栏与右键菜单管理；树头只保留与对象树相关的两个动作。
 
 async function onRefresh() {
   if (busy.value) return
@@ -352,6 +324,34 @@ async function onRefresh() {
     busy.value = false
   }
 }
+
+function onNewDatabase() {
+  if (!isLive.value) return
+  void systemApi.openDatabaseEditor(props.connection.id, '')
+}
+
+// The database-editor child window broadcasts `database:saved` after a
+// CREATE/ALTER DATABASE succeeds. Re-pull the root nodes for the matching
+// connection so the new entry appears (or the renamed/altered entry stays
+// consistent with server state).
+let offDbSaved: (() => void) | null = null
+onMounted(() => {
+  offDbSaved = systemApi.onDatabaseSaved(({ connId }) => {
+    if (connId !== props.connection.id) return
+    void (async () => {
+      try {
+        await store.ensureDatabases(props.connection.id, true)
+        await loadRoot()
+      } catch (e) {
+        message.error(`刷新失败: ${String(e)}`)
+      }
+    })()
+  })
+})
+onBeforeUnmount(() => {
+  offDbSaved?.()
+  offDbSaved = null
+})
 </script>
 
 <template>
@@ -361,6 +361,27 @@ async function onRefresh() {
       <span class="title">{{ connection.name }}</span>
       <span class="spacer" />
       <div class="actions">
+        <n-button
+          class="hbtn"
+          size="tiny"
+          quaternary
+          :disabled="!isLive || busy"
+          :title="isLive ? '新建数据库' : '未连接'"
+          @click="onNewDatabase"
+        >
+          <svg
+            class="ico"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M8 3.5v9M3.5 8h9" />
+          </svg>
+        </n-button>
         <n-button
           class="hbtn"
           size="tiny"
@@ -382,52 +403,6 @@ async function onRefresh() {
           >
             <path d="M13.5 3v3.5H10" />
             <path d="M13 6.5A5.5 5.5 0 1 0 13 11" />
-          </svg>
-        </n-button>
-        <n-button
-          class="hbtn"
-          size="tiny"
-          quaternary
-          :disabled="busy"
-          :title="isLive ? '重新连接（先断开再连接）' : '连接'"
-          @click="onReconnect"
-        >
-          <svg
-            class="ico"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M7.5 9.5l-1 1a2.5 2.5 0 1 1-3.5-3.5l1-1" />
-            <path d="M8.5 6.5l1-1a2.5 2.5 0 1 1 3.5 3.5l-1 1" />
-            <line x1="6.5" y1="9.5" x2="9.5" y2="6.5" />
-          </svg>
-        </n-button>
-        <n-button
-          class="hbtn"
-          size="tiny"
-          quaternary
-          :disabled="busy || !isLive"
-          :title="isLive ? '断开连接' : '未连接'"
-          @click="onDisconnect"
-        >
-          <svg
-            class="ico"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M6.5 9l-1.5 1.5a2.5 2.5 0 0 1-3.5-3.5L3 5.5" />
-            <path d="M9.5 7L11 5.5a2.5 2.5 0 0 1 3.5 3.5L13 10.5" />
-            <line x1="2" y1="2" x2="14" y2="14" />
           </svg>
         </n-button>
       </div>

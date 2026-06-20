@@ -29,6 +29,12 @@ export function openConnectionEditor(driver: string, connId = ''): Promise<void>
 export function broadcastConnectionSaved(connId: string): Promise<void> {
   return SystemService.BroadcastConnectionSaved(connId) as unknown as Promise<void>
 }
+export function openDatabaseEditor(connId: string, dbName = ''): Promise<void> {
+  return SystemService.OpenDatabaseEditor(connId, dbName) as unknown as Promise<void>
+}
+export function broadcastDatabaseSaved(connId: string, dbName: string): Promise<void> {
+  return SystemService.BroadcastDatabaseSaved(connId, dbName) as unknown as Promise<void>
+}
 export function openExternalURL(url: string): Promise<void> {
   return SystemService.OpenExternalURL(url) as unknown as Promise<void>
 }
@@ -36,6 +42,11 @@ export function openExternalURL(url: string): Promise<void> {
 export type ConnectionSavedPayload = { id: string }
 export function onConnectionSaved(cb: (p: ConnectionSavedPayload) => void): () => void {
   return on<ConnectionSavedPayload>('connection:saved', cb)
+}
+
+export type DatabaseSavedPayload = { connId: string; db: string }
+export function onDatabaseSaved(cb: (p: DatabaseSavedPayload) => void): () => void {
+  return on<DatabaseSavedPayload>('database:saved', cb)
 }
 
 export type CloseBlockedPayload = { dirtyTabs: number }

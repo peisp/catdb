@@ -35,6 +35,15 @@ export function BroadcastConnectionSaved(connID: string): $CancellablePromise<vo
 }
 
 /**
+ * BroadcastDatabaseSaved tells every window that a database was created or
+ * altered. The main window's ObjectTree listens for this and refreshes the
+ * matching connection's tree.
+ */
+export function BroadcastDatabaseSaved(connID: string, dbName: string): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.SystemService.BroadcastDatabaseSaved", connID, dbName);
+}
+
+/**
  * OpenConnectionEditor pops the connection editor as its own native window.
  * `driver` is the driver name (e.g. "mysql") and `connID` is the profile id
  * to edit (empty string for a new-connection flow).
@@ -45,6 +54,19 @@ export function BroadcastConnectionSaved(connID: string): $CancellablePromise<vo
  */
 export function OpenConnectionEditor(driver: string, connID: string): $CancellablePromise<void> {
     return $Call.ByName("catdb/internal/services.SystemService.OpenConnectionEditor", driver, connID);
+}
+
+/**
+ * OpenDatabaseEditor pops the "新建/编辑数据库" form as its own native window,
+ * reusing the catdb-tree-database right-click flow. Pass an empty dbName for
+ * create mode; a non-empty dbName for edit mode.
+ * 
+ * The auxiliary window is keyed by name "database-editor" so re-opening it
+ * (e.g. user right-clicks another DB while it's already open) brings the
+ * existing window forward with the new params instead of stacking duplicates.
+ */
+export function OpenDatabaseEditor(connID: string, dbName: string): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.SystemService.OpenDatabaseEditor", connID, dbName);
 }
 
 /**

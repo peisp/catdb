@@ -17,6 +17,7 @@
 // 状态（找到节点、重置 children、重新 onLoad），所以通过 callback 反弹回去。
 import { useQueryStore } from '../stores/query'
 import { on } from './events'
+import { system as systemApi } from '.'
 
 interface ActiveCtx {
   connId: string
@@ -61,5 +62,19 @@ export function installTreeContextMenuListener(): void {
 
   on('ctx:tree-refresh-db', async () => {
     await active?.onRefreshDb?.()
+  })
+
+  // 「新建数据库」/「编辑数据库」 open the editor as a Wails native child
+  // window (see SystemService.OpenDatabaseEditor). The window broadcasts
+  // `database:saved` on success — ObjectTree subscribes to that event and
+  // refreshes its tree; we don't need to hook a callback here.
+  on('ctx:tree-db-new', () => {
+    if (!active) return
+    void systemApi.openDatabaseEditor(active.connId, '')
+  })
+
+  on('ctx:tree-db-edit', () => {
+    if (!active || !active.db) return
+    void systemApi.openDatabaseEditor(active.connId, active.db)
   })
 }

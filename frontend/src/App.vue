@@ -10,6 +10,7 @@ import { useThemeStore } from './stores/theme'
 import { themeOverrides, darkThemeOverrides } from './styles/theme'
 import AppShell from './components/layout/AppShell.vue'
 import ConnectionEditorWindow from './components/connection/ConnectionEditorWindow.vue'
+import DatabaseEditorWindow from './components/database/DatabaseEditorWindow.vue'
 
 const theme = useThemeStore()
 const naiveTheme = computed(() => (theme.mode === 'dark' ? darkTheme : null))
@@ -20,6 +21,7 @@ const route = ref<string>(currentRoute())
 function currentRoute(): string {
   const h = window.location.hash || ''
   if (h.startsWith('#/connection-editor')) return 'connection-editor'
+  if (h.startsWith('#/database-editor')) return 'database-editor'
   return 'shell'
 }
 
@@ -53,6 +55,7 @@ onMounted(() => {
   <n-config-provider :theme="naiveTheme" :theme-overrides="naiveOverrides">
     <n-message-provider>
       <ConnectionEditorWindow v-if="route === 'connection-editor'" />
+      <DatabaseEditorWindow v-else-if="route === 'database-editor'" />
       <AppShell v-else />
     </n-message-provider>
   </n-config-provider>

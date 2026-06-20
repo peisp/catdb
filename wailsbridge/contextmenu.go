@@ -132,6 +132,9 @@ func RegisterContextMenus(app *application.App) {
 	treeViewGroup.Update()
 
 	treeDb := application.NewContextMenu("catdb-tree-database")
+	treeDb.Add("新建数据库").OnClick(emitContextEvent("ctx:tree-db-new"))
+	treeDb.Add("编辑数据库").OnClick(emitContextEvent("ctx:tree-db-edit"))
+	treeDb.AddSeparator()
 	treeDb.Add("新建表").OnClick(emitContextEvent("ctx:tree-new-table"))
 	treeDb.Add("刷新").OnClick(emitContextEvent("ctx:tree-refresh-db"))
 	treeDb.Update()
