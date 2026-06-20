@@ -53,7 +53,13 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: |
+          npm ci
+          # npm ci 在不同 Node 版本下对 lockfile v3 可选依赖的处理不一致
+          # （@rolldown/binding-wasm32-wasi → @emnapi/runtime），
+          # 有时会遗漏 @emnapi/runtime 的物理安装，导致 Vite 构建时报
+          # "no such file or directory"。npm install 会补全缺失的包。
+          npm install
 
       - name: Build and package .app bundle
         run: task darwin:package ARCH=${{ matrix.arch }}
@@ -124,9 +130,9 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
-
-      # Build steps broken out manually so go build errors are visible
+        run: |
+          npm ci
+          npm install  # 补全 npm ci 遗漏的 @emnapi/runtime 等可选依赖
       - name: Build frontend + generate bindings
         working-directory: frontend
         run: npm run build
