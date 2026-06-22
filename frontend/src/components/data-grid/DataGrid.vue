@@ -29,16 +29,43 @@ export interface SortState {
   order: 'asc' | 'desc'
 }
 
+// ---- null 安全编辑器工厂 ----
+// VTable 的 InputEditor / TextAreaEditor 在单元格值为 null 时不会调用
+// setValue，input 保持默认空字符串 ''。用户点入 null 单元格后直接离开时
+// getValue() 返回 ''，VTable 视为值变化（null → ''）触发无意义回调。
+// 该工厂为编辑器子类注入 null 保持逻辑：原始值为 null 且用户未输入时
+// getValue() 返回 null，VTable 即认为无变化，不开枪。
+function nullPreservingEditor<T extends new (config?: any) => InstanceType<T>>(EditorClass: T): T {
+  return class extends (EditorClass as any) {
+    private _origNull = false
+
+    onStart(context: any) {
+      this._origNull = context?.value == null
+      super.onStart(context)
+    }
+
+    getValue() {
+      const v = super.getValue()
+      if (this._origNull && (v === '' || v == null)) return null
+      return v
+    }
+  } as unknown as T
+}
+
+const NullSafeInputEditor = nullPreservingEditor(InputEditor)
+const NullSafeTextAreaEditor = nullPreservingEditor(TextAreaEditor)
+const NullSafeDateInputEditor = nullPreservingEditor(DateInputEditor)
+
 // ---- editor 注册：模块级单次 ----
 let editorsRegistered = false
 function ensureEditorsRegistered() {
   if (editorsRegistered) return
   // string 单行编辑
-  register.editor('catdb-input', new InputEditor({}))
+  register.editor('catdb-input', new NullSafeInputEditor({}))
   // 长文本 / JSON
-  register.editor('catdb-textarea', new TextAreaEditor({}))
+  register.editor('catdb-textarea', new NullSafeTextAreaEditor({}))
   // 日期 / 时间
-  register.editor('catdb-date', new DateInputEditor({}))
+  register.editor('catdb-date', new NullSafeDateInputEditor({}))
   editorsRegistered = true
 }
 ensureEditorsRegistered()
@@ -473,6 +500,15 @@ function onReady(instance: any) {
     if (!body) return
     const meta = props.columns[body.col]
     if (!meta) return
+
+    // 用户点进 NULL 单元格后直接离开（不输入内容），编辑器可能提交空串 '' 或
+    // 格式化文本 'NULL'，导致 VTable 把 null 乐观更新成了字符串。这里检测到
+    // 此类伪编辑就回滚为 null，不触发 edit-commit。
+    if (args.originValue == null && (args.changedValue === '' || args.changedValue === 'NULL')) {
+      vTableInstance.value?.updateCell?.(args.row, args.col, null)
+      return
+    }
+
     emit('edit-commit', {
       row: body.row,
       col: body.col,
