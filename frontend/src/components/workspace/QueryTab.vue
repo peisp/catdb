@@ -340,29 +340,13 @@ function onSplitDown(e: PointerEvent) {
       </n-space>
     </div>
 
-    <!-- State A: editor fills the body. Body is a single-track grid. -->
-    <div v-if="!showResultPane" class="body body-a">
-      <div class="editor-slot">
-        <SqlEditor
-          ref="editor"
-          :model-value="tab.sql"
-          :on-run="runFull"
-          :schema="schemaMap"
-          :default-schema="currentDb ?? undefined"
-          @update:model-value="onSqlUpdate"
-        />
-      </div>
-    </div>
-
-    <!-- State B: 3-track grid = editor% / 3px splitter / result(1fr).
-         Tracks are DEFINITE sizes — neither editor nor result can push the
-         body beyond its allotted 1fr in the .qt grid. -->
+    <!-- 始终只有一个 SqlEditor 实例，防止执行查询时 CodeMirror 被销毁重建。
+         首次执行后通过 v-if 追加分割线 + 结果面板，不换实例。 -->
     <div
-      v-else
       ref="bodyBRef"
-      class="body body-b"
-      :class="{ dragging }"
-      :style="{ '--editor-pct': editorPct + '%' }"
+      class="body"
+      :class="[showResultPane ? 'body-b' : 'body-a', { dragging }]"
+      :style="showResultPane ? { '--editor-pct': editorPct + '%' } : {}"
     >
       <div class="editor-slot">
         <SqlEditor
@@ -375,55 +359,57 @@ function onSplitDown(e: PointerEvent) {
         />
       </div>
 
-      <div
-        class="splitter"
-        :class="{ active: dragging }"
-        @pointerdown="onSplitDown"
-      />
-
-      <div class="result-slot">
-        <n-alert
-          v-if="errorKind === 'canceled'"
-          type="warning"
-          :show-icon="false"
-          class="alert"
-        >
-          {{ tab.errorMessage || 'Query canceled.' }}
-        </n-alert>
-        <n-alert
-          v-else-if="errorKind === 'timeout'"
-          type="error"
-          :show-icon="false"
-          class="alert"
-        >
-          Query timed out. Increase the timeout or narrow the query.<br />
-          <span class="mono">{{ tab.errorMessage }}</span>
-        </n-alert>
-        <n-alert
-          v-else-if="errorKind === 'sql'"
-          type="error"
-          :show-icon="false"
-          class="alert"
-        >
-          <span class="mono">{{ tab.errorMessage }}</span>
-        </n-alert>
-
-        <ResultTable
-          v-if="tab.isResultSet"
-          :columns="tab.columns"
-          :rows="tab.rows"
-          :done="tab.done"
-          :fetching="tab.fetching"
-          :truncated="tab.truncated"
-          :rows-total="tab.rowsTotal"
-          class="result-table"
-          @load-more="onLoadMore"
+      <template v-if="showResultPane">
+        <div
+          class="splitter"
+          :class="{ active: dragging }"
+          @pointerdown="onSplitDown"
         />
-        <div v-else-if="!errorKind && tab.status === 'done'" class="exec-result">
-          <div class="ok">{{ tab.execAffected }} row(s) affected</div>
-          <div v-if="tab.execLastInsertId" class="mute mono">last insert id: {{ tab.execLastInsertId }}</div>
+
+        <div class="result-slot">
+          <n-alert
+            v-if="errorKind === 'canceled'"
+            type="warning"
+            :show-icon="false"
+            class="alert"
+          >
+            {{ tab.errorMessage || 'Query canceled.' }}
+          </n-alert>
+          <n-alert
+            v-else-if="errorKind === 'timeout'"
+            type="error"
+            :show-icon="false"
+            class="alert"
+          >
+            Query timed out. Increase the timeout or narrow the query.<br />
+            <span class="mono">{{ tab.errorMessage }}</span>
+          </n-alert>
+          <n-alert
+            v-else-if="errorKind === 'sql'"
+            type="error"
+            :show-icon="false"
+            class="alert"
+          >
+            <span class="mono">{{ tab.errorMessage }}</span>
+          </n-alert>
+
+          <ResultTable
+            v-if="tab.isResultSet"
+            :columns="tab.columns"
+            :rows="tab.rows"
+            :done="tab.done"
+            :fetching="tab.fetching"
+            :truncated="tab.truncated"
+            :rows-total="tab.rowsTotal"
+            class="result-table"
+            @load-more="onLoadMore"
+          />
+          <div v-else-if="!errorKind && tab.status === 'done'" class="exec-result">
+            <div class="ok">{{ tab.execAffected }} row(s) affected</div>
+            <div v-if="tab.execLastInsertId" class="mute mono">last insert id: {{ tab.execLastInsertId }}</div>
+          </div>
         </div>
-      </div>
+      </template>
     </div>
   </div>
 </template>
@@ -508,7 +494,7 @@ function onSplitDown(e: PointerEvent) {
 .body-b {
   grid-template-rows: var(--editor-pct, 60%) 3px 1fr;
 }
-.body-b.dragging { user-select: none; -webkit-user-select: none; }
+.body.dragging { user-select: none; -webkit-user-select: none; }
 
 /* ---- Slots ---- */
 

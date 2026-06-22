@@ -137,6 +137,9 @@ async function copyToClipboard(text: string) {
 
 function onDocKeyDown(e: KeyboardEvent) {
   if (!sel.hasSelection()) return
+  // 焦点在 CodeMirror / input / textarea 中时不拦截 Cmd+C，让本地复制正常工作
+  const el = e.target as HTMLElement | null
+  if (el?.closest?.('.cm-editor') || el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA') return
   if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
     e.preventDefault()
     copyToClipboard(sel.formatTSV(rows.value, colNames(), false))
