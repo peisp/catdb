@@ -45,6 +45,9 @@ const store = useQueryStore()
 const metaStore = useMetadataStore()
 const message = useMessage()
 
+const isMac = navigator.platform.includes('Mac')
+const modifierKey = isMac ? 'Cmd' : 'Ctrl'
+
 const tab = computed(() => store.getTab(props.tabId)!)
 const caps = ref<Capabilities | null>(null)
 
@@ -124,7 +127,7 @@ watch(
   () => {
     if (!props.command) return
     switch (props.command.cmd) {
-      case 'run': runFull(); break
+      case 'run': run(); break
       case 'run-selection': run(); break
       case 'explain': explain(); break
     }
@@ -336,7 +339,7 @@ function onSplitDown(e: PointerEvent) {
         </span>
       </n-space>
       <n-space :size="6" align="center" class="hint mono">
-        <span>Cmd/Ctrl+Enter</span>
+        <span>{{ modifierKey }}+Enter</span>
       </n-space>
     </div>
 
@@ -352,7 +355,7 @@ function onSplitDown(e: PointerEvent) {
         <SqlEditor
           ref="editor"
           :model-value="tab.sql"
-          :on-run="runFull"
+          :on-run="run"
           :schema="schemaMap"
           :default-schema="currentDb ?? undefined"
           @update:model-value="onSqlUpdate"

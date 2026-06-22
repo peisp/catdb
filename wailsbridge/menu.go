@@ -74,7 +74,7 @@ func BuildApplicationMenu(app *application.App) *application.Menu {
 
 	// Query
 	queryMenu := m.AddSubmenu("Query")
-	emitItem(queryMenu, "Run", "menu:run-query", "CmdOrCtrl+Enter")
+	emitItem(queryMenu, "Run", "menu:run-query", "")
 	emitItem(queryMenu, "Run Selection", "menu:run-selection", "CmdOrCtrl+Shift+Enter")
 	emitItem(queryMenu, "EXPLAIN", "menu:explain", "CmdOrCtrl+E")
 	emitItem(queryMenu, "Cancel", "menu:cancel-query", "CmdOrCtrl+.")

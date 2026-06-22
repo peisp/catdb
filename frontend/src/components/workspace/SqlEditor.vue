@@ -126,13 +126,6 @@ function makeState(initial: string) {
         ...searchKeymap,
         ...foldKeymap,
         indentWithTab,
-        {
-          key: 'Mod-Enter',
-          run: () => {
-            props.onRun?.()
-            return true
-          },
-        },
       ]),
       sqlCompartment.of([
         buildSqlExt(),
@@ -189,10 +182,21 @@ onMounted(() => {
     state: makeState(props.modelValue ?? ''),
     parent: host.value,
   })
+  const dom = view.value.contentDOM
+  if (!dom) return
+  // Intercept Cmd/Ctrl+Enter at the DOM capture phase, BEFORE CodeMirror's
+  // own internal handlers, so DefaultKeymap's insertBlankLine never fires.
+  dom.addEventListener('keydown', (e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      props.onRun?.()
+    }
+  }, { capture: true })
   // On focus, ask the Go backend to switch to English input source so SQL
   // typing starts in the correct layout. The user can manually switch away;
   // only re-triggered on next focus.
-  view.value.contentDOM?.addEventListener('focus', () => {
+  dom.addEventListener('focus', () => {
     void wailsEmit('custom:switch-english-input')
   })
 })
