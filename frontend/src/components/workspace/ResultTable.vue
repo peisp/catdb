@@ -24,6 +24,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   (e: 'load-more'): void
+  (e: 'export', format: string): void
 }>()
 
 const sel = useTableSelection()
@@ -69,6 +70,13 @@ function onDocKeyDown(e: KeyboardEvent) {
 
 onMounted(() => document.addEventListener('keydown', onDocKeyDown))
 onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeyDown))
+
+function onExportSelect(ev: Event) {
+  const val = (ev.target as HTMLSelectElement).value
+  if (!val) return
+  emit('export', val)
+  ;(ev.target as HTMLSelectElement).value = ''
+}
 </script>
 
 <template>
@@ -88,6 +96,14 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeyDown))
       <span>{{ rowsTotal }} rows</span>
       <span v-if="!done && !truncated" class="mute">loading more on scroll…</span>
       <span v-if="truncated" class="truncated">truncated to preview limit — use Export for full data</span>
+      <span class="grow" />
+      <select class="export-select" :disabled="fetching" @change="onExportSelect">
+        <option value="" disabled selected>Export…</option>
+        <option value="csv">CSV</option>
+        <option value="xlsx">Excel</option>
+        <option value="json">JSON</option>
+        <option value="sql">SQL</option>
+      </select>
     </div>
   </div>
 </template>
@@ -118,4 +134,24 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeyDown))
 }
 .mute { opacity: 0.55; }
 .truncated { color: #d0a000; }
+.grow { flex: 1 1 auto; }
+.export-select {
+  font-size: 11px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: 3px;
+  border: 1px solid var(--n-border-color, rgba(127,127,127,0.25));
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  outline: none;
+  font-family: inherit;
+}
+.export-select:hover:not(:disabled) {
+  background: var(--n-color-target, rgba(127,127,127,0.12));
+}
+.export-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 </style>

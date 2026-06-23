@@ -190,6 +190,14 @@ function onLoadMore() {
   void store.fetchMore(tab.value.id)
 }
 
+function onResultExport(format: string) {
+  if (!tab.value.sql.trim()) {
+    message.warning('No SQL to export')
+    return
+  }
+  startExport({ kind: 'query', connId: tab.value.connId, sql: tab.value.sql, defaultName: 'query-' + tab.value.id }, format as any)
+}
+
 function onSqlUpdate(v: string) {
   tab.value.sql = v
 }
@@ -406,6 +414,7 @@ function onSplitDown(e: PointerEvent) {
             :rows-total="tab.rowsTotal"
             class="result-table"
             @load-more="onLoadMore"
+            @export="onResultExport"
           />
           <div v-else-if="!errorKind && tab.status === 'done'" class="exec-result">
             <div class="ok">{{ tab.execAffected }} row(s) affected</div>
