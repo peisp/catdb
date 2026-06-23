@@ -33,9 +33,11 @@ import { useQueryStore } from '../../stores/query'
 import {
   buildAlterPlan,
   buildCreateTable,
+  columnToDraft,
   emptyColumnDraft,
+  foreignKeyToDraft,
+  indexToDraft,
   parseTableCommentFromDDL,
-  summaryToDraft,
   type StructureDraft,
 } from '../../lib/alterPlan'
 import AlterSqlPanel from '../structure/AlterSqlPanel.vue'
@@ -80,6 +82,12 @@ const draft = ref<StructureDraft>({
   options: { comment: '' },
 })
 
+// ---- 数据懒加载 ------------------------------------------------------------
+//
+// 首次挂载只拉 Columns（默认激活的 tab），Indexes / Foreign Keys / DDL 等用户第
+// 一次切到对应 tab 才调用独立接口。每个数据段用 loaded 标记去重，换表时重置。
+const loaded = ref({ columns: false, indexes: false, foreignKeys: false, ddl: false })
+
 async function load() {
   if (props.mode === 'new') {
     // No backend round-trip: synthesize an empty "original" so the diff
@@ -89,25 +97,97 @@ async function load() {
     ddl.value = ''
     origComment.value = ''
     newTableName.value = props.table ?? ''
+    loaded.value = { columns: true, indexes: true, foreignKeys: true, ddl: true }
     resetDraft()
     return
   }
+  // Reset loaded flags — table changed, data must be re-fetched.
+  loaded.value = { columns: false, indexes: false, foreignKeys: false, ddl: false }
+  summary.value = null
+  ddl.value = ''
+  origComment.value = ''
+
   loading.value = true
   try {
-    const [s, d] = await Promise.all([
-      metaApi.getTableSummary(props.connId, props.db, props.table),
-      metaApi.getCreateTable(props.connId, props.db, props.table),
-    ])
-    summary.value = s
-    ddl.value = d
-    origComment.value = parseTableCommentFromDDL(d)
-    resetDraft()
-  } catch (e) {
-    message.error(`load structure failed: ${String(e)}`)
+    await ensureColumns()
   } finally {
     loading.value = false
   }
 }
+
+async function ensureColumns() {
+  if (loaded.value.columns) return
+  loaded.value.columns = true
+  try {
+    const cols = await metaApi.listColumns(props.connId, props.db, props.table)
+    summary.value = { columns: cols, indexes: [], foreignKeys: [] }
+    resetDraft()
+  } catch (e) {
+    message.error(`加载字段列表失败: ${String(e)}`)
+  }
+}
+
+async function ensureIndexes() {
+  if (loaded.value.indexes) return
+  loaded.value.indexes = true
+  try {
+    const indexes = await metaApi.listIndexes(props.connId, props.db, props.table)
+    summary.value = { ...summary.value!, indexes }
+    // 首次加载 → 用后端数据填充 draft.indexes（用户尚未编辑过索引）
+    if (!(draft.value.indexes ?? []).some((d) => d.origName)) {
+      draft.value = { ...draft.value, indexes: (indexes ?? []).map(indexToDraft) }
+    }
+  } catch (e) {
+    message.error(`加载索引列表失败: ${String(e)}`)
+  }
+}
+
+async function ensureForeignKeys() {
+  if (loaded.value.foreignKeys) return
+  loaded.value.foreignKeys = true
+  try {
+    const fks = await metaApi.listForeignKeys(props.connId, props.db, props.table)
+    summary.value = { ...summary.value!, foreignKeys: fks }
+    if (!(draft.value.foreignKeys ?? []).some((d) => d.origName)) {
+      draft.value = { ...draft.value, foreignKeys: (fks ?? []).map(foreignKeyToDraft) }
+    }
+  } catch (e) {
+    message.error(`加载外键列表失败: ${String(e)}`)
+  }
+}
+
+async function ensureDDL() {
+  if (loaded.value.ddl) return
+  loaded.value.ddl = true
+  try {
+    const d = await metaApi.getCreateTable(props.connId, props.db, props.table)
+    ddl.value = d
+    origComment.value = parseTableCommentFromDDL(d)
+    // 更新 options draft 中的 comment
+    draft.value = { ...draft.value, options: { comment: origComment.value } }
+  } catch (e) {
+    message.error(`加载 DDL 失败: ${String(e)}`)
+  }
+}
+
+onMounted(load)
+watch(() => [props.connId, props.db, props.table, props.mode], load)
+
+// 切 tab 时懒加载对应的数据
+watch(activeTab, (tab) => {
+  switch (tab) {
+    case 'ix':
+      ensureIndexes()
+      break
+    case 'fk':
+      ensureForeignKeys()
+      break
+    case 'opts':
+    case 'ddl':
+      ensureDDL()
+      break
+  }
+})
 
 function resetDraft() {
   if (props.mode === 'new') {
@@ -121,11 +201,14 @@ function resetDraft() {
     return
   }
   if (!summary.value) return
-  draft.value = summaryToDraft(summary.value, origComment.value)
+  const s = summary.value
+  draft.value = {
+    columns: (s.columns ?? []).map((c, i) => columnToDraft(c, i)),
+    indexes: loaded.value.indexes ? (s.indexes ?? []).map(indexToDraft) : [],
+    foreignKeys: loaded.value.foreignKeys ? (s.foreignKeys ?? []).map(foreignKeyToDraft) : [],
+    options: loaded.value.ddl ? { comment: origComment.value } : { comment: '' },
+  }
 }
-
-onMounted(load)
-watch(() => [props.connId, props.db, props.table, props.mode], load)
 
 // ---- plan (CREATE in new mode, ALTER diff in edit mode) -------------------
 
