@@ -69,9 +69,19 @@ tasks:
     label: build:frontend (DEV={{.DEV}} RUNNER={{.PACKAGE_MANAGER}})
     summary: Build the frontend project
     dir: frontend
+    # 只指纹真实源文件，绝不遍历 node_modules：task 的 exclude 是枚举后再过滤，
+    # `**/*` 仍会下钻 node_modules，遇到不可读/半装好的条目（如 CI 上的
+    # @napi-rs/wasm-runtime、或 .bindings-tmp-* 0700 临时目录）就会报
+    # `open ...: no such file or directory` 直接挂掉。
     sources:
-      - "**/*"
-      - exclude: node_modules/**/*
+      - "src/**/*"
+      - "public/**/*"
+      - "bindings/**/*"
+      - index.html
+      - vite.config.ts
+      - tsconfig.json
+      - package.json
+      - package-lock.json
     generates:
       - dist/**/*
     deps:
