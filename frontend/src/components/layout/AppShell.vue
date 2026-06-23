@@ -107,7 +107,7 @@ onMounted(() => {
   // the badge dot is the non-intrusive signal; opening waits for a click.
   const checkTimer = window.setTimeout(() => {
     void updates.check()
-  }, 60_000)
+  }, 10_000)
   offHandlers.push(() => window.clearTimeout(checkTimer))
 })
 
