@@ -296,13 +296,18 @@ const rowsEnd = computed(() => {
 
 // ---- edit pipeline (DataGrid → edit-commit) ----
 
+// 返回行的「原始」PK 值，用作 UPDATE/DELETE 的 WHERE 条件。
+// 允许编辑 PK 列后，rows[rowIdx] 已被乐观更新成新值，不能直接拿来定位行；
+// 改过的 PK 列要回退到 pendingChanges 里记录的改前值。
 function pkValuesOf(rowIdx: number): Record<string, any> {
   const map: Record<string, any> = {}
   const row = rows.value[rowIdx]
   if (!row) return map
   for (const k of pk.value) {
     const i = columns.value.findIndex((c) => c.name === k)
-    if (i >= 0) map[k] = row[i]
+    if (i < 0) continue
+    const pending = pendingChanges.value.get(`${rowIdx}:${i}`)
+    map[k] = pending ? pending.oldValue : row[i]
   }
   return map
 }
@@ -431,15 +436,25 @@ async function saveChanges() {
   let saved = 0
   let lastSQL = ''
   let lastLabel = ''
-  // Process cell edits (UPDATE)
+  // Process cell edits (UPDATE) —— 按行合并成一条 UPDATE：一行的多个改动放进
+  // 同一个 SET，WHERE 用改前的原始 PK。否则若一行同时改了 PK 和其他列，PK 先
+  // 单独更新后，后续按旧 PK 定位的 UPDATE 就会落空。
+  const byRow = new Map<number, PendingChange[]>()
   for (const ch of changes) {
+    const arr = byRow.get(ch.row) ?? []
+    arr.push(ch)
+    byRow.set(ch.row, arr)
+  }
+  for (const [rowIdx, rowChanges] of byRow) {
+    const values: Record<string, any> = {}
+    for (const ch of rowChanges) values[ch.columnName] = ch.newValue
     try {
       const res = await editApi.applyChange(props.connId, {
         op: 'update',
         db: props.db,
         table: props.table,
-        pk: pkValuesOf(ch.row),
-        values: { [ch.columnName]: ch.newValue },
+        pk: pkValuesOf(rowIdx),
+        values,
       })
       if (res.rowsAffected > 0) {
         saved++

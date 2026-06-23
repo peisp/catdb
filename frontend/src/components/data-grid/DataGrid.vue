@@ -78,7 +78,7 @@ interface Props {
   rows: any[][]
   /** 是否允许双击进入编辑态（read-only 模式传 false） */
   editable?: boolean
-  /** PK 列名 —— editable 为 true 时这些列仍然只读，避免误改行身份 */
+  /** PK 列名 —— 用于右键菜单判定（PK 列不显示「Set to NULL」）。PK 列本身可编辑。 */
   pkColumns?: string[]
   /** 提示性 fetching，用于禁用编辑触发等 */
   fetching?: boolean
@@ -155,9 +155,8 @@ function renderCellValue(v: any): string {
 
 // ---- 列类型 → 编辑器名 ----
 function pickEditor(col: ColumnMeta): string | undefined {
-  if (col.isAutoIncrement) return undefined
-  if (col.isPrimaryKey) return undefined
-  if (props.pkColumns.includes(col.name)) return undefined
+  // PK / auto-increment 列允许编辑：UPDATE 的 WHERE 用改前的原始 PK 定位行，
+  // 改 PK 即 `UPDATE t SET id=<new> WHERE id=<old>`（见 TableBrowser.pkValuesOf）。
   switch (col.logicalType) {
     case LogicalType.TypeDate:
     case LogicalType.TypeTime:
