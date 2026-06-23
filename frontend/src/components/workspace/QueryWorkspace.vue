@@ -114,7 +114,7 @@ function openCtx(e: MouseEvent, tab: QueryTabInfo) {
         display-directive="show:lazy"
       >
         <template #tab>
-          <span class="tab-label" @contextmenu.prevent="openCtx($event, t)">{{ t.title }}</span>
+          <span class="tab-label" @contextmenu.prevent="openCtx($event, t)" @mouseup.middle="closeTab(t.id)">{{ t.title }}</span>
         </template>
         <QueryTab
           v-if="t.kind === 'query'"
