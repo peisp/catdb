@@ -174,10 +174,34 @@ async function load() {
 }
 
 onMounted(load)
-// 监听来自右键菜单（设置为NULL）的数据变更事件，自动刷新
-let unsubDataChanged: (() => void) | undefined
-onMounted(() => { unsubDataChanged = on('ctx:grid-data-changed', load) })
-onBeforeUnmount(() => unsubDataChanged?.())
+// 监听来自右键菜单「设置为NULL」的批量变更事件，加入待保存队列
+let unsubSetNullQueue: (() => void) | undefined
+onMounted(() => {
+  unsubSetNullQueue = on<Array<{ row: number; col: number; oldValue: any; columnName: string }>>(
+    'ctx:grid-set-null-queue',
+    (changes) => {
+      if (!changes.length || !browse.value?.rows) return
+      const map = pendingChanges.value
+      const rawRows = browse.value.rows
+      for (const ch of changes) {
+        const key = `${ch.row}:${ch.col}`
+        map.set(key, {
+          row: ch.row,
+          col: ch.col,
+          oldValue: ch.oldValue,
+          newValue: null,
+          columnName: ch.columnName,
+        })
+        // 直接修改源数据让 VTable 感知变化
+        if (rawRows[ch.row]) rawRows[ch.row][ch.col] = null
+      }
+      pendingChanges.value = new Map(map)
+      // 强制新引用触发 VTable 重新渲染
+      browse.value = { ...browse.value, rows: [...rawRows] }
+    },
+  )
+})
+onBeforeUnmount(() => unsubSetNullQueue?.())
 
 watch(
   () => [props.connId, props.db, props.table, page.value, pageSize.value, orderByName.value, sortOrder.value, filterWhere.value, filterOrderBy.value],

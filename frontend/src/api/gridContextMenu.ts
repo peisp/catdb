@@ -20,7 +20,6 @@
 import { createDiscreteApi } from 'naive-ui'
 import { useTableSelection, type SelectionRange } from '../composables/useTableSelection'
 import { on, emit } from './events'
-import * as editApi from './edit'
 
 const ctxSel = useTableSelection()
 let ctxState = {
@@ -118,64 +117,29 @@ export function installGridContextMenuListener(): void {
       }
     }
 
-    // Collect selected non-PK column names
-    const selectedCols: string[] = []
+    // Collect selected non-PK column indices
+    const selectedColIndices: number[] = []
     for (let c = minC; c <= maxC; c++) {
-      const col = columnNames[c]
-      if (!pkColumns.includes(col)) {
-        selectedCols.push(col)
+      if (!pkColumns.includes(columnNames[c])) {
+        selectedColIndices.push(c)
       }
     }
-    if (!selectedCols.length) return
+    if (!selectedColIndices.length) return
 
-    // ---- 逐行修改 ----
-    let successCount = 0
-    let errorCount = 0
-
+    // Build list of cell changes for the active TableBrowser to queue
+    interface CellChange { row: number; col: number; oldValue: any; columnName: string }
+    const changes: CellChange[] = []
     for (let r = minR; r <= maxR; r++) {
-      // Build PK map for this row (include PK columns NOT in selection too)
-      const pk: Record<string, any> = {}
-      for (const pkCol of pkColumns) {
-        const pkIdx = columnNames.indexOf(pkCol)
-        if (pkIdx >= 0) {
-          pk[pkCol] = rows[r]?.[pkIdx]
-        }
-      }
-
-      // Build values: set each selected column to NULL
-      const values: Record<string, null> = {}
-      for (const col of selectedCols) {
-        values[col] = null
-      }
-
-      try {
-        const result = await editApi.applyChange(connId, {
-          op: 'update',
-          db,
-          table,
-          pk,
-          values,
+      for (const c of selectedColIndices) {
+        changes.push({
+          row: r,
+          col: c,
+          oldValue: rows[r]?.[c],
+          columnName: columnNames[c],
         })
-        if (result.rowsAffected > 0) {
-          successCount++
-        } else {
-          errorCount++
-        }
-      } catch {
-        errorCount++
       }
     }
 
-    // Show result feedback
-    if (successCount > 0 && errorCount === 0) {
-      message.success(`已更新 ${successCount} 行`)
-    } else if (successCount > 0 && errorCount > 0) {
-      message.warning(`已更新 ${successCount} 行，${errorCount} 行更新失败`)
-    } else if (errorCount > 0) {
-      message.error(`${errorCount} 行全部更新失败`)
-    }
-
-    // Signal the active table browser to refresh its data
-    emit('ctx:grid-data-changed')
+    emit('ctx:grid-set-null-queue', changes)
   })
 }
