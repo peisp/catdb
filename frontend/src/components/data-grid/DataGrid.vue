@@ -71,6 +71,7 @@ function ensureEditorsRegistered() {
 ensureEditorsRegistered()
 
 let _pasteHandler: ((e: ClipboardEvent) => void) | null = null
+let _editorCtxHandler: ((e: MouseEvent) => void) | null = null
 
 interface Props {
   columns: ColumnMeta[]
@@ -94,6 +95,10 @@ interface Props {
   sortState?: SortState | null
   /** 未保存的脏单元格集合（"row:col" 格式的 key），用于灰色渲染提示 */
   dirtyCells?: Set<string>
+  /** 标记删除的行号集合（body 坐标系 row index），整行灰色渲染 */
+  deletedRows?: Set<number>
+  /** 有未保存编辑的行号集合（body 坐标系 row index），# 列灰色渲染 */
+  dirtyRows?: Set<number>
   /** Wails 原生右键菜单名（覆盖默认的 catdb-grid-cell / catdb-grid-cell-edit 切换逻辑）。
    *  传入非空字符串时，DataGrid 直接使用该名字，不再根据 pkColumns 推断。 */
   contextMenuName?: string
@@ -103,6 +108,8 @@ const props = withDefaults(defineProps<Props>(), {
   editable: false,
   pkColumns: () => [],
   dirtyCells: () => new Set<string>(),
+  deletedRows: () => new Set<number>(),
+  dirtyRows: () => new Set<number>(),
   fetching: false,
   rowHeight: 24,
   defaultColumnWidth: 160,
@@ -284,9 +291,25 @@ const tableOptions = computed<any>(() => {
     title: c.name,
     width: props.defaultColumnWidth,
     minWidth: headerMinWidth(c),
-    editor: props.editable ? pickEditor(c) : undefined,
+    // 标记删除的行在保存前不可编辑 —— editor 取函数形式，对删除行返回 undefined
+    editor: props.editable
+      ? (args: any) => {
+          if (props.deletedRows?.size && args?.table) {
+            const rowOff = args.table.columnHeaderLevelCount ?? 1
+            if (props.deletedRows.has(args.row - rowOff)) return undefined as any
+          }
+          return pickEditor(c)
+        }
+      : undefined,
     style: (args: any) => {
       const align = pickAlign(c)
+      // 已标记删除的行 — 整行灰色（必须在 NULL 判断之前，覆盖所有单元格）
+      if (props.deletedRows?.size && args.table) {
+        const rowOff = args.table.columnHeaderLevelCount ?? 1
+        if (props.deletedRows.has(args.row - rowOff)) {
+          return { textAlign: align, color: '#999', bgColor: 'rgba(200,200,200,0.1)' }
+        }
+      }
       // dataValue 是 fieldFormat 前的原始值，value 是格式化后的
       if (args?.dataValue == null) return { textAlign: align, color: '#aaa', fontStyle: 'italic' }
       // 未保存的脏单元格显示灰色（VTable 可视坐标 → body 坐标）
@@ -317,7 +340,16 @@ const tableOptions = computed<any>(() => {
     rowSeriesNumber: {
       title: '#',
       width: 50,
-      style: { textAlign: 'right', color: '#aaa', fontSize: 10 },
+      style: (args: any) => {
+        const base = { textAlign: 'right' as const, color: '#aaa' as const, fontSize: 10 as const }
+        if (!args?.table) return base
+        const rowOff = args.table.columnHeaderLevelCount ?? 1
+        const bodyRow = args.row - rowOff
+        if (bodyRow < 0) return base
+        if (props.deletedRows?.has(bodyRow)) return { ...base, color: '#999', textDecoration: 'line-through' }
+        if (props.dirtyRows?.has(bodyRow)) return { ...base, color: '#999' }
+        return base
+      },
     },
     select: {
       disableSelect: false,
@@ -504,7 +536,9 @@ function onReady(instance: any) {
     // 用户点进 NULL 单元格后直接离开（不输入内容），编辑器可能提交空串 '' 或
     // 格式化文本 'NULL'，导致 VTable 把 null 乐观更新成了字符串。这里检测到
     // 此类伪编辑就回滚为 null，不触发 edit-commit。
-    if (args.originValue == null && (args.changedValue === '' || args.changedValue === 'NULL')) {
+    // 注意：VTable 的 change_cell_value 事件字段是 rawValue（改前原值）/ changedValue
+    // （改后新值），没有 originValue。
+    if (args.rawValue == null && (args.changedValue === '' || args.changedValue === 'NULL')) {
       vTableInstance.value?.updateCell?.(args.row, args.col, null)
       return
     }
@@ -512,7 +546,7 @@ function onReady(instance: any) {
     emit('edit-commit', {
       row: body.row,
       col: body.col,
-      oldValue: args.originValue,
+      oldValue: args.rawValue,
       newValue: args.changedValue,
       column: meta,
     })
@@ -588,6 +622,8 @@ function onReady(instance: any) {
         const body = toBody(rawCol, rawRow)
         if (!body) continue
         if (body.row >= props.rows.length || body.col >= props.columns.length) continue
+        // 标记删除的行在保存前不可编辑
+        if (props.deletedRows?.has(body.row)) continue
 
         const colMeta = props.columns[body.col]
         const oldValue = props.rows[body.row]?.[body.col]
@@ -614,6 +650,32 @@ function onReady(instance: any) {
   }
   _pasteHandler = pasteHandler as any
   gridWrapRef.value?.addEventListener('paste', pasteHandler)
+
+  // 编辑器输入框上的右键：VTable 的 contextmenu_cell 不会在 input 元素上触发，
+  // 导致 --custom-contextmenu 停留在默认值 catdb-grid-cell（没有 Set to NULL）。
+  // 用 capture phase 拦截，重新判定正确菜单。
+  _editorCtxHandler = (e: MouseEvent) => {
+    if (!props.editable || props.contextMenuName) return
+    const target = e.target as HTMLElement
+    if (!target.closest('input, textarea')) return
+    e.preventDefault()
+    const inst = vTableInstance.value
+    if (!inst) return
+    const cell = inst.getCellAtPos(e.clientX, e.clientY)
+    if (!cell || cell.col == null || cell.row == null) return
+    const off = offsets()
+    const bodyCol = Math.max(0, cell.col - off.col)
+    if (bodyCol >= props.columns.length) return
+    let showSetNull = props.pkColumns.length > 0
+    if (showSetNull && props.pkColumns.includes(props.columns[bodyCol]?.name)) {
+      showSetNull = false
+    }
+    gridWrapRef.value?.style.setProperty(
+      '--custom-contextmenu',
+      showSetNull ? 'catdb-grid-cell-edit' : 'catdb-grid-cell',
+    )
+  }
+  gridWrapRef.value?.addEventListener('contextmenu', _editorCtxHandler, true)
 
   // 排序点击：sortRemote=true 时发射给父组件做服务端排序
   instance.on('sort_click', (args: any) => {
@@ -670,11 +732,24 @@ watch(
   { deep: false },
 )
 
+// 滚动到最后一行（新增行后定位用）。rowCount 含表头，最后一行即末尾数据行。
+function scrollToBottom() {
+  const inst = vTableInstance.value
+  if (!inst?.scrollToRow) return
+  try { inst.scrollToRow(inst.rowCount - 1) } catch { /* ignore */ }
+}
+
+defineExpose({ scrollToBottom })
+
 onBeforeUnmount(() => {
   if (_pasteHandler && gridWrapRef.value) {
     gridWrapRef.value.removeEventListener('paste', _pasteHandler)
   }
+  if (_editorCtxHandler && gridWrapRef.value) {
+    gridWrapRef.value.removeEventListener('contextmenu', _editorCtxHandler, true)
+  }
 })
+
 </script>
 
 <template>

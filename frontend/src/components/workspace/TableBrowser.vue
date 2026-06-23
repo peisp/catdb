@@ -8,7 +8,7 @@
 //   - 表没有 PK/Unique → 整张表只读，banner 提示
 //   - 每次单元格编辑 = 一次基于原行 PK 的 UPDATE
 //   - 乐观：先本地写入，applyChange 失败则 reload 整页恢复真值
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NAlert, NButton, NSelect, NSpin, NTag, useMessage } from 'naive-ui'
 import { edit as editApi, metadata as metaApi } from '../../api'
 import { on } from '../../api/events'
@@ -51,6 +51,7 @@ const filterOrderBy = ref('')
 
 const browse = ref<BrowseResult | null>(null)
 const loading = ref(false)
+const gridRef = ref<InstanceType<typeof DataGrid> | null>(null)
 const sortState = computed<SortState | null>(() => {
   if (sortColumn.value < 0) return null
   return { field: sortColumn.value, order: sortOrder.value as 'asc' | 'desc' }
@@ -93,6 +94,20 @@ const hasPendingChanges = computed(() => pendingChanges.value.size > 0)
 // Set of "row:col" keys for cells with unsaved edits (body coords)
 const dirtyCells = computed(() => new Set(pendingChanges.value.keys()))
 
+// ---- pending row deletions ----
+const deletedRows = ref<Set<number>>(new Set())
+const hasDeletedRows = computed(() => deletedRows.value.size > 0)
+const hasUnsavedChanges = computed(() => hasPendingChanges.value || hasDeletedRows.value)
+// Rows that have any unsaved cell edits (for # column styling)
+const dirtyRows = computed(() => {
+  const s = new Set<number>()
+  for (const key of pendingChanges.value.keys()) {
+    const row = parseInt(key.split(':')[0], 10)
+    s.add(row)
+  }
+  return s
+})
+
 // ---- export dropdown ----
 function onExportSelect(ev: Event) {
   const val = (ev.target as HTMLSelectElement).value
@@ -104,6 +119,7 @@ function onExportSelect(ev: Event) {
 
 // ---- selection + copy ----
 const sel = useTableSelection()
+const hasSelection = computed(() => sel.selection.value !== null)
 
 function colNames(): string[] { return columns.value.map((c) => c.name) }
 function fullTableName(): string { return `\`${props.db}\`.\`${props.table}\`` }
@@ -152,6 +168,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeyDown))
 
 async function load() {
   pendingChanges.value = new Map()
+  deletedRows.value = new Set()
   dmlSql.value = ''
   dmlLabel.value = ''
   loading.value = true
@@ -332,11 +349,45 @@ async function onEditCommit(p: {
   dmlLabel.value = ''
 }
 
+// ---- delete rows ----
+
+function deleteSelectedRows() {
+  const range = sel.selection.value
+  if (!range) return
+  const minR = Math.min(range.startRow, range.endRow)
+  const maxR = Math.max(range.startRow, range.endRow)
+  const newSet = new Set(deletedRows.value)
+  for (let r = minR; r <= maxR; r++) {
+    if (r < rows.value.length) newSet.add(r)
+  }
+  deletedRows.value = newSet
+  // 删除行：把该行所有未保存编辑恢复为原值并清出待保存队列，
+  // 避免保存时执行无效的 UPDATE（行马上要被 DELETE）。
+  const map = pendingChanges.value
+  const rawRows = browse.value?.rows
+  for (const [key, ch] of map) {
+    if (!newSet.has(ch.row)) continue
+    if (rawRows?.[ch.row]) rawRows[ch.row][ch.col] = ch.oldValue
+    map.delete(key)
+  }
+  pendingChanges.value = new Map(map)
+  // Clear selection
+  sel.selection.value = null
+  // 强制新 rows 引用触发 VTable 重绘以应用灰色背景（同 set-null 的模式）
+  if (browse.value) {
+    browse.value = { ...browse.value, rows: [...browse.value.rows] }
+  }
+  dmlSql.value = ''
+  dmlLabel.value = ''
+}
+
 // ---- add row handlers ----
 
 function startAddRow() {
   newRowValues.value = columns.value.map(() => null)
   addingRow.value = true
+  // 等新增行渲染后滚动到底部，让其可见
+  nextTick(() => gridRef.value?.scrollToBottom())
 }
 
 async function saveNewRow() {
@@ -374,10 +425,13 @@ function cancelAddRow() {
 
 async function saveChanges() {
   const changes = Array.from(pendingChanges.value.values())
-  if (!changes.length) return
+  const deletes = Array.from(deletedRows.value)
+  if (!changes.length && !deletes.length) return
   loading.value = true
   let saved = 0
   let lastSQL = ''
+  let lastLabel = ''
+  // Process cell edits (UPDATE)
   for (const ch of changes) {
     try {
       const res = await editApi.applyChange(props.connId, {
@@ -390,23 +444,49 @@ async function saveChanges() {
       if (res.rowsAffected > 0) {
         saved++
         lastSQL = res.sql
+        lastLabel = 'UPDATE'
       }
     } catch (err) {
       message.error(`保存失败: ${String(err)}`)
       pendingChanges.value = new Map()
+      deletedRows.value = new Set()
+      await load()
+      return
+    }
+  }
+  // Process row deletions (DELETE)
+  for (const rowIdx of deletes) {
+    try {
+      const res = await editApi.applyChange(props.connId, {
+        op: 'delete',
+        db: props.db,
+        table: props.table,
+        pk: pkValuesOf(rowIdx),
+      })
+      if (res.rowsAffected > 0) {
+        saved++
+        lastSQL = res.sql
+        lastLabel = 'DELETE'
+      }
+    } catch (err) {
+      message.error(`删除失败: ${String(err)}`)
+      pendingChanges.value = new Map()
+      deletedRows.value = new Set()
       await load()
       return
     }
   }
   message.success(`已保存 ${saved} 处修改`)
   dmlSql.value = lastSQL
-  dmlLabel.value = 'UPDATE'
+  dmlLabel.value = lastLabel
   pendingChanges.value = new Map()
+  deletedRows.value = new Set()
   if (!addingRow.value) await load()
 }
 
 function discardChanges() {
   pendingChanges.value = new Map()
+  deletedRows.value = new Set()
   load()
 }
 
@@ -435,8 +515,14 @@ function onFilterClear() {
         <n-button size="tiny" type="primary" :disabled="loading" @click="saveNewRow">保存</n-button>
         <n-button size="tiny" :disabled="loading" @click="cancelAddRow">取消</n-button>
       </template>
-      <n-button v-else size="tiny" :disabled="loading || readOnly" @click="startAddRow">+ 新增</n-button>
-      <template v-if="hasPendingChanges && !addingRow">
+      <n-button v-else size="tiny" :disabled="loading || readOnly" @click="startAddRow">+</n-button>
+      <n-button
+        v-if="!addingRow"
+        size="tiny"
+        :disabled="loading || readOnly || !hasSelection"
+        @click="deleteSelectedRows"
+      >-</n-button>
+      <template v-if="hasUnsavedChanges && !addingRow">
         <n-button size="tiny" type="primary" :disabled="loading" @click="saveChanges">保存</n-button>
         <n-button size="tiny" :disabled="loading" @click="discardChanges">取消</n-button>
       </template>
@@ -466,11 +552,14 @@ function onFilterClear() {
 
     <n-spin :show="loading" class="data-spin">
       <DataGrid
+        ref="gridRef"
         :columns="columns"
         :rows="allRows"
         :editable="!readOnly"
         :pk-columns="pk"
         :dirty-cells="dirtyCells"
+        :deleted-rows="deletedRows"
+        :dirty-rows="dirtyRows"
         :fetching="loading"
         :sort-remote="true"
         :sort-state="sortState"
