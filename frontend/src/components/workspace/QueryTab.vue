@@ -97,7 +97,11 @@ async function ensureAutocomplete() {
   if (!connId) return
   try {
     const dbs = await metaStore.ensureDatabases(connId)
-    if (dbs.length && !currentDb.value) currentDb.value = dbs[0]
+    if (dbs.length && !currentDb.value) {
+      // Initialize from the object tree's last-selected database for this
+      // connection, or stay in "no selection" state if nothing was selected.
+      currentDb.value = store.selectedDb[connId] ?? null
+    }
     if (currentDb.value) {
       await metaStore.ensureSnapshot(connId, currentDb.value)
     }
@@ -113,6 +117,27 @@ watch(currentDb, (db) => {
   if (!connId || !db) return
   void metaStore.ensureSnapshot(connId, db).catch(() => { /* nice-to-have */ })
 })
+
+// Sync this tab's schema-selector when the object tree selects a different
+// database. Only the active tab follows the tree selection — non-active tabs
+// keep their own schema.
+watch(
+  () => {
+    const connId = tab.value?.connId
+    return connId ? store.selectedDb[connId] : undefined
+  },
+  (newDb) => {
+    if (!newDb) return
+    const connId = tab.value?.connId
+    if (!connId) return
+    // Only update if this tab is the active tab for its connection, and the
+    // new selection actually differs from the current one.
+    if (store.activeByConn[connId] !== props.tabId) return
+    if (newDb !== currentDb.value) {
+      currentDb.value = newDb
+    }
+  },
+)
 
 onMounted(async () => {
   if (props.driver) {

@@ -18,6 +18,7 @@ import type { ConnectionProfile } from '../../api/connections'
 import { metadata as metaApi } from '../../api'
 import { useMetadataStore } from '../../stores/metadata'
 import { useConnectionsStore } from '../../stores/connections'
+import { useQueryStore } from '../../stores/query'
 import { setActiveTableContext } from '../../api/tableContextMenu'
 import { setActiveTreeContext } from '../../api/treeContextMenu'
 import { system as systemApi } from '../../api'
@@ -31,6 +32,7 @@ const emit = defineEmits<{
 
 const store = useMetadataStore()
 const connStore = useConnectionsStore()
+const queryStore = useQueryStore()
 const message = useMessage()
 
 const treeData = ref<TreeOption[]>([])
@@ -298,6 +300,7 @@ function onDblclick(_: MouseEvent, node: TreeOption) {
 function onClick(_: MouseEvent, node: TreeOption) {
   const m = (node as any).extra as TreeMeta
   if (m.kind === 'database') {
+    queryStore.setSelectedDb(props.connection.id, m.db!)
     emit('open-tables-overview', { db: m.db! })
   }
 }
