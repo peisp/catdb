@@ -79,7 +79,7 @@ frontend/src/
 - **不译**（保持原样）：SQL 关键字与技术 token（EXPLAIN、CSV/Excel/JSON/SQL、ON UPDATE/ON DELETE、RESTRICT/CASCADE、BTREE/HASH/ASC/DESC）、品牌名（catdb）、键盘修饰符（Cmd/Ctrl）、Language 菜单里的本族名（English / 中文（简体））。
 
 四个**必踩的坑**：
-1. **原生对话框靠按钮文案判定结果**（`btn === '删除'`）：翻译后必须比对**翻译后的 label**——先 `const xLabel = t('...')`，按钮和判断都用 `xLabel`。
+1. **原生对话框判定点哪个按钮**：Wails 的 `Dialogs.Warning/Error/Info` 只返回**被点按钮的 label 文本**（无 id/index），直接比对译文很脆。**统一走 `api/dialogs.ts` 的 `confirm()` helper**——给按钮 `{ value, label }`，helper 把返回的 label 映回稳定 `value`，调用处只比 `value`（`if (choice !== 'delete') …`），永不碰译文。别再裸调 `Dialogs.*` 做判定（`SaveFile`/`OpenFile` 返回路径的除外）。
 2. **模块级 `const` 数组/对象含文案**（列定义、options、tooltip 表…）：必须改 `computed(() => …)` 才能随语言切换刷新；script 内引用 computed 用 `.value`，模板自动解包。纯函数（每次渲染被调用，如 `typeFormatFor`）里内联 `t()` 即响应式。
 3. **文案内嵌 HTML 标记**（`<b>{{n}}</b>`）：用 `<i18n-t keypath="ns.key" tag="span">` + 具名 slot（`<template #foo>` 对应文案里的 `{foo}`），`<i18n-t>` 由插件全局注册。
 4. **文件里已有局部变量名 `t`**（如 `const t = tab.value`、`for (const t of …)`）：i18n 导入要么别名 `import { t as tr }`，要么让 computed **返回 key**、模板 `$t(key)` 解析——别让两个 `t` 撞上。

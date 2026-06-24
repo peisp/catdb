@@ -16,7 +16,7 @@
 // overview tab」的总体设计。其余 refresh 动作需要 ObjectTree 自身的 n-tree
 // 状态（找到节点、重置 children、重新 onLoad），所以通过 callback 反弹回去。
 import { createDiscreteApi } from 'naive-ui'
-import { Dialogs } from '@wailsio/runtime'
+import { confirm } from './dialogs'
 import { t } from '../i18n'
 import { useQueryStore } from '../stores/query'
 import { on } from './events'
@@ -111,16 +111,15 @@ export function installTreeContextMenuListener(): void {
   on('ctx:query-delete', async () => {
     if (!active || !active.queryId) return
     const ctx = active
-    const deleteLabel = t('common.delete')
-    const btn = await Dialogs.Warning({
-      Title: t('tree.query.delete.title'),
-      Message: t('tree.query.delete.confirm', { name: ctx.queryName ?? '' }),
-      Buttons: [
-        { Label: t('common.cancel'), IsCancel: true },
-        { Label: deleteLabel },
+    const choice = await confirm({
+      title: t('tree.query.delete.title'),
+      message: t('tree.query.delete.confirm', { name: ctx.queryName ?? '' }),
+      buttons: [
+        { value: 'cancel', label: t('common.cancel'), isCancel: true },
+        { value: 'delete', label: t('common.delete') },
       ],
     })
-    if (btn !== deleteLabel) return
+    if (choice !== 'delete') return
     try {
       await savedQueryApi.del(ctx.queryId!)
       // Detach any open tab so a later 保存 creates a fresh entry instead of

@@ -291,6 +291,11 @@ export default {
   },
   // App shell window chrome (components/layout/AppShell.vue).
   appShell: {
+    closeGuard: {
+      title: 'Discard unsaved SQL?',
+      message: 'You have {n} unsaved tab(s). Closing will lose them.',
+      discard: 'Discard & close',
+    },
     hideSidebar: 'Hide sidebar',
     showSidebar: 'Show sidebar',
     newConnection: 'New connection',

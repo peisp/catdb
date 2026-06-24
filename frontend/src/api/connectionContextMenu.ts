@@ -10,7 +10,7 @@
 //   3. `installConnectionContextMenuListener()` subscribes at app boot to
 //      the `ctx:conn-*` events emitted by Go and acts on the singleton.
 import { createDiscreteApi } from 'naive-ui'
-import { Dialogs } from '@wailsio/runtime'
+import { confirm } from './dialogs'
 import { t } from '../i18n'
 import { useConnectionsStore } from '../stores/connections'
 import { on } from './events'
@@ -70,16 +70,15 @@ export function installConnectionContextMenuListener(): void {
   on('ctx:conn-delete', async () => {
     if (!active) return
     const ctx = active
-    const deleteLabel = t('common.delete')
-    const btn = await Dialogs.Warning({
-      Title: t('connection.menu.delete.title'),
-      Message: t('connection.menu.delete.confirm', { name: ctx.connName }),
-      Buttons: [
-        { Label: t('common.cancel'), IsCancel: true },
-        { Label: deleteLabel },
+    const choice = await confirm({
+      title: t('connection.menu.delete.title'),
+      message: t('connection.menu.delete.confirm', { name: ctx.connName }),
+      buttons: [
+        { value: 'cancel', label: t('common.cancel'), isCancel: true },
+        { value: 'delete', label: t('common.delete') },
       ],
     })
-    if (btn !== deleteLabel) return
+    if (choice !== 'delete') return
     try {
       await useConnectionsStore().remove(ctx.connId)
       message.success(t('common.deleted'))

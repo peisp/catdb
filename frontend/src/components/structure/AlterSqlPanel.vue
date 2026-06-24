@@ -7,7 +7,7 @@
 // shells out to the parent (it knows the connId and how to refresh after).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NButton, NEmpty, NFlex, NText, useMessage } from 'naive-ui'
-import { Dialogs } from '@wailsio/runtime'
+import { dialogs } from '../../api'
 import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { sql, MySQL } from '@codemirror/lang-sql'
@@ -147,18 +147,17 @@ async function onCopy() {
 
 function onApply() {
   if (isEmpty.value || props.applyDisabled || props.busy) return
-  const executeLabel = t('common.execute')
-  void Dialogs.Warning({
-    Title: props.applyConfirmTitle ?? t('structure.alter.confirmTitle'),
-    Message:
+  void dialogs.confirm({
+    title: props.applyConfirmTitle ?? t('structure.alter.confirmTitle'),
+    message:
       props.applyConfirmContent ??
       t('structure.alter.confirmMessage', { n: props.statements.length }),
-    Buttons: [
-      { Label: t('common.cancel'), IsCancel: true },
-      { Label: executeLabel },
+    buttons: [
+      { value: 'cancel', label: t('common.cancel'), isCancel: true },
+      { value: 'execute', label: t('common.execute') },
     ],
-  }).then((btn) => {
-    if (btn === executeLabel) emit('apply')
+  }).then((choice) => {
+    if (choice === 'execute') emit('apply')
   })
 }
 

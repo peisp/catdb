@@ -283,6 +283,11 @@ export default {
   },
   // 应用外壳窗口控件（components/layout/AppShell.vue）。
   appShell: {
+    closeGuard: {
+      title: '放弃未保存的 SQL？',
+      message: '你有 {n} 个未保存的标签页，关闭将丢失它们。',
+      discard: '放弃并关闭',
+    },
     hideSidebar: '隐藏侧边栏',
     showSidebar: '显示侧边栏',
     newConnection: '新建连接',

@@ -15,7 +15,7 @@
 // because Wails v3 ships no native text-input dialog; 删除 uses the native
 // warning dialog.
 import { createDiscreteApi } from 'naive-ui'
-import { Dialogs } from '@wailsio/runtime'
+import { confirm } from './dialogs'
 import { t } from '../i18n'
 import { useConnectionsStore } from '../stores/connections'
 import { openTextPrompt } from './prompts'
@@ -84,23 +84,22 @@ export function installSidebarContextMenuListener(): void {
     // plain Chinese message instead of the raw Wails-wrapped error JSON.
     const memberCount = store.connections.filter((c) => c.groupId === ctx.groupId).length
     if (memberCount > 0) {
-      await Dialogs.Warning({
-        Title: t('sidebar.group.deleteBlocked.title'),
-        Message: t('sidebar.group.deleteBlocked.message', { name: ctx.groupName, count: memberCount }),
-        Buttons: [{ Label: t('sidebar.group.deleteBlocked.ok'), IsDefault: true }],
+      await confirm({
+        title: t('sidebar.group.deleteBlocked.title'),
+        message: t('sidebar.group.deleteBlocked.message', { name: ctx.groupName, count: memberCount }),
+        buttons: [{ value: 'ok', label: t('sidebar.group.deleteBlocked.ok'), isDefault: true }],
       })
       return
     }
-    const deleteLabel = t('common.delete')
-    const btn = await Dialogs.Warning({
-      Title: t('sidebar.group.delete.title'),
-      Message: t('sidebar.group.delete.confirm', { name: ctx.groupName }),
-      Buttons: [
-        { Label: t('common.cancel'), IsCancel: true },
-        { Label: deleteLabel },
+    const choice = await confirm({
+      title: t('sidebar.group.delete.title'),
+      message: t('sidebar.group.delete.confirm', { name: ctx.groupName }),
+      buttons: [
+        { value: 'cancel', label: t('common.cancel'), isCancel: true },
+        { value: 'delete', label: t('common.delete') },
       ],
     })
-    if (btn !== deleteLabel) return
+    if (choice !== 'delete') return
     try {
       await store.removeGroup(ctx.groupId)
       message.success(t('common.deleted'))

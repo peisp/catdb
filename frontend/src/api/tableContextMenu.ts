@@ -14,7 +14,7 @@
 // 删除 / 清空 走客户端确认对话框 + 真实 SQL，刷新由调用方注入的
 // `onAfterMutate` 回调触发（重新拉取表列表 + 清理元数据缓存）。
 import { createDiscreteApi } from 'naive-ui'
-import { Dialogs } from '@wailsio/runtime'
+import { confirm } from './dialogs'
 import { t } from '../i18n'
 import { quoteTable } from '../lib/alterPlan'
 import { useQueryStore } from '../stores/query'
@@ -102,16 +102,15 @@ export function installTableContextMenuListener(): void {
   on('ctx:tbl-truncate', async () => {
     if (!active) return
     const ctx = active
-    const truncateLabel = t('table.truncate.ok')
-    const btn = await Dialogs.Warning({
-      Title: t('table.truncate.title'),
-      Message: t('table.truncate.confirm', { name: `${ctx.db}.${ctx.table}` }),
-      Buttons: [
-        { Label: t('common.cancel'), IsCancel: true },
-        { Label: truncateLabel },
+    const choice = await confirm({
+      title: t('table.truncate.title'),
+      message: t('table.truncate.confirm', { name: `${ctx.db}.${ctx.table}` }),
+      buttons: [
+        { value: 'cancel', label: t('common.cancel'), isCancel: true },
+        { value: 'truncate', label: t('table.truncate.ok') },
       ],
     })
-    if (btn !== truncateLabel) return
+    if (choice !== 'truncate') return
     try {
       await runQuery(ctx.connId, `TRUNCATE TABLE ${quoteTable(ctx.db, ctx.table)}`)
       message.success(t('table.truncate.success', { name: ctx.table }))
@@ -124,16 +123,16 @@ export function installTableContextMenuListener(): void {
   on('ctx:tbl-drop', async () => {
     if (!active) return
     const ctx = active
-    const deleteLabel = t('common.delete')
-    const btn = await Dialogs.Error({
-      Title: t('table.drop.title'),
-      Message: t('table.drop.confirm', { name: `${ctx.db}.${ctx.table}` }),
-      Buttons: [
-        { Label: t('common.cancel'), IsCancel: true },
-        { Label: deleteLabel },
+    const choice = await confirm({
+      kind: 'error',
+      title: t('table.drop.title'),
+      message: t('table.drop.confirm', { name: `${ctx.db}.${ctx.table}` }),
+      buttons: [
+        { value: 'cancel', label: t('common.cancel'), isCancel: true },
+        { value: 'drop', label: t('common.delete') },
       ],
     })
-    if (btn !== deleteLabel) return
+    if (choice !== 'drop') return
     try {
       await runQuery(ctx.connId, `DROP TABLE ${quoteTable(ctx.db, ctx.table)}`)
       message.success(t('table.drop.success', { name: ctx.table }))

@@ -3,6 +3,43 @@
 import { Dialogs } from '@wailsio/runtime'
 import { t } from '../i18n'
 
+/** One button of a confirm dialog. `value` is a stable, locale-independent id. */
+export interface ConfirmButton<V extends string = string> {
+  value: V
+  label: string
+  isCancel?: boolean
+  isDefault?: boolean
+}
+
+export interface ConfirmOptions<V extends string> {
+  kind?: 'warning' | 'error' | 'info'
+  title: string
+  message: string
+  buttons: ConfirmButton<V>[]
+}
+
+/**
+ * Native confirm dialog that returns the chosen button's STABLE `value`, never
+ * its (localized) label.
+ *
+ * Wails resolves dialogs with the *label text* of the clicked button — there is
+ * no per-button id — so deciding "which button" inevitably means matching that
+ * text. This helper does that match ONCE, here, against the same labels it
+ * passed in, then hands back the stable value. Call sites compare against
+ * `value` and so never break when a label is translated. Returns null if the
+ * dialog is dismissed without matching a button.
+ */
+export async function confirm<V extends string>(opts: ConfirmOptions<V>): Promise<V | null> {
+  const fn =
+    opts.kind === 'error' ? Dialogs.Error : opts.kind === 'info' ? Dialogs.Info : Dialogs.Warning
+  const label = await fn({
+    Title: opts.title,
+    Message: opts.message,
+    Buttons: opts.buttons.map((b) => ({ Label: b.label, IsCancel: b.isCancel, IsDefault: b.isDefault })),
+  })
+  return opts.buttons.find((b) => b.label === label)?.value ?? null
+}
+
 export type CloseChoice = 'save' | 'discard' | 'cancel'
 
 /**
@@ -10,18 +47,14 @@ export type CloseChoice = 'save' | 'discard' | 'cancel'
  * button they picked. Uses a native 3-button warning dialog.
  */
 export async function confirmCloseUnsaved(title: string): Promise<CloseChoice> {
-  const saveLabel = t('common.save')
-  const dontSaveLabel = t('dialogs.dontSave')
-  const btn = await Dialogs.Warning({
-    Title: t('dialogs.unsavedTitle'),
-    Message: t('dialogs.unsavedMessage', { title }),
-    Buttons: [
-      { Label: t('common.cancel'), IsCancel: true },
-      { Label: dontSaveLabel },
-      { Label: saveLabel, IsDefault: true },
+  const choice = await confirm({
+    title: t('dialogs.unsavedTitle'),
+    message: t('dialogs.unsavedMessage', { title }),
+    buttons: [
+      { value: 'cancel', label: t('common.cancel'), isCancel: true },
+      { value: 'discard', label: t('dialogs.dontSave') },
+      { value: 'save', label: t('common.save'), isDefault: true },
     ],
   })
-  if (btn === saveLabel) return 'save'
-  if (btn === dontSaveLabel) return 'discard'
-  return 'cancel'
+  return choice ?? 'cancel'
 }
