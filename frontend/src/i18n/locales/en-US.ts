@@ -16,6 +16,7 @@ export default {
     copy: 'Copy',
     copySql: 'Copy SQL',
     copied: 'Copied to clipboard',
+    exportPlaceholder: 'Export…',
     apply: 'Apply',
     execute: 'Execute',
     saved: 'Saved',

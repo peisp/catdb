@@ -12,6 +12,7 @@ export default {
     copy: '复制',
     copySql: '复制 SQL',
     copied: '已复制到剪贴板',
+    exportPlaceholder: '导出…',
     apply: '应用',
     execute: '执行',
     saved: '已保存',
