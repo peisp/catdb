@@ -26,6 +26,7 @@ import { sql, MySQL } from '@codemirror/lang-sql'
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { metadata as metaApi, query as queryApi } from '../../api'
+import { t } from '../../i18n'
 import type { TableSummary } from '../../api/metadata'
 import { useThemeStore } from '../../stores/theme'
 import { useMetadataStore } from '../../stores/metadata'
@@ -123,7 +124,7 @@ async function ensureColumns() {
     summary.value = { columns: cols, indexes: [], foreignKeys: [] }
     resetDraft()
   } catch (e) {
-    message.error(`加载字段列表失败: ${String(e)}`)
+    message.error(t('tableStructure.loadColumnsFailed', { error: String(e) }))
   }
 }
 
@@ -138,7 +139,7 @@ async function ensureIndexes() {
       draft.value = { ...draft.value, indexes: (indexes ?? []).map(indexToDraft) }
     }
   } catch (e) {
-    message.error(`加载索引列表失败: ${String(e)}`)
+    message.error(t('tableStructure.loadIndexesFailed', { error: String(e) }))
   }
 }
 
@@ -152,7 +153,7 @@ async function ensureForeignKeys() {
       draft.value = { ...draft.value, foreignKeys: (fks ?? []).map(foreignKeyToDraft) }
     }
   } catch (e) {
-    message.error(`加载外键列表失败: ${String(e)}`)
+    message.error(t('tableStructure.loadForeignKeysFailed', { error: String(e) }))
   }
 }
 
@@ -166,7 +167,7 @@ async function ensureDDL() {
     // 更新 options draft 中的 comment
     draft.value = { ...draft.value, options: { comment: origComment.value } }
   } catch (e) {
-    message.error(`加载 DDL 失败: ${String(e)}`)
+    message.error(t('tableStructure.loadDdlFailed', { error: String(e) }))
   }
 }
 
@@ -247,12 +248,12 @@ async function applyStatements(stmts: string[]) {
       const created = newTableName.value.trim()
       await queryApi.runQuery(props.connId, stmts[0].trim().replace(/;$/, ''))
       metaStore.invalidateTables(props.connId, props.db)
-      message.success(`已创建表 ${props.db}.${created}`)
+      message.success(t('tableStructure.tableCreated', { name: `${props.db}.${created}` }))
       if (props.tabId) {
         queryStore.promoteNewTableTab(props.tabId, created)
       }
     } catch (e) {
-      message.error(`创建失败：${String(e)}`)
+      message.error(t('tableStructure.createFailed', { error: String(e) }))
     } finally {
       busy.value = false
     }
@@ -267,11 +268,15 @@ async function applyStatements(stmts: string[]) {
       await queryApi.runQuery(props.connId, trimmed)
       executed++
     }
-    message.success(`已应用 ${executed} 条语句`)
+    message.success(t('tableStructure.statementsApplied', { count: executed }))
     await load()
   } catch (e) {
     message.error(
-      `应用失败（已执行 ${executed}/${stmts.length} 条）：${String(e)}`,
+      t('tableStructure.applyFailed', {
+        executed,
+        total: stmts.length,
+        error: String(e),
+      }),
     )
     // Reload anyway so the UI reflects whatever did land.
     await load()
@@ -351,11 +356,11 @@ onBeforeUnmount(() => {
          pick what they're creating. In edit mode this is omitted (the tab
          title already shows db.table). -->
     <div v-if="mode === 'new'" class="new-table-header">
-      <span class="ntb-label">新建表 · {{ db }}</span>
+      <span class="ntb-label">{{ $t('tableStructure.newTableLabel', { db }) }}</span>
       <n-input
         v-model:value="newTableName"
         size="small"
-        placeholder="表名"
+        :placeholder="$t('tableStructure.tableNamePlaceholder')"
         class="ntb-name"
         :disabled="busy"
       />
@@ -374,7 +379,7 @@ onBeforeUnmount(() => {
             :statements="plan.columns"
             :busy="busy"
             :apply-disabled="newApplyDisabled"
-            :apply-confirm-title="mode === 'new' ? '创建表' : '应用字段变更'"
+            :apply-confirm-title="mode === 'new' ? $t('tableStructure.createTable') : $t('tableStructure.applyColumnChanges')"
             @apply="applyStatements(plan.columns)"
             @reset="resetDraft"
           />
@@ -393,7 +398,7 @@ onBeforeUnmount(() => {
             :statements="plan.indexes"
             :busy="busy"
             :apply-disabled="newApplyDisabled"
-            :apply-confirm-title="mode === 'new' ? '创建表' : '应用索引变更'"
+            :apply-confirm-title="mode === 'new' ? $t('tableStructure.createTable') : $t('tableStructure.applyIndexChanges')"
             @apply="applyStatements(plan.indexes)"
             @reset="resetDraft"
           />
@@ -413,7 +418,7 @@ onBeforeUnmount(() => {
             :statements="plan.foreignKeys"
             :busy="busy"
             :apply-disabled="newApplyDisabled"
-            :apply-confirm-title="mode === 'new' ? '创建表' : '应用外键变更'"
+            :apply-confirm-title="mode === 'new' ? $t('tableStructure.createTable') : $t('tableStructure.applyForeignKeyChanges')"
             @apply="applyStatements(plan.foreignKeys)"
             @reset="resetDraft"
           />
@@ -428,7 +433,7 @@ onBeforeUnmount(() => {
             :statements="plan.options"
             :busy="busy"
             :apply-disabled="newApplyDisabled"
-            :apply-confirm-title="mode === 'new' ? '创建表' : '应用表选项'"
+            :apply-confirm-title="mode === 'new' ? $t('tableStructure.createTable') : $t('tableStructure.applyTableOptions')"
             @apply="applyStatements(plan.options)"
             @reset="resetDraft"
           />

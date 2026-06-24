@@ -17,6 +17,7 @@
 // 状态（找到节点、重置 children、重新 onLoad），所以通过 callback 反弹回去。
 import { createDiscreteApi } from 'naive-ui'
 import { Dialogs } from '@wailsio/runtime'
+import { t } from '../i18n'
 import { useQueryStore } from '../stores/query'
 import { on } from './events'
 import { system as systemApi } from '.'
@@ -57,7 +58,7 @@ export function installTreeContextMenuListener(): void {
   // 「查询」 group: 新建查询 → open a blank query tab anchored to the db.
   on('ctx:tree-new-query', () => {
     if (!active || !active.db) return
-    useQueryStore().addTab(active.connId, { kind: 'query', db: active.db, title: '查询' })
+    useQueryStore().addTab(active.connId, { kind: 'query', db: active.db, title: t('tree.query.tabTitle') })
   })
 
   on('ctx:tree-refresh-queries', async () => {
@@ -69,7 +70,7 @@ export function installTreeContextMenuListener(): void {
     if (!active || !active.queryId) return
     useQueryStore().openSavedQuery(active.connId, {
       id: active.queryId,
-      name: active.queryName ?? '查询',
+      name: active.queryName ?? t('tree.query.tabTitle'),
       sqlText: active.querySql ?? '',
       dbName: active.db ?? '',
     })
@@ -79,11 +80,12 @@ export function installTreeContextMenuListener(): void {
     if (!active || !active.queryId) return
     const ctx = active
     const newName = await openTextPrompt({
-      title: '重命名查询',
-      label: `当前: ${ctx.queryName ?? ''}`,
+      title: t('tree.query.rename.title'),
+      label: t('common.currentLabel', { name: ctx.queryName ?? '' }),
       initial: ctx.queryName ?? '',
-      okText: '重命名',
-      validate: (v) => (v ? (v === ctx.queryName ? '与原名相同' : null) : '名称不能为空'),
+      okText: t('common.rename'),
+      validate: (v) =>
+        v ? (v === ctx.queryName ? t('common.sameName') : null) : t('tree.query.rename.empty'),
     })
     if (newName === null) return
     try {
@@ -99,25 +101,26 @@ export function installTreeContextMenuListener(): void {
       for (const t of qs.tabs) {
         if (t.savedQueryId === ctx.queryId) t.title = `📝 ${newName}`
       }
-      message.success(`已重命名为 ${newName}`)
+      message.success(t('common.renamedTo', { name: newName }))
       await ctx.onRefreshQueries?.()
     } catch (e) {
-      message.error(`重命名失败: ${String(e)}`)
+      message.error(t('common.renameFailed', { error: String(e) }))
     }
   })
 
   on('ctx:query-delete', async () => {
     if (!active || !active.queryId) return
     const ctx = active
+    const deleteLabel = t('common.delete')
     const btn = await Dialogs.Warning({
-      Title: '删除查询',
-      Message: `确定要删除查询「${ctx.queryName ?? ''}」吗？`,
+      Title: t('tree.query.delete.title'),
+      Message: t('tree.query.delete.confirm', { name: ctx.queryName ?? '' }),
       Buttons: [
-        { Label: '取消', IsCancel: true },
-        { Label: '删除' },
+        { Label: t('common.cancel'), IsCancel: true },
+        { Label: deleteLabel },
       ],
     })
-    if (btn !== '删除') return
+    if (btn !== deleteLabel) return
     try {
       await savedQueryApi.del(ctx.queryId!)
       // Detach any open tab so a later 保存 creates a fresh entry instead of
@@ -126,10 +129,10 @@ export function installTreeContextMenuListener(): void {
       for (const t of qs.tabs) {
         if (t.savedQueryId === ctx.queryId) t.savedQueryId = undefined
       }
-      message.success('已删除')
+      message.success(t('common.deleted'))
       await ctx.onRefreshQueries?.()
     } catch (e) {
-      message.error(`删除失败: ${String(e)}`)
+      message.error(t('common.deleteFailed', { error: String(e) }))
     }
   })
 

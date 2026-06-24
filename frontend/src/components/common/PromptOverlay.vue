@@ -66,8 +66,8 @@ function onBackdropClick(e: MouseEvent) {
       />
       <div v-if="errorMsg" class="err">{{ errorMsg }}</div>
       <div class="actions">
-        <n-button size="small" @click="onCancel">{{ currentPrompt?.cancelText ?? '取消' }}</n-button>
-        <n-button size="small" type="primary" @click="onConfirm">{{ currentPrompt?.okText ?? '确定' }}</n-button>
+        <n-button size="small" @click="onCancel">{{ currentPrompt?.cancelText ?? $t('common.cancel') }}</n-button>
+        <n-button size="small" type="primary" @click="onConfirm">{{ currentPrompt?.okText ?? $t('common.ok') }}</n-button>
       </div>
     </div>
   </div>

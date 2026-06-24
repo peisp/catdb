@@ -77,9 +77,9 @@ func (s *SystemService) OpenConnectionEditor(_ context.Context, driver, connID s
 	if enc := q.Encode(); enc != "" {
 		target += "?" + enc
 	}
-	title := "新建连接"
+	title := wailsbridge.Tr("window.newConnection")
 	if connID != "" {
-		title = "编辑连接"
+		title = wailsbridge.Tr("window.editConnection")
 	}
 	if strings.TrimSpace(driver) != "" {
 		title += " — " + driver
@@ -106,9 +106,9 @@ func (s *SystemService) OpenDatabaseEditor(_ context.Context, connID, dbName str
 	if enc := q.Encode(); enc != "" {
 		target += "?" + enc
 	}
-	title := "新建数据库"
+	title := wailsbridge.Tr("window.newDatabase")
 	if dbName != "" {
-		title = "编辑数据库 — " + dbName
+		title = wailsbridge.Tr("window.editDatabase") + " — " + dbName
 	}
 	wailsbridge.OpenChildWindow("database-editor", title, target, 600, 520)
 }

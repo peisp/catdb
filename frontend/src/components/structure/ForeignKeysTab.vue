@@ -83,11 +83,11 @@ const ACTIONS = [
         <thead>
           <tr>
             <th class="th-idx">#</th>
-            <th>名称</th>
-            <th>本表列</th>
-            <th>引用库</th>
-            <th>引用表</th>
-            <th>引用列</th>
+            <th>{{ $t('structure.fk.thName') }}</th>
+            <th>{{ $t('structure.fk.thLocalCols') }}</th>
+            <th>{{ $t('structure.fk.thRefDb') }}</th>
+            <th>{{ $t('structure.fk.thRefTable') }}</th>
+            <th>{{ $t('structure.fk.thRefCols') }}</th>
             <th>ON UPDATE</th>
             <th>ON DELETE</th>
             <th></th>
@@ -180,19 +180,19 @@ const ACTIONS = [
             </select>
             </td>
             <td class="td-actions">
-              <n-button size="tiny" quaternary :disabled="busy" title="删除" @click="deleteRow(i)">✕</n-button>
+              <n-button size="tiny" quaternary :disabled="busy" :title="$t('common.delete')" @click="deleteRow(i)">✕</n-button>
             </td>
           </tr>
           <tr v-if="modelValue.length === 0" class="empty-row">
             <td colspan="9" style="text-align: center; color: var(--n-text-color-3); padding: 16px">
-              暂无外键，点击下方“添加外键”
+              {{ $t('structure.fk.empty') }}
             </td>
           </tr>
         </tbody>
       </table>
     </div>
     <div class="fk-toolbar">
-      <n-button size="tiny" :disabled="busy" @click="addRow">+ 添加外键</n-button>
+      <n-button size="tiny" :disabled="busy" @click="addRow">{{ $t('structure.fk.addRow') }}</n-button>
     </div>
   </div>
 </template>

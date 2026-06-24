@@ -5,7 +5,8 @@
 //   * anything else — the main app shell (sidebar + workspace + status bar).
 // Both windows share this entry; the route picks which root component mounts.
 import { computed, onMounted, ref } from 'vue'
-import { NConfigProvider, NMessageProvider, darkTheme } from 'naive-ui'
+import { NConfigProvider, NMessageProvider, darkTheme, enUS, dateEnUS, zhCN, dateZhCN } from 'naive-ui'
+import { i18n } from './i18n'
 import { useThemeStore } from './stores/theme'
 import { themeOverrides, darkThemeOverrides } from './styles/theme'
 import AppShell from './components/layout/AppShell.vue'
@@ -15,6 +16,11 @@ import DatabaseEditorWindow from './components/database/DatabaseEditorWindow.vue
 const theme = useThemeStore()
 const naiveTheme = computed(() => (theme.mode === 'dark' ? darkTheme : null))
 const naiveOverrides = computed(() => (theme.mode === 'dark' ? darkThemeOverrides : themeOverrides))
+
+// Drive Naive UI's built-in component locale (date picker, pagination, etc.)
+// off the app locale owned by src/i18n.
+const naiveLocale = computed(() => (i18n.global.locale.value === 'zh-CN' ? zhCN : enUS))
+const naiveDateLocale = computed(() => (i18n.global.locale.value === 'zh-CN' ? dateZhCN : dateEnUS))
 
 const route = ref<string>(currentRoute())
 
@@ -52,7 +58,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <n-config-provider :theme="naiveTheme" :theme-overrides="naiveOverrides">
+  <n-config-provider :theme="naiveTheme" :theme-overrides="naiveOverrides" :locale="naiveLocale" :date-locale="naiveDateLocale">
     <n-message-provider>
       <ConnectionEditorWindow v-if="route === 'connection-editor'" />
       <DatabaseEditorWindow v-else-if="route === 'database-editor'" />

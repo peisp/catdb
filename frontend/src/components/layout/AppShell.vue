@@ -180,7 +180,7 @@ function onOpenTablesOverview(payload: { db: string }) {
           type="button"
           class="sidebar-toggle glass"
           :class="{ collapsed: !sidebarVisible }"
-          :title="sidebarVisible ? '隐藏侧边栏' : '显示侧边栏'"
+          :title="sidebarVisible ? $t('appShell.hideSidebar') : $t('appShell.showSidebar')"
           @click="sidebarVisible = !sidebarVisible"
         >
           <span class="glass-specular" aria-hidden="true" />
@@ -199,7 +199,7 @@ function onOpenTablesOverview(payload: { db: string }) {
         <button
           type="button"
           class="sidebar-toggle glass new-conn"
-          title="新建连接"
+          :title="$t('appShell.newConnection')"
           @click="openNewConnection"
         >
           <span class="glass-specular" aria-hidden="true" />
@@ -221,10 +221,10 @@ function onOpenTablesOverview(payload: { db: string }) {
            Absolutely positioned at top-right, outside the drag region so
            each button is individually clickable (--wails-draggable: no-drag). -->
       <div v-if="isWin" class="window-controls">
-        <button type="button" class="win-btn win-btn-min" title="最小化" @click="onWindowCtrl('min')">
+        <button type="button" class="win-btn win-btn-min" :title="$t('appShell.minimize')" @click="onWindowCtrl('min')">
           <svg viewBox="0 0 10 10" aria-hidden="true"><rect x="0" y="4.5" width="10" height="1" fill="currentColor" /></svg>
         </button>
-        <button type="button" class="win-btn win-btn-max" :title="isMaximised ? '还原' : '最大化'" @click="onWindowCtrl('max')">
+        <button type="button" class="win-btn win-btn-max" :title="isMaximised ? $t('appShell.restore') : $t('appShell.maximize')" @click="onWindowCtrl('max')">
           <svg v-if="isMaximised" viewBox="0 0 10 10" aria-hidden="true">
             <rect x="1.5" y="3.5" width="6" height="6" rx="0.5" fill="none" stroke="currentColor" stroke-width="0.8" />
             <path d="M3.5 3.5V2A0.5 0.5 0 0 1 4 1.5h4A0.5 0.5 0 0 1 8.5 2v4a0.5 0.5 0 0 1-.5.5H7.5" fill="none" stroke="currentColor" stroke-width="0.8" />
@@ -233,7 +233,7 @@ function onOpenTablesOverview(payload: { db: string }) {
             <rect x="1" y="1" width="8" height="8" rx="0.5" fill="none" stroke="currentColor" stroke-width="0.8" />
           </svg>
         </button>
-        <button type="button" class="win-btn win-btn-close" title="关闭" @click="onWindowCtrl('close')">
+        <button type="button" class="win-btn win-btn-close" :title="$t('common.close')" @click="onWindowCtrl('close')">
           <svg viewBox="0 0 10 10" aria-hidden="true">
             <path d="M1 1l8 8M9 1l-8 8" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" />
           </svg>

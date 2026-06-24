@@ -16,15 +16,15 @@ const hasConnections = computed(() => store.connections.length > 0)
     <h2>catdb</h2>
     <p class="hint">
       <template v-if="hasConnections">
-        Double-click a connection in the sidebar to open it. Right-click for more actions.
+        {{ $t('connectionWelcome.hintHasConnections') }}
       </template>
       <template v-else>
-        No connections yet. Create one to get started.
+        {{ $t('connectionWelcome.hintEmpty') }}
       </template>
     </p>
     <n-space :size="8">
       <n-button size="small" type="primary" @click="emit('new')">
-        新建连接
+        {{ $t('connectionWelcome.newConnection') }}
       </n-button>
     </n-space>
   </div>

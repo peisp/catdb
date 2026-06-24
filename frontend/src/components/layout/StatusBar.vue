@@ -8,6 +8,7 @@ import { connections as connectionsApi, system as systemApi } from '../../api'
 import { useConnectionsStore } from '../../stores/connections'
 import { useThemeStore } from '../../stores/theme'
 import { useUpdatesStore } from '../../stores/updates'
+import { t } from '../../i18n'
 import type { ServerInfo } from '../../api/connections'
 
 const REPO_URL = 'https://github.com/peisp/catdb'
@@ -43,7 +44,7 @@ watch(liveConn, async (conn) => {
   }
 }, { immediate: true })
 
-const mode = computed(() => (theme.mode === 'dark' ? 'Dark' : 'Light'))
+const mode = computed(() => (theme.mode === 'dark' ? 'statusBar.themeDark' : 'statusBar.themeLight'))
 const appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
 
 // Click handler on the version slot: if an update is already known, open the
@@ -64,41 +65,41 @@ async function onVersionClick() {
       return
     }
     if (updates.lastError) {
-      message.error(`检查更新失败：${updates.lastError}`)
+      message.error(t('statusBar.checkUpdateFailed', { error: updates.lastError }))
       return
     }
     if (updates.skipped) {
-      message.info(`v${updates.latestVersion} 已被你跳过`)
+      message.info(t('statusBar.versionSkipped', { version: updates.latestVersion }))
       return
     }
-    message.success(`已是最新版本 (v${updates.currentVersion})`)
+    message.success(t('statusBar.upToDate', { version: updates.currentVersion }))
   } finally {
     checking.value = false
   }
 }
 
 const versionTitle = computed(() => {
-  if (updates.hasBadge) return `点击查看新版本 v${updates.latestVersion}`
-  return '点击检查更新'
+  if (updates.hasBadge) return t('statusBar.viewNewVersion', { version: updates.latestVersion })
+  return t('statusBar.checkForUpdates')
 })
 </script>
 
 <template>
   <div class="bar">
-    <span class="slot mono">{{ liveConn ? liveConn.name : 'No connection' }}</span>
+    <span class="slot mono">{{ liveConn ? liveConn.name : $t('statusBar.noConnection') }}</span>
     <span class="sep" />
-    <span class="slot">{{ liveConn ? 'Connected' : 'Disconnected' }}</span>
+    <span class="slot">{{ liveConn ? $t('statusBar.connected') : $t('statusBar.disconnected') }}</span>
     <span v-if="serverInfo" class="sep" />
     <span v-if="serverInfo" class="slot mono">{{ serverInfo.version }}</span>
     <span v-if="serverInfo" class="sep" />
     <span v-if="serverInfo" class="slot mono">{{ serverInfo.user }}</span>
     <span class="grow" />
-    <span class="slot mono">{{ mode }}</span>
+    <span class="slot mono">{{ $t(mode) }}</span>
     <span class="sep" />
     <button
       type="button"
       class="icon-btn"
-      title="在 GitHub 查看仓库"
+      :title="$t('statusBar.viewRepoOnGitHub')"
       @click="openRepo"
     >
       <svg viewBox="0 0 16 16" aria-hidden="true">

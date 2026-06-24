@@ -24,11 +24,15 @@
 import { computed, ref } from 'vue'
 import { NButton, NCheckbox, NInput, NTooltip } from 'naive-ui'
 import {
-  BASE_TYPE_GROUPS,
+  baseTypeGroups,
   emptyColumnDraft,
   typeFormatFor,
   type ColumnDraft,
 } from '../../lib/alterPlan'
+import { t } from '../../i18n'
+
+// computed so the type-group labels re-translate on locale switch.
+const typeGroups = computed(() => baseTypeGroups())
 
 const props = defineProps<{
   modelValue: ColumnDraft[]
@@ -346,8 +350,8 @@ function aiSelectable(row: ColumnDraft): boolean {
 }
 
 function aiTitle(row: ColumnDraft): string {
-  if (!isIntegerType(row)) return '仅整型字段可设置 AUTO_INCREMENT'
-  return COL_TITLES.ai
+  if (!isIntegerType(row)) return t('structure.columns.aiIntOnly')
+  return COL_TITLES.value.ai
 }
 
 // MySQL requires every PRIMARY KEY column to be NOT NULL; if the user checks
@@ -386,15 +390,16 @@ function maybeClearAiOnTypeChange(row: ColumnDraft) {
 
 // ---- header tooltips ------------------------------------------------------
 
-const COL_TITLES: Record<string, string> = {
-  pk: '主键 — 启用后字段进入 PRIMARY KEY 子句',
-  ai: '自增 — 仅整型列有效，且每表只能有一个',
-  nn: 'NOT NULL — 勾选后该字段不允许为 NULL',
-  default: '默认值；勾选后启用输入框，输入 NULL/CURRENT_TIMESTAMP 等不会被加引号',
-  drag: '按住此处拖动以重新排序字段',
-  params: '类型参数：VARCHAR/CHAR 用长度、DECIMAL 用 精度,小数、DATETIME 用秒精度',
-  unsigned: 'UNSIGNED — 仅数值型可用',
-}
+// computed so the tooltips re-translate live on locale switch.
+const COL_TITLES = computed<Record<string, string>>(() => ({
+  pk: t('structure.columns.tip.pk'),
+  ai: t('structure.columns.tip.ai'),
+  nn: t('structure.columns.tip.nn'),
+  default: t('structure.columns.tip.default'),
+  drag: t('structure.columns.tip.drag'),
+  params: t('structure.columns.tip.params'),
+  unsigned: t('structure.columns.tip.unsigned'),
+}))
 </script>
 
 <template>
@@ -424,11 +429,11 @@ const COL_TITLES: Record<string, string> = {
           <tr>
             <th class="th-drag" :title="COL_TITLES.drag"></th>
             <th class="th-idx">#</th>
-            <th>列名</th>
-            <th>类型</th>
+            <th>{{ $t('structure.columns.thName') }}</th>
+            <th>{{ $t('structure.columns.thType') }}</th>
             <th>
               <n-tooltip placement="top" :delay="100" :show-arrow="false">
-                <template #trigger><span class="th-tip">长度/参数</span></template>
+                <template #trigger><span class="th-tip">{{ $t('structure.columns.thParams') }}</span></template>
                 {{ COL_TITLES.params }}
               </n-tooltip>
             </th>
@@ -458,11 +463,11 @@ const COL_TITLES: Record<string, string> = {
             </th>
             <th>
               <n-tooltip placement="top" :delay="100" :show-arrow="false">
-                <template #trigger><span class="th-tip">默认值</span></template>
+                <template #trigger><span class="th-tip">{{ $t('structure.columns.thDefault') }}</span></template>
                 {{ COL_TITLES.default }}
               </n-tooltip>
             </th>
-            <th>注释</th>
+            <th>{{ $t('structure.columns.thComment') }}</th>
             <th></th>
           </tr>
         </thead>
@@ -502,7 +507,7 @@ const COL_TITLES: Record<string, string> = {
                 @change="onTypeChange(row, ($event.target as HTMLSelectElement).value)"
               >
                 <optgroup
-                  v-for="g in BASE_TYPE_GROUPS"
+                  v-for="g in typeGroups"
                   :key="g.label"
                   :label="g.label"
                 >
@@ -511,7 +516,7 @@ const COL_TITLES: Record<string, string> = {
                 <!-- Custom/legacy types not in the catalog: render a single
                      extra option so they round-trip cleanly. -->
                 <option
-                  v-if="row.baseType && !BASE_TYPE_GROUPS.some(g => g.types.includes(row.baseType))"
+                  v-if="row.baseType && !typeGroups.some(g => g.types.includes(row.baseType))"
                   :value="row.baseType"
                 >
                   {{ row.baseType }}
@@ -546,7 +551,7 @@ const COL_TITLES: Record<string, string> = {
                     <span v-else class="td-na">—</span>
                   </span>
                 </template>
-                {{ fmtFor(row).supportsUnsigned ? COL_TITLES.unsigned : '此类型不支持 UNSIGNED' }}
+                {{ fmtFor(row).supportsUnsigned ? COL_TITLES.unsigned : $t('structure.columns.unsignedUnsupported') }}
               </n-tooltip>
             </td>
             <td class="td-center">
@@ -603,7 +608,7 @@ const COL_TITLES: Record<string, string> = {
                 <n-input
                   :value="row.default ?? ''"
                   size="tiny"
-                  placeholder="无"
+                  :placeholder="$t('structure.columns.nonePlaceholder')"
                   :disabled="busy || !hasDefault(row)"
                   @update:value="(v: string) => setDefault(row, v)"
                 />
@@ -619,23 +624,25 @@ const COL_TITLES: Record<string, string> = {
               />
             </td>
             <td class="td-actions">
-              <n-button size="tiny" quaternary :disabled="busy" title="删除" @click="deleteRow(i)">✕</n-button>
+              <n-button size="tiny" quaternary :disabled="busy" :title="$t('common.delete')" @click="deleteRow(i)">✕</n-button>
             </td>
           </tr>
           <tr v-if="modelValue.length === 0" class="empty-row">
             <td colspan="12" style="text-align: center; color: var(--n-text-color-3); padding: 16px">
-              暂无字段，点击下方“添加字段”
+              {{ $t('structure.columns.empty') }}
             </td>
           </tr>
         </tbody>
       </table>
     </div>
     <div class="cols-toolbar">
-      <n-button size="tiny" :disabled="busy" @click="addRow()">+ 添加字段</n-button>
+      <n-button size="tiny" :disabled="busy" @click="addRow()">{{ $t('structure.columns.addField') }}</n-button>
       <transition name="fade">
         <span v-if="showStatusChip" class="drag-status">
-          拖动：第 <b>{{ (dragFrom ?? 0) + 1 }}</b> 列 → 第
-          <b>{{ (dropTargetIndex ?? 0) + 1 }}</b> 列
+          <i18n-t keypath="structure.columns.dragStatus" tag="span">
+            <template #from><b>{{ (dragFrom ?? 0) + 1 }}</b></template>
+            <template #to><b>{{ (dropTargetIndex ?? 0) + 1 }}</b></template>
+          </i18n-t>
         </span>
       </transition>
     </div>

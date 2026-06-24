@@ -19,7 +19,7 @@ type ConnParamField struct {
 	Default  string   `json:"default,omitempty"`
 	Required bool     `json:"required,omitempty"`
 	Options  []string `json:"options,omitempty"`
-	Group    string   `json:"group,omitempty"` // "常规" | "SSL" | "SSH"
+	Group    string   `json:"group,omitempty"` // stable key, front-end localizes: "general" | "advanced" | "ssl" | "ssh"
 	Help     string   `json:"help,omitempty"`
 }
 

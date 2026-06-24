@@ -30,22 +30,22 @@ func BuildApplicationMenu(app *application.App) *application.Menu {
 	}
 
 	// File
-	fileMenu := m.AddSubmenu("File")
-	emitItem(fileMenu, "New Tab", "menu:new-tab", "CmdOrCtrl+T")
-	emitItem(fileMenu, "Close Tab", "menu:close-tab", "CmdOrCtrl+W")
+	fileMenu := m.AddSubmenu(tr("menu.file"))
+	emitItem(fileMenu, tr("menu.newTab"), "menu:new-tab", "CmdOrCtrl+T")
+	emitItem(fileMenu, tr("menu.closeTab"), "menu:close-tab", "CmdOrCtrl+W")
 	fileMenu.AddSeparator()
-	emitItem(fileMenu, "Save SQL…", "menu:save-sql", "CmdOrCtrl+S")
-	emitItem(fileMenu, "Open SQL…", "menu:open-sql", "CmdOrCtrl+O")
+	emitItem(fileMenu, tr("menu.saveSql"), "menu:save-sql", "CmdOrCtrl+S")
+	emitItem(fileMenu, tr("menu.openSql"), "menu:open-sql", "CmdOrCtrl+O")
 	fileMenu.AddSeparator()
-	emitItem(fileMenu, "Export Result…", "menu:export-result", "")
-	emitItem(fileMenu, "Import…", "menu:import", "")
+	emitItem(fileMenu, tr("menu.exportResult"), "menu:export-result", "")
+	emitItem(fileMenu, tr("menu.import"), "menu:import", "")
 	if runtime.GOOS != "darwin" {
 		fileMenu.AddSeparator()
 		fileMenu.AddRole(application.Quit)
 	}
 
-	// Edit
-	editMenu := m.AddSubmenu("Edit")
+	// Edit — role items get OS-localised labels automatically.
+	editMenu := m.AddSubmenu(tr("menu.edit"))
 	editMenu.AddRole(application.Undo)
 	editMenu.AddRole(application.Redo)
 	editMenu.AddSeparator()
@@ -54,13 +54,13 @@ func BuildApplicationMenu(app *application.App) *application.Menu {
 	editMenu.AddRole(application.Paste)
 	editMenu.AddRole(application.SelectAll)
 	editMenu.AddSeparator()
-	emitItem(editMenu, "Find…", "menu:find", "CmdOrCtrl+F")
+	emitItem(editMenu, tr("menu.find"), "menu:find", "CmdOrCtrl+F")
 
 	// View
-	viewMenu := m.AddSubmenu("View")
-	emitItem(viewMenu, "Toggle Sidebar", "menu:toggle-sidebar", "CmdOrCtrl+\\")
+	viewMenu := m.AddSubmenu(tr("menu.view"))
+	emitItem(viewMenu, tr("menu.toggleSidebar"), "menu:toggle-sidebar", "CmdOrCtrl+\\")
 	viewMenu.AddSeparator()
-	devToolsItem := viewMenu.Add("Toggle DevTools")
+	devToolsItem := viewMenu.Add(tr("menu.toggleDevtools"))
 	devToolsItem.SetAccelerator("CmdOrCtrl+Shift+I")
 	devToolsItem.OnClick(func(_ *application.Context) {
 		win := app.Window.Current()
@@ -69,25 +69,33 @@ func BuildApplicationMenu(app *application.App) *application.Menu {
 		}
 	})
 	viewMenu.AddSeparator()
+	// Language — the submenu title is localised, but the item labels are
+	// endonyms (each shown in its own language) so they stay fixed. Each item
+	// Emits `menu:set-locale:<code>`; the front-end (api/settings) switches
+	// vue-i18n and persists the choice (which also rebuilds these native menus).
+	langMenu := viewMenu.AddSubmenu(tr("menu.language"))
+	emitItem(langMenu, "English", "menu:set-locale:en-US", "")
+	emitItem(langMenu, "中文（简体）", "menu:set-locale:zh-CN", "")
+	viewMenu.AddSeparator()
 	viewMenu.AddRole(application.Reload)
 	viewMenu.AddRole(application.ToggleFullscreen)
 
 	// Query
-	queryMenu := m.AddSubmenu("Query")
-	emitItem(queryMenu, "Run", "menu:run-query", "")
-	emitItem(queryMenu, "Run Selection", "menu:run-selection", "CmdOrCtrl+Shift+Enter")
-	emitItem(queryMenu, "EXPLAIN", "menu:explain", "CmdOrCtrl+E")
-	emitItem(queryMenu, "Cancel", "menu:cancel-query", "CmdOrCtrl+.")
+	queryMenu := m.AddSubmenu(tr("menu.query"))
+	emitItem(queryMenu, tr("menu.run"), "menu:run-query", "")
+	emitItem(queryMenu, tr("menu.runSelection"), "menu:run-selection", "CmdOrCtrl+Shift+Enter")
+	emitItem(queryMenu, tr("menu.explain"), "menu:explain", "CmdOrCtrl+E")
+	emitItem(queryMenu, tr("menu.cancel"), "menu:cancel-query", "CmdOrCtrl+.")
 
-	// Window (macOS conventional)
-	winMenu := m.AddSubmenu("Window")
+	// Window (macOS conventional) — role items get OS-localised labels.
+	winMenu := m.AddSubmenu(tr("menu.window"))
 	winMenu.AddRole(application.Minimise)
 	winMenu.AddRole(application.Zoom)
 	winMenu.AddRole(application.BringAllToFront)
 
 	// Help
-	helpMenu := m.AddSubmenu("Help")
-	emitItem(helpMenu, "Documentation", "menu:open-docs", "")
+	helpMenu := m.AddSubmenu(tr("menu.help"))
+	emitItem(helpMenu, tr("menu.documentation"), "menu:open-docs", "")
 
 	return m
 }

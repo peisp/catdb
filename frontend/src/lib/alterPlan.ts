@@ -1,3 +1,5 @@
+import { t } from '../i18n'
+
 // alterPlan — diff (original table summary) vs. (user-edited draft) and emit
 // MySQL ALTER TABLE statements. Pure TypeScript: no Vue, no IPC. The structure
 // editor calls this on every edit to refresh the SQL preview panel; the same
@@ -232,29 +234,29 @@ export function typeFormatFor(base: string): TypeFormat {
   switch ((base || '').toUpperCase()) {
     case 'VARCHAR':
     case 'VARBINARY':
-      return { kind: 'length', supportsUnsigned, placeholder: '长度', paramsRequired: true }
+      return { kind: 'length', supportsUnsigned, placeholder: t('structure.columns.ph.length'), paramsRequired: true }
     case 'CHAR':
     case 'BINARY':
-      return { kind: 'length', supportsUnsigned, placeholder: '长度', paramsRequired: false }
+      return { kind: 'length', supportsUnsigned, placeholder: t('structure.columns.ph.length'), paramsRequired: false }
     case 'TINYINT':
     case 'SMALLINT':
     case 'MEDIUMINT':
     case 'INT':
     case 'INTEGER':
     case 'BIGINT':
-      return { kind: 'displayWidth', supportsUnsigned, placeholder: '宽度', paramsRequired: false }
+      return { kind: 'displayWidth', supportsUnsigned, placeholder: t('structure.columns.ph.width'), paramsRequired: false }
     case 'BIT':
-      return { kind: 'displayWidth', supportsUnsigned, placeholder: '位数', paramsRequired: false }
+      return { kind: 'displayWidth', supportsUnsigned, placeholder: t('structure.columns.ph.bits'), paramsRequired: false }
     case 'DECIMAL':
     case 'NUMERIC':
     case 'FLOAT':
     case 'DOUBLE':
     case 'REAL':
-      return { kind: 'precisionScale', supportsUnsigned, placeholder: '精度,小数', paramsRequired: false }
+      return { kind: 'precisionScale', supportsUnsigned, placeholder: t('structure.columns.ph.precisionScale'), paramsRequired: false }
     case 'DATETIME':
     case 'TIMESTAMP':
     case 'TIME':
-      return { kind: 'fractionalSeconds', supportsUnsigned, placeholder: '秒精度', paramsRequired: false }
+      return { kind: 'fractionalSeconds', supportsUnsigned, placeholder: t('structure.columns.ph.fractionalSeconds'), paramsRequired: false }
     case 'ENUM':
     case 'SET':
       return { kind: 'enumValues', supportsUnsigned, placeholder: "'a','b'", paramsRequired: true }
@@ -266,33 +268,37 @@ export function typeFormatFor(base: string): TypeFormat {
 /**
  * Grouped catalog of base types for the type-select dropdown. Order matters:
  * the first option of the first group is what newly-created columns default to.
+ * A function (not a const) so the group labels re-translate on locale switch —
+ * call it from a `computed` in the component.
  */
-export const BASE_TYPE_GROUPS: { label: string; types: string[] }[] = [
-  {
-    label: '字符串',
-    types: ['VARCHAR', 'CHAR', 'TEXT', 'TINYTEXT', 'MEDIUMTEXT', 'LONGTEXT'],
-  },
-  {
-    label: '整数',
-    types: ['INT', 'BIGINT', 'TINYINT', 'SMALLINT', 'MEDIUMINT'],
-  },
-  {
-    label: '小数',
-    types: ['DECIMAL', 'FLOAT', 'DOUBLE'],
-  },
-  {
-    label: '日期时间',
-    types: ['DATETIME', 'TIMESTAMP', 'DATE', 'TIME', 'YEAR'],
-  },
-  {
-    label: '二进制',
-    types: ['BINARY', 'VARBINARY', 'BLOB', 'TINYBLOB', 'MEDIUMBLOB', 'LONGBLOB'],
-  },
-  {
-    label: '其他',
-    types: ['JSON', 'BIT', 'ENUM', 'SET', 'GEOMETRY'],
-  },
-]
+export function baseTypeGroups(): { label: string; types: string[] }[] {
+  return [
+    {
+      label: t('structure.typeGroups.string'),
+      types: ['VARCHAR', 'CHAR', 'TEXT', 'TINYTEXT', 'MEDIUMTEXT', 'LONGTEXT'],
+    },
+    {
+      label: t('structure.typeGroups.integer'),
+      types: ['INT', 'BIGINT', 'TINYINT', 'SMALLINT', 'MEDIUMINT'],
+    },
+    {
+      label: t('structure.typeGroups.decimal'),
+      types: ['DECIMAL', 'FLOAT', 'DOUBLE'],
+    },
+    {
+      label: t('structure.typeGroups.datetime'),
+      types: ['DATETIME', 'TIMESTAMP', 'DATE', 'TIME', 'YEAR'],
+    },
+    {
+      label: t('structure.typeGroups.binary'),
+      types: ['BINARY', 'VARBINARY', 'BLOB', 'TINYBLOB', 'MEDIUMBLOB', 'LONGBLOB'],
+    },
+    {
+      label: t('structure.typeGroups.other'),
+      types: ['JSON', 'BIT', 'ENUM', 'SET', 'GEOMETRY'],
+    },
+  ]
+}
 
 /**
  * One column inside an index draft. `order` is "ASC" / "DESC" / "" — empty

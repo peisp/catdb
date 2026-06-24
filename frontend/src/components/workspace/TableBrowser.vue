@@ -18,6 +18,7 @@ import type { BrowseResult, ColumnMeta } from '../../api/metadata'
 import DataGrid from '../data-grid/DataGrid.vue'
 import { startExport } from '../../composables/useExport'
 import FilterBar from './FilterBar.vue'
+import { t } from '../../i18n'
 
 const props = defineProps<{
   connId: string
@@ -33,12 +34,12 @@ const pageSize = ref<number>(200)
 const page = ref(1)
 // Decoupled from `page` so the user can type freely and only commit on Enter.
 const pageInput = ref<string>('1')
-const pageSizeOptions = [
+const pageSizeOptions = computed(() => [
   { label: '200', value: 200 },
   { label: '500', value: 500 },
   { label: '1000', value: 1000 },
-  { label: '全部', value: ALL_ROWS },
-]
+  { label: t('tableBrowser.allRows'), value: ALL_ROWS },
+])
 
 // ---- sort state ----
 interface SortState { field: number; order: 'asc' | 'desc' }
@@ -184,7 +185,7 @@ async function load() {
       filterOrderBy.value,
     )
   } catch (e) {
-    message.error(`browse failed: ${String(e)}`)
+    message.error(t('tableBrowser.browseFailed', { error: String(e) }))
   } finally {
     loading.value = false
   }
@@ -279,8 +280,8 @@ function displaySql(): string {
 async function copySql() {
   const sql = displaySql()
   if (!sql) return
-  try { await navigator.clipboard.writeText(sql); message.success('SQL copied') }
-  catch (e) { message.error(`copy failed: ${String(e)}`) }
+  try { await navigator.clipboard.writeText(sql); message.success(t('tableBrowser.sqlCopied')) }
+  catch (e) { message.error(t('common.copyFailed', { error: String(e) })) }
 }
 
 const rowsStart = computed(() => {
@@ -411,13 +412,13 @@ async function saveNewRow() {
       table: props.table,
       values,
     })
-    message.success('row inserted')
+    message.success(t('tableBrowser.rowInserted'))
     dmlSql.value = res.sql
     dmlLabel.value = 'INSERT'
     addingRow.value = false
     await load()
   } catch (err) {
-    message.error(`insert failed: ${String(err)}`)
+    message.error(t('tableBrowser.insertFailed', { error: String(err) }))
   }
 }
 
@@ -462,7 +463,7 @@ async function saveChanges() {
         lastLabel = 'UPDATE'
       }
     } catch (err) {
-      message.error(`保存失败: ${String(err)}`)
+      message.error(t('common.saveFailed', { error: String(err) }))
       pendingChanges.value = new Map()
       deletedRows.value = new Set()
       await load()
@@ -484,14 +485,14 @@ async function saveChanges() {
         lastLabel = 'DELETE'
       }
     } catch (err) {
-      message.error(`删除失败: ${String(err)}`)
+      message.error(t('common.deleteFailed', { error: String(err) }))
       pendingChanges.value = new Map()
       deletedRows.value = new Set()
       await load()
       return
     }
   }
-  message.success(`已保存 ${saved} 处修改`)
+  message.success(t('tableBrowser.savedChanges', { n: saved }))
   dmlSql.value = lastSQL
   dmlLabel.value = lastLabel
   pendingChanges.value = new Map()
@@ -523,12 +524,12 @@ function onFilterClear() {
   <div class="tb">
     <div class="toolbar">
       <span class="title mono">{{ db }}.{{ table }}</span>
-      <n-tag v-if="readOnly" size="small" type="warning">read-only · no primary key</n-tag>
+      <n-tag v-if="readOnly" size="small" type="warning">{{ $t('tableBrowser.readOnlyTag') }}</n-tag>
       <n-tag v-else size="small" type="info">PK: {{ pk.join(', ') }}</n-tag>
       <span class="grow" />
       <template v-if="addingRow">
-        <n-button size="tiny" type="primary" :disabled="loading" @click="saveNewRow">保存</n-button>
-        <n-button size="tiny" :disabled="loading" @click="cancelAddRow">取消</n-button>
+        <n-button size="tiny" type="primary" :disabled="loading" @click="saveNewRow">{{ $t('common.save') }}</n-button>
+        <n-button size="tiny" :disabled="loading" @click="cancelAddRow">{{ $t('common.cancel') }}</n-button>
       </template>
       <n-button v-else size="tiny" :disabled="loading || readOnly" @click="startAddRow">+</n-button>
       <n-button
@@ -538,12 +539,12 @@ function onFilterClear() {
         @click="deleteSelectedRows"
       >-</n-button>
       <template v-if="hasUnsavedChanges && !addingRow">
-        <n-button size="tiny" type="primary" :disabled="loading" @click="saveChanges">保存</n-button>
-        <n-button size="tiny" :disabled="loading" @click="discardChanges">取消</n-button>
+        <n-button size="tiny" type="primary" :disabled="loading" @click="saveChanges">{{ $t('common.save') }}</n-button>
+        <n-button size="tiny" :disabled="loading" @click="discardChanges">{{ $t('common.cancel') }}</n-button>
       </template>
-      <n-button size="tiny" @click="load" :disabled="loading">Refresh</n-button>
+      <n-button size="tiny" @click="load" :disabled="loading">{{ $t('common.refresh') }}</n-button>
       <select class="export-select" @change="onExportSelect">
-        <option value="" disabled selected>Export…</option>
+        <option value="" disabled selected>{{ $t('common.exportPlaceholder') }}</option>
         <option value="csv">CSV</option>
         <option value="xlsx">Excel</option>
         <option value="json">JSON</option>
@@ -561,8 +562,7 @@ function onFilterClear() {
     />
 
     <n-alert v-if="readOnly" type="warning" :show-icon="false" class="banner">
-      This table has no primary or unique key. Editing is disabled to avoid
-      ambiguous UPDATE/DELETE statements.
+      {{ $t('tableBrowser.readOnlyBanner') }}
     </n-alert>
 
     <n-spin :show="loading" class="data-spin">
@@ -590,7 +590,7 @@ function onFilterClear() {
         <button
           class="pgbtn"
           :disabled="!hasPrev"
-          title="上一页"
+          :title="$t('tableBrowser.prevPage')"
           @click="goPrev"
         >‹</button>
         <input
@@ -604,7 +604,7 @@ function onFilterClear() {
         <button
           class="pgbtn"
           :disabled="!hasNext"
-          title="下一页"
+          :title="$t('tableBrowser.nextPage')"
           @click="goNext"
         >›</button>
       </div>
@@ -627,13 +627,13 @@ function onFilterClear() {
           v-if="displaySql()"
           class="copy-btn"
           :class="{ visible: sqlHover }"
-          title="复制 SQL"
+          :title="$t('common.copySql')"
           @click="copySql"
-        >复制</button>
+        >{{ $t('common.copy') }}</button>
       </div>
 
       <div class="footer-right">
-        <span class="mono mute">rows {{ rowsStart }} – {{ rowsEnd }}</span>
+        <span class="mono mute">{{ $t('tableBrowser.rowsRange', { start: rowsStart, end: rowsEnd }) }}</span>
         <n-select
           v-model:value="pageSize"
           :options="pageSizeOptions"

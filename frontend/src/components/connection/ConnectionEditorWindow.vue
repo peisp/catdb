@@ -19,6 +19,7 @@ import ConnectionForm from './ConnectionForm.vue'
 import { useConnectionsStore } from '../../stores/connections'
 import { connections as connectionsApi, system as systemApi } from '../../api'
 import type { ConnectionProfile, DriverInfo } from '../../api/connections'
+import { t } from '../../i18n'
 
 const store = useConnectionsStore()
 const message = useMessage()
@@ -40,10 +41,10 @@ async function onWindowCtrl(cmd: 'min' | 'max' | 'close') {
 }
 
 const title = computed(() => {
-  if (initial.value && driver.value) return `编辑 ${driver.value.name} 连接`
-  if (initial.value) return '编辑连接'
-  if (driver.value) return `新建 ${driver.value.name} 连接`
-  return '新建连接'
+  if (initial.value && driver.value) return t('connectionEditor.titleEditDriver', { name: driver.value.name })
+  if (initial.value) return t('connectionEditor.titleEdit')
+  if (driver.value) return t('connectionEditor.titleNewDriver', { name: driver.value.name })
+  return t('connectionEditor.titleNew')
 })
 
 function parseHashQuery(): { driver?: string; id?: string } {
@@ -68,7 +69,7 @@ onMounted(async () => {
     if (drvName) {
       const drv = store.driverByName.get(drvName)
       if (!drv) {
-        errorMessage.value = `未知驱动: ${drvName}`
+        errorMessage.value = t('connectionEditor.unknownDriver', { name: drvName })
         loading.value = false
         return
       }
@@ -79,7 +80,7 @@ onMounted(async () => {
       try {
         initial.value = await connectionsApi.getConnection(id)
       } catch (e: any) {
-        errorMessage.value = `读取连接失败: ${e?.message ?? e}`
+        errorMessage.value = t('connectionEditor.loadConnectionFailed', { error: e?.message ?? e })
       }
     }
   } finally {
@@ -95,7 +96,7 @@ async function onSaved(profile: ConnectionProfile) {
     // Non-fatal — the main window can still pick up changes on refresh.
     console.warn('connection:saved broadcast failed', e)
   }
-  message.success('已保存')
+  message.success(t('common.saved'))
   // Short delay so the success toast is at least briefly visible.
   setTimeout(() => { void Window.Close() }, 200)
 }
@@ -118,10 +119,10 @@ function toggleMaximise() {
       <span class="title">{{ title }}</span>
       <!-- Windows frameless caption buttons -->
       <div v-if="isWin" class="window-controls">
-        <button type="button" class="win-btn win-btn-min" title="最小化" @click="onWindowCtrl('min')">
+        <button type="button" class="win-btn win-btn-min" :title="$t('connectionEditor.minimise')" @click="onWindowCtrl('min')">
           <svg viewBox="0 0 10 10" aria-hidden="true"><rect x="0" y="4.5" width="10" height="1" fill="currentColor" /></svg>
         </button>
-        <button type="button" class="win-btn win-btn-max" :title="isMaximised ? '还原' : '最大化'" @click="onWindowCtrl('max')">
+        <button type="button" class="win-btn win-btn-max" :title="isMaximised ? $t('connectionEditor.restore') : $t('connectionEditor.maximise')" @click="onWindowCtrl('max')">
           <svg v-if="isMaximised" viewBox="0 0 10 10" aria-hidden="true">
             <rect x="1.5" y="3.5" width="6" height="6" rx="0.5" fill="none" stroke="currentColor" stroke-width="0.8" />
             <path d="M3.5 3.5V2A0.5 0.5 0 0 1 4 1.5h4A0.5 0.5 0 0 1 8.5 2v4a0.5 0.5 0 0 1-.5.5H7.5" fill="none" stroke="currentColor" stroke-width="0.8" />
@@ -130,7 +131,7 @@ function toggleMaximise() {
             <rect x="1" y="1" width="8" height="8" rx="0.5" fill="none" stroke="currentColor" stroke-width="0.8" />
           </svg>
         </button>
-        <button type="button" class="win-btn win-btn-close" title="关闭" @click="onWindowCtrl('close')">
+        <button type="button" class="win-btn win-btn-close" :title="$t('common.close')" @click="onWindowCtrl('close')">
           <svg viewBox="0 0 10 10" aria-hidden="true">
             <path d="M1 1l8 8M9 1l-8 8" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" />
           </svg>
@@ -140,7 +141,7 @@ function toggleMaximise() {
     <main class="body">
       <div v-if="loading" class="loading">
         <n-spin size="small" />
-        <span>加载中…</span>
+        <span>{{ $t('connectionEditor.loading') }}</span>
       </div>
       <div v-else-if="errorMessage" class="error">
         {{ errorMessage }}

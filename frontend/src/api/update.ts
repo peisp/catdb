@@ -23,7 +23,9 @@ export type UpdateProgressPhase = 'downloading' | 'installing' | 'ready' | 'erro
 
 export type UpdateProgress = {
   phase: UpdateProgressPhase
-  message?: string
+  // Stable, locale-independent slug for error/status (e.g. "fetch-failed").
+  // The store maps it to a localized message; see error.update.* in i18n.
+  code?: string
   downloaded?: number
   total?: number
   path?: string

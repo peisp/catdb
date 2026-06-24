@@ -16,6 +16,7 @@
 // warning dialog.
 import { createDiscreteApi } from 'naive-ui'
 import { Dialogs } from '@wailsio/runtime'
+import { t } from '../i18n'
 import { useConnectionsStore } from '../stores/connections'
 import { openTextPrompt } from './prompts'
 import { on } from './events'
@@ -54,23 +55,23 @@ export function installSidebarContextMenuListener(): void {
     const ctx = activeGroup
     const store = useConnectionsStore()
     const name = await openTextPrompt({
-      title: '重命名分组',
-      label: '分组名称',
+      title: t('sidebar.group.rename.title'),
+      label: t('sidebar.group.rename.label'),
       initial: ctx.groupName,
-      okText: '保存',
+      okText: t('common.save'),
       validate: (v) => {
-        if (!v) return '请输入分组名称'
+        if (!v) return t('sidebar.group.rename.empty')
         if (v === ctx.groupName) return null
-        if (store.groups.some((g) => g.name === v)) return '分组名称已存在'
+        if (store.groups.some((g) => g.name === v)) return t('sidebar.group.rename.exists')
         return null
       },
     })
     if (!name || name === ctx.groupName) return
     try {
       await store.saveGroup({ id: ctx.groupId, name })
-      message.success('已重命名')
+      message.success(t('common.renamed'))
     } catch (e) {
-      message.error(`重命名失败: ${String(e)}`)
+      message.error(t('common.renameFailed', { error: String(e) }))
     }
   })
 
@@ -84,26 +85,27 @@ export function installSidebarContextMenuListener(): void {
     const memberCount = store.connections.filter((c) => c.groupId === ctx.groupId).length
     if (memberCount > 0) {
       await Dialogs.Warning({
-        Title: '无法删除分组',
-        Message: `分组 "${ctx.groupName}" 还有 ${memberCount} 个连接，请先移动或删除后再试。`,
-        Buttons: [{ Label: '知道了', IsDefault: true }],
+        Title: t('sidebar.group.deleteBlocked.title'),
+        Message: t('sidebar.group.deleteBlocked.message', { name: ctx.groupName, count: memberCount }),
+        Buttons: [{ Label: t('sidebar.group.deleteBlocked.ok'), IsDefault: true }],
       })
       return
     }
+    const deleteLabel = t('common.delete')
     const btn = await Dialogs.Warning({
-      Title: '删除分组',
-      Message: `确定要删除分组 "${ctx.groupName}" 吗？`,
+      Title: t('sidebar.group.delete.title'),
+      Message: t('sidebar.group.delete.confirm', { name: ctx.groupName }),
       Buttons: [
-        { Label: '取消', IsCancel: true },
-        { Label: '删除' },
+        { Label: t('common.cancel'), IsCancel: true },
+        { Label: deleteLabel },
       ],
     })
-    if (btn !== '删除') return
+    if (btn !== deleteLabel) return
     try {
       await store.removeGroup(ctx.groupId)
-      message.success('已删除')
+      message.success(t('common.deleted'))
     } catch (e) {
-      message.error(`删除失败: ${String(e)}`)
+      message.error(t('common.deleteFailed', { error: String(e) }))
     }
   })
 }

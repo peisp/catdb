@@ -24,6 +24,7 @@ import { useQueryStore } from '../../stores/query'
 import { setActiveTableContext } from '../../api/tableContextMenu'
 import { setActiveTreeContext } from '../../api/treeContextMenu'
 import { system as systemApi } from '../../api'
+import { t } from '../../i18n'
 
 const props = defineProps<{ connection: ConnectionProfile }>()
 const emit = defineEmits<{
@@ -107,9 +108,9 @@ async function onLoad(node: TreeOption): Promise<boolean> {
     if (meta.kind === 'database') {
       // Show Tables + Views + saved-queries groups under the database.
       node.children = [
-        mkNode('Tables', { kind: 'tableGroup', db: meta.db }),
-        mkNode('Views', { kind: 'viewGroup', db: meta.db }),
-        mkNode('查询', { kind: 'queryGroup', db: meta.db }),
+        mkNode(t('objectTree.tables'), { kind: 'tableGroup', db: meta.db }),
+        mkNode(t('objectTree.views'), { kind: 'viewGroup', db: meta.db }),
+        mkNode(t('objectTree.queries'), { kind: 'queryGroup', db: meta.db }),
       ]
       return true
     }
@@ -335,7 +336,7 @@ function onDblclick(_: MouseEvent, node: TreeOption) {
     if (m.queryId) {
       queryStore.openSavedQuery(props.connection.id, {
         id: m.queryId,
-        name: m.queryName ?? '查询',
+        name: m.queryName ?? t('objectTree.queries'),
         sqlText: m.querySql ?? '',
         dbName: m.db ?? '',
       })
@@ -380,7 +381,7 @@ async function onRefresh() {
     store.invalidate(props.connection.id)
     await loadRoot()
   } catch (e) {
-    message.error(`刷新失败: ${String(e)}`)
+    message.error(t('objectTree.refreshFailed', { error: String(e) }))
   } finally {
     busy.value = false
   }
@@ -405,7 +406,7 @@ onMounted(() => {
         await store.ensureDatabases(props.connection.id, true)
         await loadRoot()
       } catch (e) {
-        message.error(`刷新失败: ${String(e)}`)
+        message.error(t('objectTree.refreshFailed', { error: String(e) }))
       }
     })()
   })
@@ -436,7 +437,7 @@ onBeforeUnmount(() => {
           size="tiny"
           quaternary
           :disabled="!isLive || busy"
-          :title="isLive ? '新建数据库' : '未连接'"
+          :title="isLive ? $t('objectTree.newDatabase') : $t('objectTree.notConnected')"
           @click="onNewDatabase"
         >
           <svg
@@ -457,7 +458,7 @@ onBeforeUnmount(() => {
           size="tiny"
           quaternary
           :disabled="busy || !isLive"
-          :title="isLive ? '刷新对象树' : '未连接'"
+          :title="isLive ? $t('objectTree.refreshTree') : $t('objectTree.notConnected')"
           @click="onRefresh"
         >
           <svg

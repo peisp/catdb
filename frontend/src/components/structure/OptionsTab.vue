@@ -20,13 +20,13 @@ function commit() {
 <template>
   <div class="opts-tab">
     <n-form label-placement="top" size="small" :show-feedback="false">
-      <n-form-item label="表注释">
+      <n-form-item :label="$t('structure.options.tableComment')">
         <n-input
           v-model:value="modelValue.comment"
           type="textarea"
           :autosize="{ minRows: 3, maxRows: 8 }"
           :disabled="busy"
-          placeholder="对此表的描述…"
+          :placeholder="$t('structure.options.commentPlaceholder')"
           @update:value="commit"
         />
       </n-form-item>

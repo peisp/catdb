@@ -15,6 +15,7 @@ import { savedQuery as savedQueryApi } from '../api'
 import { emit as emitEvent } from '../api/events'
 import { openTextPrompt } from '../api/prompts'
 import { confirmCloseUnsaved } from '../api/dialogs'
+import { t as tr } from '../i18n' // aliased: `t` is the per-tab local var throughout this store
 import type {
   Capabilities,
   QueryBatchResult,
@@ -197,11 +198,11 @@ export const useQueryStore = defineStore('query', () => {
       return true
     }
     const name = await openTextPrompt({
-      title: '保存查询',
-      label: db ? `保存到数据库: ${db}` : '保存查询',
+      title: tr('queryStore.saveTitle'),
+      label: db ? tr('queryStore.saveToDb', { db }) : tr('queryStore.saveTitle'),
       initial: '',
-      okText: '保存',
-      validate: (v) => (v ? null : '名称不能为空'),
+      okText: tr('common.save'),
+      validate: (v) => (v ? null : tr('common.nameEmpty')),
     })
     if (name === null) return false
     const saved = await savedQueryApi.save({ connId: t.connId, dbName: db, name, sqlText: t.sql })
@@ -239,7 +240,7 @@ export const useQueryStore = defineStore('query', () => {
     return addTab(connId, {
       kind: 'new-table',
       db,
-      title: `✚ ${db}.新建表`,
+      title: tr('queryStore.newTableTitle', { db }),
     })
   }
 
@@ -274,7 +275,7 @@ export const useQueryStore = defineStore('query', () => {
     const t = freshTab(connId, {
       kind: 'tables-overview',
       db,
-      title: db ? `📋 ${db}` : '📋 数据库概览',
+      title: db ? `📋 ${db}` : `📋 ${tr('tablesOverview.title')}`,
       pinned: true,
     })
     // Splice in at the front of this connection's run of tabs so it sorts first.

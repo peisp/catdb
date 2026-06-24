@@ -72,3 +72,12 @@ export type MenuCommand =
 export function onMenu(cmd: MenuCommand, cb: () => void): () => void {
   return on<null>(cmd, cb)
 }
+
+// Native "View ▸ Language" menu — each item Emits `menu:set-locale:<code>`.
+// onSetLocale subscribes to every supported locale's event and reports the
+// chosen code. Returns a combined unsubscribe.
+const LOCALE_MENU_CODES = ['en-US', 'zh-CN'] as const
+export function onSetLocale(cb: (locale: string) => void): () => void {
+  const offs = LOCALE_MENU_CODES.map((code) => on<null>(`menu:set-locale:${code}`, () => cb(code)))
+  return () => offs.forEach((off) => off())
+}

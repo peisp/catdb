@@ -18,6 +18,7 @@
 // Context menus are inherently modal-ish (clicking elsewhere dismisses), so
 // a "stale" context is essentially impossible in practice.
 import { createDiscreteApi } from 'naive-ui'
+import { t } from '../i18n'
 import { useTableSelection, type SelectionRange } from '../composables/useTableSelection'
 import { on, emit } from './events'
 
@@ -112,7 +113,7 @@ export function installGridContextMenuListener(): void {
     // Check if any selected column is a primary-key column
     for (let c = minC; c <= maxC; c++) {
       if (pkColumns.includes(columnNames[c])) {
-        message.warning('主键不能设置为NULL')
+        message.warning(t('grid.pkCannotBeNull'))
         return
       }
     }

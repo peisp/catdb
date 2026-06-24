@@ -134,10 +134,14 @@ func (s *UpdateService) SetLastCheckDate(ctx context.Context, date string) error
 // Returns once the installer has been spawned (or an error before that). The
 // caller (front-end) should already have shown a confirm dialog by this point.
 func (s *UpdateService) StartInstall(ctx context.Context, currentVersion string) error {
-	emit := func(phase, message string, extra map[string]any) {
+	// emit sends a progress event. `code` is a stable, locale-independent slug
+	// (e.g. "fetch-failed"); the front-end maps it to a localized message
+	// (stores/updates → error.update.* / update.*). The raw technical detail,
+	// when present, rides along under extra["error"].
+	emit := func(phase, code string, extra map[string]any) {
 		payload := map[string]any{
-			"phase":   phase,
-			"message": message,
+			"phase": phase,
+			"code":  code,
 		}
 		for k, v := range extra {
 			payload[k] = v
@@ -147,20 +151,20 @@ func (s *UpdateService) StartInstall(ctx context.Context, currentVersion string)
 
 	rel, err := updater.FetchLatest(ctx, s.repo)
 	if err != nil {
-		emit("error", "无法获取最新发布信息", map[string]any{"error": err.Error()})
+		emit("error", "fetch-failed", map[string]any{"error": err.Error()})
 		return err
 	}
 	if updater.CompareVersions(rel.Version(), currentVersion) <= 0 {
-		emit("error", "已是最新版本", nil)
+		emit("error", "up-to-date", nil)
 		return fmt.Errorf("updater: no newer release (current=%s latest=%s)", currentVersion, rel.Version())
 	}
 	asset, err := updater.PickAsset(rel)
 	if err != nil {
-		emit("error", "未找到适配当前系统的安装包", map[string]any{"error": err.Error()})
+		emit("error", "no-asset", map[string]any{"error": err.Error()})
 		return err
 	}
 
-	emit("downloading", fmt.Sprintf("正在下载 %s", asset.Name), map[string]any{
+	emit("downloading", "", map[string]any{
 		"downloaded": int64(0),
 		"total":      asset.Size,
 	})
@@ -172,18 +176,18 @@ func (s *UpdateService) StartInstall(ctx context.Context, currentVersion string)
 		})
 	})
 	if err != nil {
-		emit("error", "下载失败", map[string]any{"error": err.Error()})
+		emit("error", "download-failed", map[string]any{"error": err.Error()})
 		return err
 	}
 
-	emit("installing", "正在准备安装", map[string]any{"path": path})
+	emit("installing", "", map[string]any{"path": path})
 
 	if err := updater.Install(ctx, path); err != nil {
-		emit("error", "启动安装器失败", map[string]any{"error": err.Error()})
+		emit("error", "install-failed", map[string]any{"error": err.Error()})
 		return err
 	}
 
-	emit("ready", "应用即将退出以完成更新", nil)
+	emit("ready", "", nil)
 
 	// Give the front-end a beat to render the "ready" state before we yank
 	// the process out from under it. The installer is already detached.

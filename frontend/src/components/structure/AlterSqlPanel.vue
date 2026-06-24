@@ -15,6 +15,7 @@ import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { useThemeStore } from '../../stores/theme'
 import ResizeHandle from '../shared/ResizeHandle.vue'
+import { t } from '../../i18n'
 
 const props = defineProps<{
   /** Generated SQL statements (already terminated with `;`). */
@@ -138,25 +139,26 @@ async function onCopy() {
   if (isEmpty.value) return
   try {
     await navigator.clipboard.writeText(joined.value)
-    message.success('已复制到剪贴板')
+    message.success(t('common.copied'))
   } catch (e) {
-    message.error(`复制失败: ${String(e)}`)
+    message.error(t('common.copyFailed', { error: String(e) }))
   }
 }
 
 function onApply() {
   if (isEmpty.value || props.applyDisabled || props.busy) return
+  const executeLabel = t('common.execute')
   void Dialogs.Warning({
-    Title: props.applyConfirmTitle ?? '应用结构变更',
+    Title: props.applyConfirmTitle ?? t('structure.alter.confirmTitle'),
     Message:
       props.applyConfirmContent ??
-      `将执行 ${props.statements.length} 条 ALTER 语句，操作不可撤销。确定继续？`,
+      t('structure.alter.confirmMessage', { n: props.statements.length }),
     Buttons: [
-      { Label: '取消', IsCancel: true },
-      { Label: '执行' },
+      { Label: t('common.cancel'), IsCancel: true },
+      { Label: executeLabel },
     ],
   }).then((btn) => {
-    if (btn === '执行') emit('apply')
+    if (btn === executeLabel) emit('apply')
   })
 }
 
@@ -181,8 +183,8 @@ function onReset() {
     />
     <header class="alter-panel-head">
       <n-text depth="3" :class="{ 'has-changes': !isEmpty }">
-        <template v-if="isEmpty">未检测到变更</template>
-        <template v-else>{{ statements.length }} 条变更语句</template>
+        <template v-if="isEmpty">{{ $t('structure.alter.noChanges') }}</template>
+        <template v-else>{{ $t('structure.alter.changeCount', { n: statements.length }) }}</template>
       </n-text>
       <n-flex :size="6">
         <n-button
@@ -190,14 +192,14 @@ function onReset() {
           :disabled="isEmpty || busy"
           @click="onReset"
         >
-          放弃修改
+          {{ $t('structure.alter.discard') }}
         </n-button>
         <n-button
           size="tiny"
           :disabled="isEmpty"
           @click="onCopy"
         >
-          复制 SQL
+          {{ $t('common.copySql') }}
         </n-button>
         <n-button
           size="tiny"
@@ -206,13 +208,13 @@ function onReset() {
           :loading="busy"
           @click="onApply"
         >
-          应用
+          {{ $t('common.apply') }}
         </n-button>
       </n-flex>
     </header>
     <div v-if="!isEmpty" ref="host" class="alter-panel-cm" />
     <div v-else class="alter-panel-empty">
-      <n-empty size="small" description="编辑上方表格后，将在此处显示对应的 ALTER SQL" />
+      <n-empty size="small" :description="$t('structure.alter.emptyDesc')" />
     </div>
   </section>
 </template>

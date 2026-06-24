@@ -23,24 +23,24 @@ func RegisterContextMenus(app *application.App) {
 	// Menu for read-only / non-editable contexts (SQL results, PK column
 	// selected in table browser, etc.)
 	grid := application.NewContextMenu("catdb-grid-cell")
-	grid.Add("Copy as TSV").OnClick(emitContextEvent("ctx:grid-copy-tsv"))
-	grid.Add("Copy as INSERT").OnClick(emitContextEvent("ctx:grid-copy-insert"))
-	grid.Add("Copy as UPDATE").OnClick(emitContextEvent("ctx:grid-copy-update"))
+	grid.Add(tr("ctx.grid.copyTsv")).OnClick(emitContextEvent("ctx:grid-copy-tsv"))
+	grid.Add(tr("ctx.grid.copyInsert")).OnClick(emitContextEvent("ctx:grid-copy-insert"))
+	grid.Add(tr("ctx.grid.copyUpdate")).OnClick(emitContextEvent("ctx:grid-copy-update"))
 	grid.AddSeparator()
-	grid.Add("Copy column names").OnClick(emitContextEvent("ctx:grid-copy-columns"))
-	grid.Add("Copy data + column names").OnClick(emitContextEvent("ctx:grid-copy-data-plus-columns"))
+	grid.Add(tr("ctx.grid.copyColumns")).OnClick(emitContextEvent("ctx:grid-copy-columns"))
+	grid.Add(tr("ctx.grid.copyDataPlusColumns")).OnClick(emitContextEvent("ctx:grid-copy-data-plus-columns"))
 	grid.Update()
 
 	// Menu for editable table browser contexts — includes "Set to NULL".
 	editGrid := application.NewContextMenu("catdb-grid-cell-edit")
-	editGrid.Add("Set to NULL").OnClick(emitContextEvent("ctx:grid-set-null"))
+	editGrid.Add(tr("ctx.grid.setNull")).OnClick(emitContextEvent("ctx:grid-set-null"))
 	editGrid.AddSeparator()
-	editGrid.Add("Copy as TSV").OnClick(emitContextEvent("ctx:grid-copy-tsv"))
-	editGrid.Add("Copy as INSERT").OnClick(emitContextEvent("ctx:grid-copy-insert"))
-	editGrid.Add("Copy as UPDATE").OnClick(emitContextEvent("ctx:grid-copy-update"))
+	editGrid.Add(tr("ctx.grid.copyTsv")).OnClick(emitContextEvent("ctx:grid-copy-tsv"))
+	editGrid.Add(tr("ctx.grid.copyInsert")).OnClick(emitContextEvent("ctx:grid-copy-insert"))
+	editGrid.Add(tr("ctx.grid.copyUpdate")).OnClick(emitContextEvent("ctx:grid-copy-update"))
 	editGrid.AddSeparator()
-	editGrid.Add("Copy column names").OnClick(emitContextEvent("ctx:grid-copy-columns"))
-	editGrid.Add("Copy data + column names").OnClick(emitContextEvent("ctx:grid-copy-data-plus-columns"))
+	editGrid.Add(tr("ctx.grid.copyColumns")).OnClick(emitContextEvent("ctx:grid-copy-columns"))
+	editGrid.Add(tr("ctx.grid.copyDataPlusColumns")).OnClick(emitContextEvent("ctx:grid-copy-data-plus-columns"))
 	editGrid.Update()
 
 	// Tab strip context menu — 4 variants by tab position.
@@ -55,26 +55,26 @@ func RegisterContextMenus(app *application.App) {
 		items []struct{ label, event string }
 	}{
 		{"catdb-tab", []struct{ label, event string }{
-			{"关闭", "ctx:tab-close"},
+			{tr("ctx.tab.close"), "ctx:tab-close"},
 			{"", ""}, // separator
-			{"关闭其他", "ctx:tab-close-others"},
-			{"关闭左侧", "ctx:tab-close-left"},
-			{"关闭右侧", "ctx:tab-close-right"},
+			{tr("ctx.tab.closeOthers"), "ctx:tab-close-others"},
+			{tr("ctx.tab.closeLeft"), "ctx:tab-close-left"},
+			{tr("ctx.tab.closeRight"), "ctx:tab-close-right"},
 		}},
 		{"catdb-tab-first", []struct{ label, event string }{
-			{"关闭", "ctx:tab-close"},
+			{tr("ctx.tab.close"), "ctx:tab-close"},
 			{"", ""},
-			{"关闭其他", "ctx:tab-close-others"},
-			{"关闭右侧", "ctx:tab-close-right"},
+			{tr("ctx.tab.closeOthers"), "ctx:tab-close-others"},
+			{tr("ctx.tab.closeRight"), "ctx:tab-close-right"},
 		}},
 		{"catdb-tab-last", []struct{ label, event string }{
-			{"关闭", "ctx:tab-close"},
+			{tr("ctx.tab.close"), "ctx:tab-close"},
 			{"", ""},
-			{"关闭其他", "ctx:tab-close-others"},
-			{"关闭左侧", "ctx:tab-close-left"},
+			{tr("ctx.tab.closeOthers"), "ctx:tab-close-others"},
+			{tr("ctx.tab.closeLeft"), "ctx:tab-close-left"},
 		}},
 		{"catdb-tab-only", []struct{ label, event string }{
-			{"关闭", "ctx:tab-close"},
+			{tr("ctx.tab.close"), "ctx:tab-close"},
 		}},
 	}
 	for _, t := range tabs {
@@ -93,12 +93,12 @@ func RegisterContextMenus(app *application.App) {
 	// ObjectTree (table node). Open / Edit structure / Truncate / Drop.
 	// Selected table is tracked in the front-end (see api/tableContextMenu.ts).
 	overview := application.NewContextMenu("catdb-tables-overview")
-	overview.Add("打开").OnClick(emitContextEvent("ctx:tbl-open"))
-	overview.Add("修改").OnClick(emitContextEvent("ctx:tbl-edit"))
-	overview.Add("重命名").OnClick(emitContextEvent("ctx:tbl-rename"))
+	overview.Add(tr("ctx.open")).OnClick(emitContextEvent("ctx:tbl-open"))
+	overview.Add(tr("ctx.table.edit")).OnClick(emitContextEvent("ctx:tbl-edit"))
+	overview.Add(tr("ctx.rename")).OnClick(emitContextEvent("ctx:tbl-rename"))
 	overview.AddSeparator()
-	overview.Add("清空").OnClick(emitContextEvent("ctx:tbl-truncate"))
-	overview.Add("删除").OnClick(emitContextEvent("ctx:tbl-drop"))
+	overview.Add(tr("ctx.table.truncate")).OnClick(emitContextEvent("ctx:tbl-truncate"))
+	overview.Add(tr("ctx.delete")).OnClick(emitContextEvent("ctx:tbl-drop"))
 	overview.Update()
 
 	// Object-tree right-click menus — one per node kind. The front-end
@@ -108,66 +108,66 @@ func RegisterContextMenus(app *application.App) {
 	// `ctx:tbl-*` events above. Tree-only actions emit `ctx:tree-*`.
 
 	treeTable := application.NewContextMenu("catdb-tree-table")
-	treeTable.Add("打开").OnClick(emitContextEvent("ctx:tbl-open"))
-	treeTable.Add("修改").OnClick(emitContextEvent("ctx:tbl-edit"))
-	treeTable.Add("重命名").OnClick(emitContextEvent("ctx:tbl-rename"))
+	treeTable.Add(tr("ctx.open")).OnClick(emitContextEvent("ctx:tbl-open"))
+	treeTable.Add(tr("ctx.table.edit")).OnClick(emitContextEvent("ctx:tbl-edit"))
+	treeTable.Add(tr("ctx.rename")).OnClick(emitContextEvent("ctx:tbl-rename"))
 	treeTable.AddSeparator()
-	treeTable.Add("清空").OnClick(emitContextEvent("ctx:tbl-truncate"))
-	treeTable.Add("删除").OnClick(emitContextEvent("ctx:tbl-drop"))
+	treeTable.Add(tr("ctx.table.truncate")).OnClick(emitContextEvent("ctx:tbl-truncate"))
+	treeTable.Add(tr("ctx.delete")).OnClick(emitContextEvent("ctx:tbl-drop"))
 	treeTable.AddSeparator()
-	treeTable.Add("刷新列").OnClick(emitContextEvent("ctx:tree-refresh-cols"))
+	treeTable.Add(tr("ctx.table.refreshCols")).OnClick(emitContextEvent("ctx:tree-refresh-cols"))
 	treeTable.Update()
 
 	treeView := application.NewContextMenu("catdb-tree-view")
-	treeView.Add("打开").OnClick(emitContextEvent("ctx:tbl-open"))
+	treeView.Add(tr("ctx.open")).OnClick(emitContextEvent("ctx:tbl-open"))
 	treeView.Update()
 
 	treeTableGroup := application.NewContextMenu("catdb-tree-table-group")
-	treeTableGroup.Add("新建表").OnClick(emitContextEvent("ctx:tree-new-table"))
-	treeTableGroup.Add("刷新").OnClick(emitContextEvent("ctx:tree-refresh-tables"))
+	treeTableGroup.Add(tr("ctx.tree.newTable")).OnClick(emitContextEvent("ctx:tree-new-table"))
+	treeTableGroup.Add(tr("ctx.refresh")).OnClick(emitContextEvent("ctx:tree-refresh-tables"))
 	treeTableGroup.Update()
 
 	treeViewGroup := application.NewContextMenu("catdb-tree-view-group")
-	treeViewGroup.Add("刷新").OnClick(emitContextEvent("ctx:tree-refresh-views"))
+	treeViewGroup.Add(tr("ctx.refresh")).OnClick(emitContextEvent("ctx:tree-refresh-views"))
 	treeViewGroup.Update()
 
 	treeDb := application.NewContextMenu("catdb-tree-database")
-	treeDb.Add("新建数据库").OnClick(emitContextEvent("ctx:tree-db-new"))
-	treeDb.Add("编辑数据库").OnClick(emitContextEvent("ctx:tree-db-edit"))
+	treeDb.Add(tr("ctx.tree.newDatabase")).OnClick(emitContextEvent("ctx:tree-db-new"))
+	treeDb.Add(tr("ctx.tree.editDatabase")).OnClick(emitContextEvent("ctx:tree-db-edit"))
 	treeDb.AddSeparator()
-	treeDb.Add("新建表").OnClick(emitContextEvent("ctx:tree-new-table"))
-	treeDb.Add("刷新").OnClick(emitContextEvent("ctx:tree-refresh-db"))
+	treeDb.Add(tr("ctx.tree.newTable")).OnClick(emitContextEvent("ctx:tree-new-table"))
+	treeDb.Add(tr("ctx.refresh")).OnClick(emitContextEvent("ctx:tree-refresh-db"))
 	treeDb.Update()
 
 	// Saved-query group + leaf menus. The group lives under each database node
 	// alongside Tables/Views; leaves are individual saved SQL snippets.
 	treeQueryGroup := application.NewContextMenu("catdb-tree-query-group")
-	treeQueryGroup.Add("新建查询").OnClick(emitContextEvent("ctx:tree-new-query"))
-	treeQueryGroup.Add("刷新").OnClick(emitContextEvent("ctx:tree-refresh-queries"))
+	treeQueryGroup.Add(tr("ctx.tree.newQuery")).OnClick(emitContextEvent("ctx:tree-new-query"))
+	treeQueryGroup.Add(tr("ctx.refresh")).OnClick(emitContextEvent("ctx:tree-refresh-queries"))
 	treeQueryGroup.Update()
 
 	treeQuery := application.NewContextMenu("catdb-tree-query")
-	treeQuery.Add("打开").OnClick(emitContextEvent("ctx:query-open"))
-	treeQuery.Add("重命名").OnClick(emitContextEvent("ctx:query-rename"))
+	treeQuery.Add(tr("ctx.open")).OnClick(emitContextEvent("ctx:query-open"))
+	treeQuery.Add(tr("ctx.rename")).OnClick(emitContextEvent("ctx:query-rename"))
 	treeQuery.AddSeparator()
-	treeQuery.Add("删除").OnClick(emitContextEvent("ctx:query-delete"))
+	treeQuery.Add(tr("ctx.delete")).OnClick(emitContextEvent("ctx:query-delete"))
 	treeQuery.Update()
 
 	// Connection-sidebar right-click — connect / disconnect / edit / delete.
 	// The front-end decides which actions apply based on connection state.
 	conn := application.NewContextMenu("catdb-connection")
-	conn.Add("打开连接").OnClick(emitContextEvent("ctx:conn-connect"))
-	conn.Add("断开连接").OnClick(emitContextEvent("ctx:conn-disconnect"))
+	conn.Add(tr("ctx.conn.connect")).OnClick(emitContextEvent("ctx:conn-connect"))
+	conn.Add(tr("ctx.conn.disconnect")).OnClick(emitContextEvent("ctx:conn-disconnect"))
 	conn.AddSeparator()
-	conn.Add("编辑").OnClick(emitContextEvent("ctx:conn-edit"))
+	conn.Add(tr("ctx.conn.edit")).OnClick(emitContextEvent("ctx:conn-edit"))
 	conn.AddSeparator()
-	conn.Add("删除").OnClick(emitContextEvent("ctx:conn-delete"))
+	conn.Add(tr("ctx.delete")).OnClick(emitContextEvent("ctx:conn-delete"))
 	conn.Update()
 
 	// Sidebar blank-area right-click — only 新建分组 for now. Extracted so the
 	// menu can grow without colliding with the connection / group variants.
 	sbEmpty := application.NewContextMenu("catdb-sidebar-empty")
-	sbEmpty.Add("新建分组").OnClick(emitContextEvent("ctx:sb-new-group"))
+	sbEmpty.Add(tr("ctx.sidebar.newGroup")).OnClick(emitContextEvent("ctx:sb-new-group"))
 	sbEmpty.Update()
 
 	// Group-label right-click — always offers 重命名 and 删除. The backend
@@ -176,10 +176,10 @@ func RegisterContextMenus(app *application.App) {
 	// — so showing the entry unconditionally costs nothing and keeps the menu
 	// shape stable regardless of contents.
 	sbGroup := application.NewContextMenu("catdb-sidebar-group")
-	sbGroup.Add("新建分组").OnClick(emitContextEvent("ctx:sb-new-group"))
+	sbGroup.Add(tr("ctx.sidebar.newGroup")).OnClick(emitContextEvent("ctx:sb-new-group"))
 	sbGroup.AddSeparator()
-	sbGroup.Add("重命名").OnClick(emitContextEvent("ctx:sb-group-rename"))
-	sbGroup.Add("删除").OnClick(emitContextEvent("ctx:sb-group-delete"))
+	sbGroup.Add(tr("ctx.rename")).OnClick(emitContextEvent("ctx:sb-group-rename"))
+	sbGroup.Add(tr("ctx.delete")).OnClick(emitContextEvent("ctx:sb-group-delete"))
 	sbGroup.Update()
 }
 

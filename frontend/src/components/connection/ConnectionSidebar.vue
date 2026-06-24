@@ -21,6 +21,7 @@ import type { ConnectionProfile } from '../../api/connections'
 import { useConnectionsStore } from '../../stores/connections'
 import { setActiveConnectionContext } from '../../api/connectionContextMenu'
 import { setActiveGroupContext } from '../../api/sidebarContextMenu'
+import { t } from '../../i18n'
 
 const emit = defineEmits<{
   (e: 'select', conn: ConnectionProfile): void
@@ -45,7 +46,7 @@ const grouped = computed(() => {
   }
   return Array.from(byGroup.entries()).map(([id, items]) => ({
     id,
-    label: id === UNGROUPED ? '未分组' : store.groups.find((g) => g.id === id)?.name ?? id,
+    label: id === UNGROUPED ? t('connectionSidebar.ungrouped') : store.groups.find((g) => g.id === id)?.name ?? id,
     items,
   }))
 })
@@ -130,7 +131,7 @@ async function commitNewGroup() {
   if (store.groups.some((g) => g.name === name)) {
     // Name collisions are quiet: keep the input open and surface a toast so
     // the user can correct without losing what they typed.
-    message.warning(`分组 "${name}" 已存在`)
+    message.warning(t('connectionSidebar.groupExists', { name }))
     void nextTick(() => newGroupInputRef.value?.focus())
     return
   }
@@ -139,7 +140,7 @@ async function commitNewGroup() {
     await store.saveGroup({ name })
     newGroupName.value = null
   } catch (e) {
-    message.error(`创建失败: ${String(e)}`)
+    message.error(t('connectionSidebar.createFailed', { error: String(e) }))
   } finally {
     savingNewGroup.value = false
   }
@@ -200,7 +201,7 @@ async function onDrop(ev: DragEvent, groupId: string) {
   try {
     await store.moveConnection(id, target)
   } catch (e) {
-    message.error(`移动失败: ${String(e)}`)
+    message.error(t('connectionSidebar.moveFailed', { error: String(e) }))
   }
 }
 
@@ -215,7 +216,7 @@ async function onDoubleClick(conn: ConnectionProfile) {
     await store.connect(conn.id)
     emit('select', conn)
   } catch (e) {
-    message.error(`连接失败: ${String(e)}`)
+    message.error(t('common.connectFailed', { error: String(e) }))
   }
 }
 
@@ -252,7 +253,7 @@ onMounted(() => {
     @contextmenu.prevent="onBlankCtx"
   >
     <div class="header">
-      <span class="title">Connections</span>
+      <span class="title">{{ $t('connectionSidebar.title') }}</span>
     </div>
     <n-scrollbar class="list">
       <n-spin :show="store.loading">
@@ -268,7 +269,7 @@ onMounted(() => {
           @drop="onDrop($event, g.id)"
         >
           <div class="group-label">{{ g.label }}</div>
-          <div v-if="g.items.length === 0" class="group-empty">空</div>
+          <div v-if="g.items.length === 0" class="group-empty">{{ $t('connectionSidebar.empty') }}</div>
           <div
               v-for="c in g.items"
               :key="c.id"
@@ -297,7 +298,7 @@ onMounted(() => {
               v-model="newGroupName"
               type="text"
               class="new-group-input"
-              placeholder="分组名称"
+              :placeholder="$t('connectionSidebar.groupNamePlaceholder')"
               autocomplete="off"
               spellcheck="false"
               @keydown.enter.prevent="commitNewGroup"

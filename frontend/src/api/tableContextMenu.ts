@@ -15,6 +15,7 @@
 // `onAfterMutate` 回调触发（重新拉取表列表 + 清理元数据缓存）。
 import { createDiscreteApi } from 'naive-ui'
 import { Dialogs } from '@wailsio/runtime'
+import { t } from '../i18n'
 import { quoteTable } from '../lib/alterPlan'
 import { useQueryStore } from '../stores/query'
 import { useMetadataStore } from '../stores/metadata'
@@ -62,14 +63,14 @@ export function installTableContextMenuListener(): void {
     if (!active) return
     const ctx = active
     const newName = await openTextPrompt({
-      title: '重命名表',
-      label: `当前: ${ctx.db}.${ctx.table}`,
+      title: t('table.rename.title'),
+      label: t('common.currentLabel', { name: `${ctx.db}.${ctx.table}` }),
       initial: ctx.table,
-      okText: '重命名',
+      okText: t('common.rename'),
       validate: (v) => {
-        if (!v) return '表名不能为空'
-        if (v === ctx.table) return '与原名相同'
-        if (/[`\s.]/.test(v)) return '不能包含空格、点或反引号'
+        if (!v) return t('table.rename.empty')
+        if (v === ctx.table) return t('common.sameName')
+        if (/[`\s.]/.test(v)) return t('table.rename.invalidChars')
         return null
       },
     })
@@ -91,53 +92,55 @@ export function installTableContextMenuListener(): void {
       const meta = useMetadataStore()
       meta.invalidateTables(ctx.connId, ctx.db)
       meta.invalidateColumns(ctx.connId, ctx.db, ctx.table)
-      message.success(`已重命名为 ${newName}`)
+      message.success(t('common.renamedTo', { name: newName }))
       await ctx.onAfterMutate?.()
     } catch (e) {
-      message.error(`重命名失败: ${String(e)}`)
+      message.error(t('common.renameFailed', { error: String(e) }))
     }
   })
 
   on('ctx:tbl-truncate', async () => {
     if (!active) return
     const ctx = active
+    const truncateLabel = t('table.truncate.ok')
     const btn = await Dialogs.Warning({
-      Title: '清空表',
-      Message: `确定要清空 ${ctx.db}.${ctx.table} 吗？所有数据将被删除，操作不可撤销。`,
+      Title: t('table.truncate.title'),
+      Message: t('table.truncate.confirm', { name: `${ctx.db}.${ctx.table}` }),
       Buttons: [
-        { Label: '取消', IsCancel: true },
-        { Label: '清空' },
+        { Label: t('common.cancel'), IsCancel: true },
+        { Label: truncateLabel },
       ],
     })
-    if (btn !== '清空') return
+    if (btn !== truncateLabel) return
     try {
       await runQuery(ctx.connId, `TRUNCATE TABLE ${quoteTable(ctx.db, ctx.table)}`)
-      message.success(`已清空 ${ctx.table}`)
+      message.success(t('table.truncate.success', { name: ctx.table }))
       await ctx.onAfterMutate?.()
     } catch (e) {
-      message.error(`清空失败: ${String(e)}`)
+      message.error(t('table.truncate.error', { error: String(e) }))
     }
   })
 
   on('ctx:tbl-drop', async () => {
     if (!active) return
     const ctx = active
+    const deleteLabel = t('common.delete')
     const btn = await Dialogs.Error({
-      Title: '删除表',
-      Message: `确定要删除 ${ctx.db}.${ctx.table} 吗？表结构与数据都将被删除，操作不可撤销。`,
+      Title: t('table.drop.title'),
+      Message: t('table.drop.confirm', { name: `${ctx.db}.${ctx.table}` }),
       Buttons: [
-        { Label: '取消', IsCancel: true },
-        { Label: '删除' },
+        { Label: t('common.cancel'), IsCancel: true },
+        { Label: deleteLabel },
       ],
     })
-    if (btn !== '删除') return
+    if (btn !== deleteLabel) return
     try {
       await runQuery(ctx.connId, `DROP TABLE ${quoteTable(ctx.db, ctx.table)}`)
-      message.success(`已删除 ${ctx.table}`)
+      message.success(t('table.drop.success', { name: ctx.table }))
       useMetadataStore().invalidateTables(ctx.connId, ctx.db)
       await ctx.onAfterMutate?.()
     } catch (e) {
-      message.error(`删除失败: ${String(e)}`)
+      message.error(t('common.deleteFailed', { error: String(e) }))
     }
   })
 }

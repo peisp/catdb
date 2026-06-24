@@ -30,7 +30,9 @@ export const useUpdatesStore = defineStore('updates', () => {
   const phase = ref<UpdatePhase>('idle')
   const downloaded = ref(0)
   const total = ref(0)
-  const installMessage = ref('')
+  // Locale-independent status/error slug from Go (e.g. 'fetch-failed'); the
+  // UpdateDialog maps it to a localized message via error.update.*.
+  const errorCode = ref('')
 
   let unsubscribe: (() => void) | null = null
 
@@ -40,7 +42,7 @@ export const useUpdatesStore = defineStore('updates', () => {
       phase.value = p.phase
       if (typeof p.downloaded === 'number') downloaded.value = p.downloaded
       if (typeof p.total === 'number') total.value = p.total
-      if (p.message) installMessage.value = p.message
+      if (p.code) errorCode.value = p.code
       if (p.error) lastError.value = p.error
     })
   }
@@ -101,7 +103,7 @@ export const useUpdatesStore = defineStore('updates', () => {
     phase.value = 'downloading'
     downloaded.value = 0
     total.value = 0
-    installMessage.value = ''
+    errorCode.value = ''
     lastError.value = ''
     try {
       await updateApi.startInstall(currentVersion.value)
@@ -137,7 +139,7 @@ export const useUpdatesStore = defineStore('updates', () => {
     phase,
     downloaded,
     total,
-    installMessage,
+    errorCode,
     hasBadge,
     check,
     skipCurrent,

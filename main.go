@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"log"
 	"runtime"
@@ -42,6 +43,8 @@ func main() {
 	mgr := session.NewManager(store, secrets)
 	defer mgr.CloseAll()
 
+	settingsSvc := services.NewSettingsService(store)
+
 	app := application.New(application.Options{
 		Name:        "catdb",
 		Description: "Cross-platform database management tool",
@@ -54,6 +57,7 @@ func main() {
 			application.NewService(services.NewSystemService()),
 			application.NewService(services.NewSavedQueryService(store)),
 			application.NewService(services.NewUpdateService(store, "")),
+			application.NewService(settingsSvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -70,6 +74,11 @@ func main() {
 	app.Event.On("custom:switch-english-input", func(_ *application.CustomEvent) {
 		platform.SwitchToEnglishInputSource()
 	})
+	// Seed the native-menu locale from the persisted preference so the app
+	// menu + context menus render in the right language from the first frame.
+	if loc, err := settingsSvc.GetLocale(context.Background()); err == nil {
+		wailsbridge.InitMenuLocale(loc)
+	}
 	app.Menu.SetApplicationMenu(wailsbridge.BuildApplicationMenu(app))
 	wailsbridge.RegisterContextMenus(app)
 

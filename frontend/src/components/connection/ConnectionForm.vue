@@ -28,6 +28,23 @@ import {
 } from 'naive-ui'
 import type { ConnectionDraft, ConnectionProfile, DriverInfo } from '../../api/connections'
 import { useConnectionsStore } from '../../stores/connections'
+import { t, i18n } from '../../i18n'
+
+// Localize a driver-provided schema string (group/label/help) by key, falling
+// back to the driver's own (English baseline) text when no translation exists.
+// Keeps the driver locale-agnostic while still localizing the MySQL fields.
+function trOr(key: string, fallback: string): string {
+  return i18n.global.te(key) ? (i18n.global.t(key) as string) : fallback
+}
+function groupLabel(g: string): string {
+  return trOr(`connection.form.groups.${g}`, g)
+}
+function fieldLabel(f: { key: string; label: string }): string {
+  return trOr(`connection.form.field.${f.key.replace(/\./g, '_')}`, f.label)
+}
+function fieldHelp(f: { key: string; help?: string }): string {
+  return f.help ? trOr(`connection.form.help.${f.key.replace(/\./g, '_')}`, f.help) : ''
+}
 
 const props = defineProps<{
   driver?: DriverInfo | null
@@ -130,17 +147,17 @@ watch(selectedDriver, () => {
   values.value = buildInitialValues()
 })
 
-// Group fields by their declared group. Maintain a stable display order so
-// the segmented tabs always read 常规 → 高级 → SSL → SSH and any
-// driver-specific buckets land after that (alphabetical).
-const GROUP_ORDER = ['常规', '高级', 'SSL', 'SSH']
+// Group fields by their declared group. Groups are stable keys from the driver
+// (general → advanced → ssl → ssh); the display labels are localized in the
+// template. Driver-specific buckets land after the known ones (alphabetical).
+const GROUP_ORDER = ['general', 'advanced', 'ssl', 'ssh']
 type SchemaField = NonNullable<DriverInfo['schema']>[number]
 const grouped = computed(() => {
   const groups = new Map<string, SchemaField[]>()
   const drv = selectedDriver.value
   if (!drv) return []
   for (const f of drv.schema) {
-    const g = f.group || '常规'
+    const g = f.group || 'general'
     if (!groups.has(g)) groups.set(g, [])
     groups.get(g)!.push(f)
   }
@@ -232,7 +249,7 @@ const testing = computed(() => testStatus.value === 'running')
 async function onTest() {
   if (testing.value) return
   testStatus.value = 'running'
-  testMessage.value = '正在测试连接…'
+  testMessage.value = t('connection.form.testing')
   testElapsedMs.value = 0
   testCtrl.value = new AbortController()
   const start = Date.now()
@@ -240,15 +257,15 @@ async function onTest() {
     await store.test(buildDraft(), testCtrl.value.signal)
     testElapsedMs.value = Date.now() - start
     testStatus.value = 'success'
-    testMessage.value = '连接成功'
+    testMessage.value = t('connection.form.testSuccess')
   } catch (e: any) {
     testElapsedMs.value = Date.now() - start
     if (testCtrl.value?.signal.aborted) {
       testStatus.value = 'canceled'
-      testMessage.value = '已取消测试'
+      testMessage.value = t('connection.form.testCanceled')
     } else {
       testStatus.value = 'error'
-      testMessage.value = `连接失败: ${formatErr(e)}`
+      testMessage.value = t('common.connectFailed', { error: formatErr(e) })
     }
   } finally {
     testCtrl.value = null
@@ -272,20 +289,20 @@ watch(name, () => { clearTestResult() })
 const saving = ref(false)
 async function onSave() {
   if (!name.value.trim()) {
-    message.warning('请填写连接名称')
+    message.warning(t('connection.form.nameRequired'))
     return
   }
   if (!selectedDriver.value) {
-    message.warning('请选择连接类型')
+    message.warning(t('connection.form.driverRequired'))
     return
   }
   saving.value = true
   try {
     const saved = await store.save(buildDraft())
-    message.success('已保存')
+    message.success(t('common.saved'))
     emit('saved', saved)
   } catch (e: any) {
-    message.error(`保存失败: ${formatErr(e)}`)
+    message.error(t('common.saveFailed', { error: formatErr(e) }))
   } finally {
     saving.value = false
   }
@@ -327,7 +344,7 @@ function selectOptions(opts: string[]) {
     <!-- Driver-type rail. Locked when editing — a saved profile's driver
          can't be swapped without orphaning keyring credentials. -->
     <aside class="driver-rail">
-      <div class="rail-label">类型</div>
+      <div class="rail-label">{{ $t('connection.form.driverType') }}</div>
       <div class="rail-list">
         <button
           v-for="d in driverList"
@@ -344,7 +361,7 @@ function selectOptions(opts: string[]) {
           <span class="rail-dot" :class="{ active: selectedDriver?.name === d.name }" />
           <span class="rail-name">{{ d.name }}</span>
         </button>
-        <div v-if="driverList.length === 0" class="rail-empty">没有可用驱动</div>
+        <div v-if="driverList.length === 0" class="rail-empty">{{ $t('connection.form.noDrivers') }}</div>
       </div>
     </aside>
 
@@ -363,10 +380,10 @@ function selectOptions(opts: string[]) {
         class="header-form"
       >
         <div class="header-row">
-          <n-form-item label="名称" required class="header-item header-item-grow">
+          <n-form-item :label="$t('connection.form.name')" required class="header-item header-item-grow">
             <n-input v-model:value="name" size="small" placeholder="My MySQL" />
           </n-form-item>
-          <n-form-item label="分组" class="header-item header-item-group">
+          <n-form-item :label="$t('connection.form.group')" class="header-item header-item-group">
             <!-- Native HTML <select> — the system's own dropdown chrome
                  (caret, popup) reads as a real desktop control instead of a
                  Web overlay (UI_SPEC.md "向原生靠拢"). The empty option acts
@@ -375,7 +392,7 @@ function selectOptions(opts: string[]) {
               v-model="groupId"
               class="group-select"
             >
-              <option :value="null">未分组</option>
+              <option :value="null">{{ $t('connection.form.ungrouped') }}</option>
               <option v-for="g in store.groups" :key="g.id" :value="g.id">{{ g.name }}</option>
             </select>
           </n-form-item>
@@ -395,7 +412,7 @@ function selectOptions(opts: string[]) {
             v-for="[g, fields] in grouped"
             :key="g"
             :name="g"
-            :tab="g"
+            :tab="groupLabel(g)"
             display-directive="show:lazy"
           >
             <n-form
@@ -408,7 +425,7 @@ function selectOptions(opts: string[]) {
               <n-form-item
                 v-for="f in fields"
                 :key="f.key"
-                :label="f.label"
+                :label="fieldLabel(f)"
                 :required="f.required"
                 :show-feedback="!!f.help"
               >
@@ -452,7 +469,7 @@ function selectOptions(opts: string[]) {
                   />
                 </template>
                 <template v-if="f.help" #feedback>
-                  <span class="hint">{{ f.help }}</span>
+                  <span class="hint">{{ fieldHelp(f) }}</span>
                 </template>
               </n-form-item>
             </n-form>
@@ -481,7 +498,7 @@ function selectOptions(opts: string[]) {
           v-if="testStatus !== 'running'"
           class="status-dismiss"
           type="button"
-          aria-label="关闭"
+          :aria-label="$t('common.close')"
           @click="clearTestResult"
         >×</button>
       </div>
@@ -491,10 +508,10 @@ function selectOptions(opts: string[]) {
              关闭 → 测试连接 → 保存 so the primary 保存 keeps the
              rightmost (default-action) slot. -->
         <div class="actions-right">
-          <n-button v-if="testing" size="small" @click="cancelTest">取消测试</n-button>
-          <n-button v-else size="small" @click="onTest" :loading="testing">测试连接</n-button>
-          <n-button size="small" @click="emit('cancel')">关闭</n-button>
-          <n-button size="small" type="primary" :loading="saving" @click="onSave">保存</n-button>
+          <n-button v-if="testing" size="small" @click="cancelTest">{{ $t('connection.form.cancelTest') }}</n-button>
+          <n-button v-else size="small" @click="onTest" :loading="testing">{{ $t('connection.form.testConn') }}</n-button>
+          <n-button size="small" @click="emit('cancel')">{{ $t('common.close') }}</n-button>
+          <n-button size="small" type="primary" :loading="saving" @click="onSave">{{ $t('common.save') }}</n-button>
         </div>
       </div>
     </footer>

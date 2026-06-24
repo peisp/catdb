@@ -13,8 +13,22 @@ import { NModal, NButton, NProgress, NSpace, NAlert } from 'naive-ui'
 import MarkdownIt from 'markdown-it'
 import { useUpdatesStore } from '../../stores/updates'
 import { system as systemApi } from '../../api'
+import { t } from '../../i18n'
 
 const updates = useUpdatesStore()
+
+// Known update error slugs Go can emit (see UpdateService.StartInstall).
+const UPDATE_ERROR_CODES = ['fetch-failed', 'up-to-date', 'no-asset', 'download-failed', 'install-failed']
+
+// Localized error line: friendly message from the Go error code, with the raw
+// technical detail appended when present; falls back to the generic message.
+const errorText = computed(() => {
+  const code = updates.errorCode
+  const friendly = code && UPDATE_ERROR_CODES.includes(code) ? t(`error.update.${code}`) : ''
+  const detail = updates.lastError
+  if (friendly && detail) return `${friendly}: ${detail}`
+  return friendly || detail || t('update.updateFailed')
+})
 
 const md = new MarkdownIt({
   html: false,
@@ -105,14 +119,14 @@ function onNotesClick(e: MouseEvent) {
     :close-on-esc="!isInstalling"
     :closable="!isInstalling"
     :style="{ width: '560px' }"
-    title="发现新版本"
+    :title="$t('update.title')"
   >
     <div class="meta">
       <div class="version-row">
         <span class="ver new">v{{ updates.latestVersion }}</span>
-        <span class="ver from">当前 v{{ updates.currentVersion }}</span>
+        <span class="ver from">{{ $t('update.currentVersion', { version: updates.currentVersion }) }}</span>
       </div>
-      <div v-if="publishedAtPretty" class="published">发布于 {{ publishedAtPretty }}</div>
+      <div v-if="publishedAtPretty" class="published">{{ $t('update.publishedAt', { date: publishedAtPretty }) }}</div>
     </div>
 
     <div class="notes" v-html="renderedNotes" @click="onNotesClick" />
@@ -123,13 +137,13 @@ function onNotesClick(e: MouseEvent) {
       :show-icon="false"
       class="no-asset"
     >
-      未找到适配当前系统的安装包。可点击下方链接前往 GitHub 手动下载。
+      {{ $t('update.noAsset') }}
     </n-alert>
 
     <div v-if="isInstalling || updates.phase === 'ready' || updates.phase === 'error'" class="install-status">
       <div v-if="updates.phase === 'downloading'" class="status-row">
         <div class="status-text">
-          正在下载 {{ updates.assetName }} ({{ downloadedMB }} / {{ totalMB }} MB)
+          {{ $t('update.downloading', { name: updates.assetName, downloaded: downloadedMB, total: totalMB }) }}
         </div>
         <n-progress
           type="line"
@@ -139,14 +153,14 @@ function onNotesClick(e: MouseEvent) {
         />
       </div>
       <div v-else-if="updates.phase === 'installing'" class="status-row">
-        <div class="status-text">{{ updates.installMessage || '正在准备安装…' }}</div>
+        <div class="status-text">{{ $t('update.preparingInstall') }}</div>
         <n-progress type="line" :percentage="100" :show-indicator="false" :height="6" status="info" />
       </div>
       <div v-else-if="updates.phase === 'ready'" class="status-row">
-        <div class="status-text ready">应用即将退出以完成更新…</div>
+        <div class="status-text ready">{{ $t('update.exitingToUpdate') }}</div>
       </div>
       <div v-else-if="updates.phase === 'error'" class="status-row">
-        <n-alert type="error" :show-icon="false">{{ updates.lastError || '更新失败' }}</n-alert>
+        <n-alert type="error" :show-icon="false">{{ errorText }}</n-alert>
       </div>
     </div>
 
@@ -158,7 +172,7 @@ function onNotesClick(e: MouseEvent) {
           :href="updates.releaseUrl"
           @click="openReleasePage"
         >
-          在 GitHub 查看 ↗
+          {{ $t('update.viewOnGitHub') }} ↗
         </a>
         <span v-else />
         <n-space>
@@ -168,7 +182,7 @@ function onNotesClick(e: MouseEvent) {
             :disabled="isInstalling"
             @click="onCancel"
           >
-            取消
+            {{ $t('common.cancel') }}
           </n-button>
           <n-button
             v-if="updates.phase !== 'ready'"
@@ -176,7 +190,7 @@ function onNotesClick(e: MouseEvent) {
             :disabled="isInstalling"
             @click="onSkip"
           >
-            跳过该版本
+            {{ $t('update.skipVersion') }}
           </n-button>
           <n-button
             v-if="updates.phase !== 'ready'"
@@ -185,7 +199,7 @@ function onNotesClick(e: MouseEvent) {
             :loading="isInstalling"
             @click="onInstall"
           >
-            立即更新
+            {{ $t('update.installNow') }}
           </n-button>
         </n-space>
       </n-space>

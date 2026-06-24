@@ -6,6 +6,7 @@ import * as EditService from "./editservice.js";
 import * as MetadataService from "./metadataservice.js";
 import * as QueryService from "./queryservice.js";
 import * as SavedQueryService from "./savedqueryservice.js";
+import * as SettingsService from "./settingsservice.js";
 import * as SystemService from "./systemservice.js";
 import * as TransferService from "./transferservice.js";
 import * as UpdateService from "./updateservice.js";
@@ -15,6 +16,7 @@ export {
     MetadataService,
     QueryService,
     SavedQueryService,
+    SettingsService,
     SystemService,
     TransferService,
     UpdateService

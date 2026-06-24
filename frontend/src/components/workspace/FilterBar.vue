@@ -331,7 +331,7 @@ watch(
           ref="whereInputRef"
           v-model="whereValue"
           class="filter-input mono"
-          placeholder="过滤条件…"
+          :placeholder="$t('filter.wherePlaceholder')"
           spellcheck="false"
           @input="onWhereInput"
           @keydown="onWhereKeydown"
@@ -370,7 +370,7 @@ watch(
           ref="orderByInputRef"
           v-model="orderByValue"
           class="filter-input mono"
-          placeholder="排序条件…"
+          :placeholder="$t('filter.orderByPlaceholder')"
           spellcheck="false"
           @input="onOrderByInput"
           @keydown="onOrderByKeydown"
@@ -405,17 +405,17 @@ watch(
     <div class="filter-actions">
       <button
         class="action-btn"
-        title="历史记录"
+        :title="$t('filter.history')"
         @click="toggleHistory"
       >⏱</button>
       <button
         class="action-btn"
-        title="应用过滤"
+        :title="$t('filter.apply')"
         @click="emitApply"
       >↵</button>
       <button
         class="action-btn clear-all"
-        title="清空所有过滤"
+        :title="$t('filter.clearAll')"
         @click="onClear"
       >×</button>
     </div>
@@ -426,7 +426,7 @@ watch(
       class="history-popup"
       @click.stop
     >
-      <div class="history-header">历史记录</div>
+      <div class="history-header">{{ $t('filter.history') }}</div>
       <div
         v-for="(entry, i) in currentHistory"
         :key="i"
@@ -435,7 +435,7 @@ watch(
       >
         <div class="history-item-where" v-if="entry.where">WHERE {{ entry.where }}</div>
         <div class="history-item-order" v-if="entry.orderByClause">ORDER BY {{ entry.orderByClause }}</div>
-        <div v-if="!entry.where && !entry.orderByClause" class="history-item-empty">无过滤</div>
+        <div v-if="!entry.where && !entry.orderByClause" class="history-item-empty">{{ $t('filter.noFilter') }}</div>
       </div>
     </div>
   </div>

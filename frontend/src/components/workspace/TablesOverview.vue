@@ -12,6 +12,7 @@ import { LogicalType } from '../../api/metadata'
 import type { ColumnMeta, TableInfo } from '../../api/metadata'
 import DataGrid from '../data-grid/DataGrid.vue'
 import { setActiveTableContext } from '../../api/tableContextMenu'
+import { t } from '../../i18n'
 
 const props = defineProps<{
   connId: string
@@ -24,65 +25,66 @@ const message = useMessage()
 const tables = ref<TableInfo[]>([])
 const loading = ref(false)
 
-// 合成列元数据 — DataGrid 用 nativeType/logicalType 决定对齐 & 编辑器（只读所以不需要编辑器）
-const columns: ColumnMeta[] = [
+// 合成列元数据 — DataGrid 用 nativeType/logicalType 决定对齐 & 编辑器（只读所以不需要编辑器）。
+// computed 以便语言切换时表头/提示实时刷新。
+const columns = computed<ColumnMeta[]>(() => [
   {
-    name: '表名',
+    name: t('tablesOverview.col.name'),
     nativeType: 'varchar',
     logicalType: LogicalType.TypeString,
     nullable: true,
-    comment: '表名',
+    comment: t('tablesOverview.hint.name'),
   },
   {
-    name: '引擎',
+    name: t('tablesOverview.col.engine'),
     nativeType: 'varchar',
     logicalType: LogicalType.TypeString,
     nullable: true,
-    comment: '存储引擎',
+    comment: t('tablesOverview.hint.engine'),
   },
   {
-    name: '行数',
+    name: t('tablesOverview.col.rows'),
     nativeType: 'bigint',
     logicalType: LogicalType.TypeBigInt,
     nullable: true,
-    comment: '估算行数',
+    comment: t('tablesOverview.hint.rows'),
   },
   {
-    name: '数据大小',
+    name: t('tablesOverview.col.dataSize'),
     nativeType: 'bigint',
     logicalType: LogicalType.TypeBigInt,
     nullable: true,
-    comment: '数据占用空间',
+    comment: t('tablesOverview.hint.dataSize'),
   },
   {
-    name: '排序规则',
+    name: t('tablesOverview.col.collation'),
     nativeType: 'varchar',
     logicalType: LogicalType.TypeString,
     nullable: true,
-    comment: '字符集排序规则',
+    comment: t('tablesOverview.hint.collation'),
   },
   {
-    name: '创建时间',
+    name: t('tablesOverview.col.createdAt'),
     nativeType: 'datetime',
     logicalType: LogicalType.TypeString,
     nullable: true,
-    comment: '表的创建时间',
+    comment: t('tablesOverview.hint.createdAt'),
   },
   {
-    name: '修改时间',
+    name: t('tablesOverview.col.updatedAt'),
     nativeType: 'datetime',
     logicalType: LogicalType.TypeString,
     nullable: true,
-    comment: '最近一次修改时间',
+    comment: t('tablesOverview.hint.updatedAt'),
   },
   {
-    name: '备注',
+    name: t('tablesOverview.col.comment'),
     nativeType: 'text',
     logicalType: LogicalType.TypeText,
     nullable: true,
-    comment: '表备注',
+    comment: t('tablesOverview.hint.comment'),
   },
-] as ColumnMeta[]
+] as ColumnMeta[])
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -121,7 +123,7 @@ async function load() {
   try {
     tables.value = await metaApi.listTables(props.connId, props.db)
   } catch (e: any) {
-    message.error(`加载表列表失败: ${String(e)}`)
+    message.error(t('tablesOverview.loadFailed', { error: String(e) }))
   } finally {
     loading.value = false
   }
@@ -159,14 +161,14 @@ function onCellContextMenu(p: { row: number }) {
 <template>
   <div class="to">
     <div class="toolbar">
-      <span class="title mono">{{ db || '数据库概览' }}</span>
-      <span v-if="db" class="mute">· {{ tables.length }} 张表</span>
+      <span class="title mono">{{ db || $t('tablesOverview.title') }}</span>
+      <span v-if="db" class="mute">· {{ $t('tablesOverview.tableCount', { n: tables.length }) }}</span>
       <span class="grow" />
-      <n-button size="tiny" :disabled="loading || !db" @click="load">刷新</n-button>
+      <n-button size="tiny" :disabled="loading || !db" @click="load">{{ $t('common.refresh') }}</n-button>
     </div>
 
     <div v-if="!db" class="empty">
-      <span class="mute">在左侧对象树点击一个数据库以查看表概览。</span>
+      <span class="mute">{{ $t('tablesOverview.empty') }}</span>
     </div>
     <n-spin v-else :show="loading" class="data-spin">
       <DataGrid

@@ -30,6 +30,7 @@ import {
 } from '../../api/dbEditor'
 import { runQuery } from '../../api/query'
 import { system as systemApi } from '../../api'
+import { t } from '../../i18n'
 
 const message = useMessage()
 const themeStore = useThemeStore()
@@ -63,8 +64,12 @@ const connId = ref('')
 const mode = ref<'create' | 'edit'>('create')
 const initialDbName = ref('')
 
-const title = computed(() => (mode.value === 'create' ? '新建数据库' : `编辑数据库 — ${initialDbName.value}`))
-const okText = computed(() => (mode.value === 'create' ? '创建' : '保存'))
+const title = computed(() =>
+  mode.value === 'create'
+    ? t('databaseEditor.titleCreate')
+    : t('databaseEditor.titleEdit', { name: initialDbName.value }),
+)
+const okText = computed(() => (mode.value === 'create' ? t('databaseEditor.create') : t('common.save')))
 
 // --- form state -------------------------------------------------------------
 
@@ -94,12 +99,12 @@ const collationOptions = computed(() => {
 
 const ddlPreview = computed(() => {
   const n = name.value.trim()
-  if (!n) return '-- 请输入数据库名称'
+  if (!n) return `-- ${t('databaseEditor.ddlEnterName')}`
   if (mode.value === 'create') {
     return buildCreateDb(n, charset.value, collation.value) + ';'
   }
   if (charset.value === origCharset.value && collation.value === origCollation.value) {
-    return '-- 未修改'
+    return `-- ${t('databaseEditor.ddlUnchanged')}`
   }
   return buildAlterDb(n, charset.value, collation.value) + ';'
 })
@@ -188,7 +193,7 @@ watch(charset, (cs, prev) => {
 onMounted(async () => {
   const { connId: cid, db } = parseHashQuery()
   if (!cid) {
-    loadError.value = '缺少连接参数'
+    loadError.value = t('databaseEditor.missingConnParam')
     loading.value = false
     return
   }
@@ -220,7 +225,7 @@ onMounted(async () => {
       }
     }
   } catch (e: any) {
-    loadError.value = `加载字符集失败: ${e?.message ?? e}`
+    loadError.value = t('databaseEditor.loadCharsetsFailed', { error: e?.message ?? e })
   } finally {
     loading.value = false
   }
@@ -236,11 +241,11 @@ function onCancel() {
 async function onConfirm() {
   const n = name.value.trim()
   if (!n) {
-    errorMessage.value = '数据库名称不能为空'
+    errorMessage.value = t('databaseEditor.nameRequired')
     return
   }
   if (/[`\s.]/.test(n)) {
-    errorMessage.value = '数据库名称不能包含空格、点或反引号'
+    errorMessage.value = t('databaseEditor.nameInvalidChars')
     return
   }
   const sql = mode.value === 'create'
@@ -256,7 +261,11 @@ async function onConfirm() {
       // Non-fatal — main window can refresh manually.
       console.warn('database:saved broadcast failed', e)
     }
-    message.success(mode.value === 'create' ? `已创建 ${n}` : `已更新 ${n}`)
+    message.success(
+      mode.value === 'create'
+        ? t('databaseEditor.created', { name: n })
+        : t('databaseEditor.updated', { name: n }),
+    )
     setTimeout(() => { void Window.Close() }, 200)
   } catch (e: any) {
     errorMessage.value = e?.message ?? String(e)
@@ -270,10 +279,10 @@ async function onConfirm() {
     <header class="titlebar" :class="{ win: isWin }" @dblclick="toggleMaximise">
       <span class="title">{{ title }}</span>
       <div v-if="isWin" class="window-controls">
-        <button type="button" class="win-btn win-btn-min" title="最小化" @click="onWindowCtrl('min')">
+        <button type="button" class="win-btn win-btn-min" :title="$t('databaseEditor.minimize')" @click="onWindowCtrl('min')">
           <svg viewBox="0 0 10 10" aria-hidden="true"><rect x="0" y="4.5" width="10" height="1" fill="currentColor" /></svg>
         </button>
-        <button type="button" class="win-btn win-btn-max" :title="isMaximised ? '还原' : '最大化'" @click="onWindowCtrl('max')">
+        <button type="button" class="win-btn win-btn-max" :title="isMaximised ? $t('databaseEditor.restore') : $t('databaseEditor.maximize')" @click="onWindowCtrl('max')">
           <svg v-if="isMaximised" viewBox="0 0 10 10" aria-hidden="true">
             <rect x="1.5" y="3.5" width="6" height="6" rx="0.5" fill="none" stroke="currentColor" stroke-width="0.8" />
             <path d="M3.5 3.5V2A0.5 0.5 0 0 1 4 1.5h4A0.5 0.5 0 0 1 8.5 2v4a0.5 0.5 0 0 1-.5.5H7.5" fill="none" stroke="currentColor" stroke-width="0.8" />
@@ -282,7 +291,7 @@ async function onConfirm() {
             <rect x="1" y="1" width="8" height="8" rx="0.5" fill="none" stroke="currentColor" stroke-width="0.8" />
           </svg>
         </button>
-        <button type="button" class="win-btn win-btn-close" title="关闭" @click="onWindowCtrl('close')">
+        <button type="button" class="win-btn win-btn-close" :title="$t('common.close')" @click="onWindowCtrl('close')">
           <svg viewBox="0 0 10 10" aria-hidden="true">
             <path d="M1 1l8 8M9 1l-8 8" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" />
           </svg>
@@ -293,33 +302,33 @@ async function onConfirm() {
     <main class="body">
       <div v-if="loading" class="loading">
         <n-spin size="small" />
-        <span>加载中…</span>
+        <span>{{ $t('databaseEditor.loading') }}</span>
       </div>
       <div v-else-if="loadError" class="error">{{ loadError }}</div>
       <div v-else class="content">
         <div class="form">
           <div class="row">
-            <label class="lbl">数据库名称</label>
+            <label class="lbl">{{ $t('databaseEditor.dbName') }}</label>
             <n-input
               v-model:value="name"
               size="small"
               :disabled="mode === 'edit'"
-              placeholder="例如 my_app"
+              :placeholder="$t('databaseEditor.dbNamePlaceholder')"
             />
           </div>
           <div class="row">
-            <label class="lbl">字符集</label>
+            <label class="lbl">{{ $t('databaseEditor.charset') }}</label>
             <n-select
               v-model:value="charset"
               size="small"
               filterable
               clearable
               :options="charsetOptions"
-              placeholder="选择字符集"
+              :placeholder="$t('databaseEditor.charsetPlaceholder')"
             />
           </div>
           <div class="row">
-            <label class="lbl">排序规则</label>
+            <label class="lbl">{{ $t('databaseEditor.collation') }}</label>
             <n-select
               v-model:value="collation"
               size="small"
@@ -327,13 +336,13 @@ async function onConfirm() {
               clearable
               :options="collationOptions"
               :disabled="!charset"
-              placeholder="选择排序规则"
+              :placeholder="$t('databaseEditor.collationPlaceholder')"
             />
           </div>
         </div>
 
         <div class="ddl">
-          <div class="ddl-head">SQL 预览</div>
+          <div class="ddl-head">{{ $t('databaseEditor.sqlPreview') }}</div>
           <div ref="cmHost" class="ddl-body" />
         </div>
 
@@ -341,7 +350,7 @@ async function onConfirm() {
       </div>
 
       <footer class="actions">
-        <n-button size="small" :disabled="submitting" @click="onCancel">取消</n-button>
+        <n-button size="small" :disabled="submitting" @click="onCancel">{{ $t('common.cancel') }}</n-button>
         <n-button
           size="small"
           type="primary"

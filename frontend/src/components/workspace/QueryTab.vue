@@ -31,6 +31,7 @@ import { useQueryStore } from '../../stores/query'
 import { useMetadataStore } from '../../stores/metadata'
 import type { Capabilities } from '../../api/query'
 import type { SQLNamespace } from '@codemirror/lang-sql'
+import { t } from '../../i18n'
 
 const props = defineProps<{
   tabId: string
@@ -150,7 +151,7 @@ async function run() {
   const sel = editor.value?.selectionText() ?? ''
   const sqlToRun = sel.trim() || tab.value.sql
   if (!sqlToRun.trim()) {
-    message.warning('SQL is empty')
+    message.warning(t('queryTab.sqlEmpty'))
     return
   }
   // Temporarily swap sql so the run path picks up the selection.
@@ -169,7 +170,7 @@ async function runFull() {
 
 async function explain() {
   if (!caps.value?.explainPlan) {
-    message.warning('Driver does not support EXPLAIN')
+    message.warning(t('queryTab.explainUnsupported'))
     return
   }
   await store.explain(tab.value.id, runOpts())
@@ -184,7 +185,7 @@ function onExportSelect(ev: Event) {
   const val = (ev.target as HTMLSelectElement).value
   if (!val) return
   if (!tab.value.sql.trim()) {
-    message.warning('Run something first or type SQL to export')
+    message.warning(t('queryTab.exportNeedsSql'))
     ;(ev.target as HTMLSelectElement).value = ''
     return
   }
@@ -213,32 +214,35 @@ function formatSql() {
     })
     editor.value?.setDoc(formatted)
   } catch {
-    message.warning('Could not format SQL')
+    message.warning(t('queryTab.formatFailed'))
   }
 }
 
 async function saveQuery() {
   if (!tab.value.sql.trim()) {
-    message.warning('SQL is empty')
+    message.warning(t('queryTab.sqlEmpty'))
     return
   }
   try {
-    if (await store.saveTabQuery(tab.value.id)) message.success('已保存')
+    if (await store.saveTabQuery(tab.value.id)) message.success(t('common.saved'))
   } catch (e) {
-    message.error(`保存失败: ${String(e)}`)
+    message.error(t('common.saveFailed', { error: String(e) }))
   }
 }
 
+// Returns an i18n key (resolved with $t in the template) + tag type. Returning
+// a key rather than text keeps the i18n `t` import out of this computed, whose
+// local `t` is the tab.
 const statusBadge = computed(() => {
   const t = tab.value
   switch (t.status) {
-    case 'running': return { label: 'Running', type: 'info' as const }
+    case 'running': return { key: 'queryTab.status.running', type: 'info' as const }
     case 'done':
-      if (t.truncated) return { label: 'Done (truncated)', type: 'warning' as const }
-      return { label: 'Done', type: 'success' as const }
-    case 'error': return { label: 'Error', type: 'error' as const }
-    case 'canceled': return { label: 'Canceled', type: 'warning' as const }
-    default: return { label: 'Idle', type: 'default' as const }
+      if (t.truncated) return { key: 'queryTab.status.doneTruncated', type: 'warning' as const }
+      return { key: 'queryTab.status.done', type: 'success' as const }
+    case 'error': return { key: 'queryTab.status.error', type: 'error' as const }
+    case 'canceled': return { key: 'queryTab.status.canceled', type: 'warning' as const }
+    default: return { key: 'queryTab.status.idle', type: 'default' as const }
   }
 })
 
@@ -316,29 +320,29 @@ function onSplitDown(e: PointerEvent) {
     <div class="toolbar">
       <n-space :size="8" align="center">
         <n-button size="small" type="primary" :disabled="tab.status === 'running'" @click="runFull">
-          Run
+          {{ $t('queryTab.run') }}
         </n-button>
         <n-button size="small" :disabled="tab.status === 'running'" @click="run">
-          Run Selection
+          {{ $t('queryTab.runSelection') }}
         </n-button>
         <n-button size="small" :disabled="tab.status === 'running'" @click="formatSql">
-          Format
+          {{ $t('queryTab.format') }}
         </n-button>
         <n-button size="small" :disabled="tab.status === 'running'" @click="saveQuery">
-          保存
+          {{ $t('common.save') }}
         </n-button>
         <n-button v-if="caps?.explainPlan" size="small" :disabled="tab.status === 'running'" @click="explain">
           EXPLAIN
         </n-button>
         <select v-if="tab.isResultSet" class="export-select" :disabled="tab.status === 'running'" @change="onExportSelect">
-          <option value="" disabled selected>Export…</option>
+          <option value="" disabled selected>{{ $t('common.exportPlaceholder') }}</option>
           <option value="csv">CSV</option>
           <option value="xlsx">Excel</option>
           <option value="json">JSON</option>
           <option value="sql">SQL</option>
         </select>
         <n-button v-if="tab.status === 'running'" size="small" type="warning" @click="cancel">
-          Cancel
+          {{ $t('common.cancel') }}
         </n-button>
         <span class="sep" />
         <select
@@ -346,17 +350,17 @@ function onSplitDown(e: PointerEvent) {
           :disabled="tab.status === 'running' || dbOptions.length === 0"
           class="schema-select"
         >
-          <option value="" disabled>{{ dbOptions.length ? 'Schema' : 'No schemas' }}</option>
+          <option value="" disabled>{{ dbOptions.length ? $t('queryTab.schema') : $t('queryTab.noSchemas') }}</option>
           <option v-for="opt in dbOptions" :key="opt.value" :value="opt.value">
             {{ opt.label }}
           </option>
         </select>
         <span class="sep" />
-        <n-tag size="small" :type="statusBadge.type">{{ statusBadge.label }}</n-tag>
+        <n-tag size="small" :type="statusBadge.type">{{ $t(statusBadge.key) }}</n-tag>
         <span v-if="tab.elapsedMs > 0" class="mono mute">{{ tab.elapsedMs }} ms</span>
-        <span v-if="tab.isResultSet && tab.rowsTotal > 0" class="mono mute">{{ tab.rowsTotal }} rows</span>
+        <span v-if="tab.isResultSet && tab.rowsTotal > 0" class="mono mute">{{ $t('queryTab.rowsCount', { n: tab.rowsTotal }) }}</span>
         <span v-if="!tab.isResultSet && tab.execAffected !== null" class="mono mute">
-          {{ tab.execAffected }} affected
+          {{ $t('queryTab.affectedCount', { n: tab.execAffected }) }}
         </span>
       </n-space>
       <n-space :size="6" align="center" class="hint mono">
@@ -398,7 +402,7 @@ function onSplitDown(e: PointerEvent) {
             :show-icon="false"
             class="alert"
           >
-            {{ tab.errorMessage || 'Query canceled.' }}
+            {{ tab.errorMessage || $t('queryTab.queryCanceled') }}
           </n-alert>
           <n-alert
             v-else-if="errorKind === 'timeout'"
@@ -406,7 +410,7 @@ function onSplitDown(e: PointerEvent) {
             :show-icon="false"
             class="alert"
           >
-            Query timed out. Increase the timeout or narrow the query.<br />
+            {{ $t('queryTab.queryTimedOut') }}<br />
             <span class="mono">{{ tab.errorMessage }}</span>
           </n-alert>
           <n-alert
@@ -430,7 +434,7 @@ function onSplitDown(e: PointerEvent) {
             @load-more="onLoadMore"
           />
           <div v-else-if="!errorKind && tab.status === 'done'" class="exec-result">
-            <div class="ok">{{ tab.execAffected }} row(s) affected</div>
+            <div class="ok">{{ $t('queryTab.rowsAffected', { n: tab.execAffected }) }}</div>
             <div v-if="tab.execLastInsertId" class="mute mono">last insert id: {{ tab.execLastInsertId }}</div>
           </div>
         </div>

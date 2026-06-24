@@ -115,7 +115,7 @@ export class ConnParamField {
     "options"?: string[];
 
     /**
-     * "常规" | "SSL" | "SSH"
+     * stable key, front-end localizes: "general" | "advanced" | "ssl" | "ssh"
      */
     "group"?: string;
     "help"?: string;

@@ -227,20 +227,20 @@ const TYPE_OPTIONS = [
     <!-- Sidebar: index list -->
     <aside class="ix-side" :style="{ flex: `0 0 ${sidePct}%` }">
       <div class="ix-side-head">
-        <span>索引</span>
+        <span>{{ $t('structure.indexes.title') }}</span>
         <div class="ix-side-tools">
           <button
             type="button"
             class="icon-btn"
             :disabled="busy"
-            title="添加索引"
+            :title="$t('structure.indexes.addTitle')"
             @click="addIndex"
           >+</button>
           <button
             type="button"
             class="icon-btn"
             :disabled="busy || !selectedIndex || selectedIsPrimary"
-            title="删除选中索引"
+            :title="$t('structure.indexes.deleteTitle')"
             @click="deleteSelectedIndex"
           >−</button>
         </div>
@@ -259,10 +259,10 @@ const TYPE_OPTIONS = [
           <span class="ix-icon" :class="{ 'is-unique': ix.unique || ix.primary }">
             {{ ix.unique || ix.primary ? 'iu' : 'i' }}
           </span>
-          <span class="ix-name" :title="ix.name || '(未命名)'">{{ ix.name || '(未命名)' }}</span>
+          <span class="ix-name" :title="ix.name || $t('structure.indexes.unnamed')">{{ ix.name || $t('structure.indexes.unnamed') }}</span>
           <span class="ix-detail" :title="previewLine(ix)">{{ previewLine(ix) }}</span>
         </div>
-        <div v-if="modelValue.length === 0" class="ix-empty">暂无索引</div>
+        <div v-if="modelValue.length === 0" class="ix-empty">{{ $t('structure.indexes.empty') }}</div>
       </div>
       <ResizeHandle orientation="vertical" :active="dragging" @pointerdown="onPointerDown" />
     </aside>
@@ -270,15 +270,15 @@ const TYPE_OPTIONS = [
     <!-- Detail pane -->
     <section class="ix-detail">
       <template v-if="!selectedIndex">
-        <div class="ix-empty-detail">从左侧选择或新建一个索引</div>
+        <div class="ix-empty-detail">{{ $t('structure.indexes.emptyDetail') }}</div>
       </template>
       <template v-else>
         <div v-if="selectedIsPrimary" class="pk-hint">
-          PRIMARY 索引由「字段」tab 的 PK 复选框管理，此处只读
+          {{ $t('structure.indexes.primaryReadonly') }}
         </div>
 
         <div class="row">
-          <div class="label">名称</div>
+          <div class="label">{{ $t('structure.indexes.labelName') }}</div>
           <n-input
             :value="selectedIndex.name"
             size="tiny"
@@ -289,7 +289,7 @@ const TYPE_OPTIONS = [
         </div>
 
         <div class="row">
-          <div class="label">注释</div>
+          <div class="label">{{ $t('structure.indexes.labelComment') }}</div>
           <n-input
             :value="selectedIndex.comment"
             size="tiny"
@@ -307,12 +307,12 @@ const TYPE_OPTIONS = [
               :disabled="busy || selectedIsPrimary"
               @update:checked="(v: boolean) => { selectedIndex!.unique = !!v; commit() }"
             />
-            <span>唯一</span>
+            <span>{{ $t('structure.indexes.unique') }}</span>
           </label>
         </div>
 
         <div class="row">
-          <div class="label">类型</div>
+          <div class="label">{{ $t('structure.indexes.labelType') }}</div>
           <select
             :value="(selectedIndex.type || '').toUpperCase() === 'BTREE' ? '' : (selectedIndex.type || '').toUpperCase()"
             :disabled="busy || selectedIsPrimary"
@@ -325,7 +325,7 @@ const TYPE_OPTIONS = [
 
         <!-- Column editor: left list + right inspector -->
         <div class="row top">
-          <div class="label">列</div>
+          <div class="label">{{ $t('structure.indexes.labelColumns') }}</div>
           <div class="col-wrapper">
             <div class="col-left">
               <div class="col-tools">
@@ -333,28 +333,28 @@ const TYPE_OPTIONS = [
                   type="button"
                   class="icon-btn"
                   :disabled="busy || selectedIsPrimary"
-                  title="添加列"
+                  :title="$t('structure.indexes.addColTitle')"
                   @click="addCol"
                 >+</button>
                 <button
                   type="button"
                   class="icon-btn"
                   :disabled="busy || selectedIsPrimary || selectedIndex.columns.length === 0"
-                  title="移除列"
+                  :title="$t('structure.indexes.removeColTitle')"
                   @click="removeCol"
                 >−</button>
                 <button
                   type="button"
                   class="icon-btn"
                   :disabled="busy || selectedIsPrimary || selectedColIdx <= 0"
-                  title="上移"
+                  :title="$t('structure.indexes.moveUp')"
                   @click="moveCol(-1)"
                 >↑</button>
                 <button
                   type="button"
                   class="icon-btn"
                   :disabled="busy || selectedIsPrimary || selectedColIdx >= selectedIndex.columns.length - 1"
-                  title="下移"
+                  :title="$t('structure.indexes.moveDown')"
                   @click="moveCol(1)"
                 >↓</button>
               </div>
@@ -365,30 +365,30 @@ const TYPE_OPTIONS = [
                   class="col-item"
                   :class="{ active: i === selectedColIdx }"
                   @click="selectedColIdx = i"
-                >{{ c.name || '(未选择)' }}</div>
+                >{{ c.name || $t('structure.indexes.colUnselected') }}</div>
                 <div v-if="selectedIndex.columns.length === 0" class="col-empty">
-                  无
+                  {{ $t('structure.indexes.none') }}
                 </div>
               </div>
             </div>
             <div class="col-right">
               <template v-if="selectedIndex.columns[selectedColIdx]">
                 <div class="col-row">
-                  <div class="col-label">列名</div>
+                  <div class="col-label">{{ $t('structure.indexes.colName') }}</div>
                   <select
                     :value="selectedIndex.columns[selectedColIdx].name"
                     :disabled="busy || selectedIsPrimary"
                     class="native-sel"
                     @change="(e: any) => updateColName(e.target.value)"
                   >
-                    <option value="">(请选择)</option>
+                    <option value="">{{ $t('structure.indexes.selectPlaceholder') }}</option>
                     <option v-for="opt in columnOptions" :key="opt.value" :value="opt.value">
                       {{ opt.label }}
                     </option>
                   </select>
                 </div>
                 <div class="col-row">
-                  <div class="col-label">顺序</div>
+                  <div class="col-label">{{ $t('structure.indexes.order') }}</div>
                   <select
                     :value="(selectedIndex.columns[selectedColIdx].order || '').toUpperCase()"
                     :disabled="busy || selectedIsPrimary"
@@ -401,7 +401,7 @@ const TYPE_OPTIONS = [
                   </select>
                 </div>
               </template>
-              <div v-else class="col-empty-detail">先在左侧添加一列</div>
+              <div v-else class="col-empty-detail">{{ $t('structure.indexes.addColFirst') }}</div>
             </div>
           </div>
         </div>

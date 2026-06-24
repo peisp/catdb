@@ -11,6 +11,7 @@
 //      the `ctx:conn-*` events emitted by Go and acts on the singleton.
 import { createDiscreteApi } from 'naive-ui'
 import { Dialogs } from '@wailsio/runtime'
+import { t } from '../i18n'
 import { useConnectionsStore } from '../stores/connections'
 import { on } from './events'
 
@@ -40,11 +41,11 @@ export function installConnectionContextMenuListener(): void {
     const store = useConnectionsStore()
     try {
       await store.connect(active.connId)
-      message.success(`已连接 ${active.connName}`)
+      message.success(t('connection.menu.connected', { name: active.connName }))
       // Notify the sidebar to emit 'select' so AppShell opens this connection.
       document.dispatchEvent(new CustomEvent('conn:select', { detail: active.connId }))
     } catch (e) {
-      message.error(`连接失败: ${String(e)}`)
+      message.error(t('common.connectFailed', { error: String(e) }))
     }
   })
 
@@ -53,7 +54,7 @@ export function installConnectionContextMenuListener(): void {
     const store = useConnectionsStore()
     try {
       await store.disconnect(active.connId)
-      message.info(`已断开 ${active.connName}`)
+      message.info(t('connection.menu.disconnected', { name: active.connName }))
     } catch (e) {
       message.error(String(e))
     }
@@ -69,18 +70,19 @@ export function installConnectionContextMenuListener(): void {
   on('ctx:conn-delete', async () => {
     if (!active) return
     const ctx = active
+    const deleteLabel = t('common.delete')
     const btn = await Dialogs.Warning({
-      Title: '删除连接',
-      Message: `确定要删除 "${ctx.connName}" 吗？此操作不可撤销。`,
+      Title: t('connection.menu.delete.title'),
+      Message: t('connection.menu.delete.confirm', { name: ctx.connName }),
       Buttons: [
-        { Label: '取消', IsCancel: true },
-        { Label: '删除' },
+        { Label: t('common.cancel'), IsCancel: true },
+        { Label: deleteLabel },
       ],
     })
-    if (btn !== '删除') return
+    if (btn !== deleteLabel) return
     try {
       await useConnectionsStore().remove(ctx.connId)
-      message.success('已删除')
+      message.success(t('common.deleted'))
     } catch (e) {
       message.error(String(e))
     }

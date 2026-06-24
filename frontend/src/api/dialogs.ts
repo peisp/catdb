@@ -1,6 +1,7 @@
 // api/dialogs — thin wrappers over Wails native dialogs so stores/components
 // never import @wailsio/runtime directly (CLAUDE.md #1).
 import { Dialogs } from '@wailsio/runtime'
+import { t } from '../i18n'
 
 export type CloseChoice = 'save' | 'discard' | 'cancel'
 
@@ -9,16 +10,18 @@ export type CloseChoice = 'save' | 'discard' | 'cancel'
  * button they picked. Uses a native 3-button warning dialog.
  */
 export async function confirmCloseUnsaved(title: string): Promise<CloseChoice> {
+  const saveLabel = t('common.save')
+  const dontSaveLabel = t('dialogs.dontSave')
   const btn = await Dialogs.Warning({
-    Title: '未保存的更改',
-    Message: `查询「${title}」有未保存的更改，是否保存？`,
+    Title: t('dialogs.unsavedTitle'),
+    Message: t('dialogs.unsavedMessage', { title }),
     Buttons: [
-      { Label: '取消', IsCancel: true },
-      { Label: '不保存' },
-      { Label: '保存', IsDefault: true },
+      { Label: t('common.cancel'), IsCancel: true },
+      { Label: dontSaveLabel },
+      { Label: saveLabel, IsDefault: true },
     ],
   })
-  if (btn === '保存') return 'save'
-  if (btn === '不保存') return 'discard'
+  if (btn === saveLabel) return 'save'
+  if (btn === dontSaveLabel) return 'discard'
   return 'cancel'
 }
