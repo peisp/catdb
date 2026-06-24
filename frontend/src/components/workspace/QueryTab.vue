@@ -98,10 +98,12 @@ async function ensureAutocomplete() {
   if (!connId) return
   try {
     const dbs = await metaStore.ensureDatabases(connId)
-    if (!currentDb.value) {
-      // Prefer the tab's anchored db (saved query / 新建查询 from a db node).
+    if (dbs.length && !currentDb.value) {
+      // Prefer the tab's anchored db (saved query / 新建查询 from a db node);
+      // otherwise sync with the object tree's last-selected database, or stay
+      // in "no selection" state if nothing was selected.
       const anchored = tab.value?.db
-      currentDb.value = (anchored && dbs.includes(anchored)) ? anchored : (dbs[0] ?? null)
+      currentDb.value = (anchored && dbs.includes(anchored)) ? anchored : (store.selectedDb[connId] ?? null)
     }
     if (currentDb.value) {
       await metaStore.ensureSnapshot(connId, currentDb.value)
@@ -120,6 +122,27 @@ watch(currentDb, (db) => {
   if (tab.value?.kind === 'query') tab.value.db = db
   void metaStore.ensureSnapshot(connId, db).catch(() => { /* nice-to-have */ })
 })
+
+// Sync this tab's schema-selector when the object tree selects a different
+// database. Only the active tab follows the tree selection — non-active tabs
+// keep their own schema.
+watch(
+  () => {
+    const connId = tab.value?.connId
+    return connId ? store.selectedDb[connId] : undefined
+  },
+  (newDb) => {
+    if (!newDb) return
+    const connId = tab.value?.connId
+    if (!connId) return
+    // Only update if this tab is the active tab for its connection, and the
+    // new selection actually differs from the current one.
+    if (store.activeByConn[connId] !== props.tabId) return
+    if (newDb !== currentDb.value) {
+      currentDb.value = newDb
+    }
+  },
+)
 
 onMounted(async () => {
   if (props.driver) {
@@ -195,6 +218,14 @@ function onExportSelect(ev: Event) {
 
 function onLoadMore() {
   void store.fetchMore(tab.value.id)
+}
+
+function onResultExport(format: string) {
+  if (!tab.value.sql.trim()) {
+    message.warning(t('queryTab.exportNeedsSql'))
+    return
+  }
+  startExport({ kind: 'query', connId: tab.value.connId, sql: tab.value.sql, defaultName: 'query-' + tab.value.id }, format as any)
 }
 
 function onSqlUpdate(v: string) {
@@ -432,6 +463,7 @@ function onSplitDown(e: PointerEvent) {
             :rows-total="tab.rowsTotal"
             class="result-table"
             @load-more="onLoadMore"
+            @export="onResultExport"
           />
           <div v-else-if="!errorKind && tab.status === 'done'" class="exec-result">
             <div class="ok">{{ $t('queryTab.rowsAffected', { n: tab.execAffected }) }}</div>

@@ -123,6 +123,15 @@ export const useQueryStore = defineStore('query', () => {
   // capabilities cache keyed by driver name
   const capsByDriver = ref<Record<string, Capabilities>>({})
 
+  // Tracks which database the object tree has most recently selected, keyed by
+  // connection id. New query tabs initialize their schema-selector from this
+  // value (rather than defaulting to the first database alphabetically).
+  const selectedDb = ref<Record<string, string | null>>({})
+
+  function setSelectedDb(connId: string, db: string | null) {
+    selectedDb.value = { ...selectedDb.value, [connId]: db }
+  }
+
   function tabsForConn(connId: string): QueryTab[] {
     return tabs.value.filter((t) => t.connId === connId)
   }
@@ -532,6 +541,8 @@ export const useQueryStore = defineStore('query', () => {
     cancel,
     explain,
     loadCapabilities,
+    selectedDb,
+    setSelectedDb,
   }
 })
 

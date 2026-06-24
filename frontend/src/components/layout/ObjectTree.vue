@@ -360,6 +360,7 @@ function onDblclick(_: MouseEvent, node: TreeOption) {
 function onClick(_: MouseEvent, node: TreeOption) {
   const m = (node as any).extra as TreeMeta
   if (m.kind === 'database') {
+    queryStore.setSelectedDb(props.connection.id, m.db!)
     emit('open-tables-overview', { db: m.db! })
   }
 }
