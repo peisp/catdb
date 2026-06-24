@@ -112,3 +112,72 @@ func TestGroupCRUD(t *testing.T) {
 		t.Fatalf("DeleteGroup: %v", err)
 	}
 }
+
+func TestSavedQueryCRUD(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	conn, err := s.SaveConnection(ctx, ConnectionProfile{Name: "c", Driver: "mysql"})
+	if err != nil {
+		t.Fatalf("SaveConnection: %v", err)
+	}
+
+	q, err := s.SaveSavedQuery(ctx, SavedQuery{
+		ConnID:  conn.ID,
+		DBName:  "shop",
+		Name:    "active users",
+		SQLText: "SELECT * FROM users WHERE active = 1",
+	})
+	if err != nil {
+		t.Fatalf("SaveSavedQuery: %v", err)
+	}
+	if q.ID == "" || q.CreatedAt.IsZero() || q.UpdatedAt.IsZero() {
+		t.Fatalf("id/timestamps should be set: %+v", q)
+	}
+
+	// Scope filtering: a different db sees nothing.
+	if list, err := s.ListSavedQueries(ctx, conn.ID, "other"); err != nil || len(list) != 0 {
+		t.Fatalf("expected empty for other db, got %d (err=%v)", len(list), err)
+	}
+	list, err := s.ListSavedQueries(ctx, conn.ID, "shop")
+	if err != nil || len(list) != 1 || list[0].ID != q.ID {
+		t.Fatalf("ListSavedQueries: got %d (err=%v)", len(list), err)
+	}
+
+	// Update keeps id, changes name + sql.
+	q.Name = "active users v2"
+	q.SQLText = "SELECT id FROM users"
+	upd, err := s.SaveSavedQuery(ctx, q)
+	if err != nil {
+		t.Fatalf("update SaveSavedQuery: %v", err)
+	}
+	got, _ := s.ListSavedQueries(ctx, conn.ID, "shop")
+	if len(got) != 1 || got[0].Name != "active users v2" || got[0].SQLText != "SELECT id FROM users" {
+		t.Fatalf("update mismatch: %+v", got)
+	}
+	_ = upd
+
+	// Delete.
+	if err := s.DeleteSavedQuery(ctx, q.ID); err != nil {
+		t.Fatalf("DeleteSavedQuery: %v", err)
+	}
+	if err := s.DeleteSavedQuery(ctx, q.ID); err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound on second delete, got %v", err)
+	}
+}
+
+func TestSavedQueryCascadeOnConnectionDelete(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	conn, _ := s.SaveConnection(ctx, ConnectionProfile{Name: "c", Driver: "mysql"})
+	if _, err := s.SaveSavedQuery(ctx, SavedQuery{ConnID: conn.ID, DBName: "d", Name: "n", SQLText: "SELECT 1"}); err != nil {
+		t.Fatalf("SaveSavedQuery: %v", err)
+	}
+	if err := s.DeleteConnection(ctx, conn.ID); err != nil {
+		t.Fatalf("DeleteConnection: %v", err)
+	}
+	list, err := s.ListSavedQueries(ctx, conn.ID, "d")
+	if err != nil || len(list) != 0 {
+		t.Fatalf("expected cascade delete, got %d (err=%v)", len(list), err)
+	}
+}

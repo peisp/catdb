@@ -11,6 +11,10 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { query as queryApi } from '../api'
+import { savedQuery as savedQueryApi } from '../api'
+import { emit as emitEvent } from '../api/events'
+import { openTextPrompt } from '../api/prompts'
+import { confirmCloseUnsaved } from '../api/dialogs'
 import type {
   Capabilities,
   QueryBatchResult,
@@ -54,6 +58,14 @@ export interface QueryTab {
   db?: string
   table?: string
 
+  // For 'query' kind: the saved_query id this tab is bound to, if it was
+  // opened from / saved into the object tree's 「查询」 group. Undefined for
+  // ad-hoc query tabs that have never been saved.
+  savedQueryId?: string
+  // Baseline SQL as last persisted/loaded — the tab is "dirty" when `sql`
+  // diverges from this. '' for a fresh blank tab, so any typed SQL counts.
+  savedSql?: string
+
   // result state (used by 'query' kind only)
   handle: string | null
   columns: QueryColumn[]
@@ -84,6 +96,7 @@ function freshTab(connId: string, opts?: { kind?: TabKind; title?: string; db?: 
     db: opts?.db,
     table: opts?.table,
     sql: '',
+    savedSql: '',
     handle: null,
     columns: [],
     rows: [],
@@ -123,12 +136,81 @@ export const useQueryStore = defineStore('query', () => {
     activeByConn.value = { ...activeByConn.value, [connId]: id }
   }
 
-  function addTab(connId: string, opts?: { sql?: string; title?: string; kind?: TabKind; db?: string; table?: string }): QueryTab {
+  function addTab(connId: string, opts?: { sql?: string; title?: string; kind?: TabKind; db?: string; table?: string; savedQueryId?: string }): QueryTab {
     const t = freshTab(connId, { kind: opts?.kind, title: opts?.title, db: opts?.db, table: opts?.table })
     if (opts?.sql) t.sql = opts.sql
+    if (opts?.savedQueryId) t.savedQueryId = opts.savedQueryId
     tabs.value.push(t)
     setActive(connId, t.id)
     return t
+  }
+
+  /**
+   * Open a saved query from the object tree. Reuses an already-open tab bound
+   * to the same saved_query id; otherwise opens a fresh query tab seeded with
+   * the stored SQL and bound to its id (so 保存 overwrites it in place).
+   */
+  function openSavedQuery(connId: string, sq: { id: string; name: string; sqlText: string; dbName: string }): QueryTab {
+    const existing = tabs.value.find((t) => t.connId === connId && t.kind === 'query' && t.savedQueryId === sq.id)
+    if (existing) {
+      setActive(connId, existing.id)
+      return existing
+    }
+    const t = addTab(connId, {
+      kind: 'query',
+      sql: sq.sqlText,
+      db: sq.dbName,
+      title: `📝 ${sq.name}`,
+      savedQueryId: sq.id,
+    })
+    t.savedSql = sq.sqlText
+    return t
+  }
+
+  /** A query tab is dirty when its SQL diverges from the last saved baseline. */
+  function isQueryDirty(t: QueryTab): boolean {
+    if (t.kind !== 'query') return false
+    return (t.sql ?? '').trim() !== (t.savedSql ?? '').trim()
+  }
+
+  /**
+   * Persist a query tab's SQL into the saved-query store. Bound tabs overwrite
+   * in place (keeping their name); first-time saves prompt for a name. Returns
+   * true on success, false if the user cancels the name prompt; throws on a
+   * backend error so callers can surface it.
+   */
+  async function saveTabQuery(tabId: string): Promise<boolean> {
+    const t = getTab(tabId)
+    if (!t || t.kind !== 'query') return false
+    if (!t.sql.trim()) return false
+    const db = t.db ?? ''
+    if (t.savedQueryId) {
+      await savedQueryApi.save({
+        id: t.savedQueryId,
+        connId: t.connId,
+        dbName: db,
+        name: t.title.replace(/^📝\s*/, ''),
+        sqlText: t.sql,
+      })
+      t.savedSql = t.sql
+      void emitEvent('saved-query:changed', { connId: t.connId, db })
+      return true
+    }
+    const name = await openTextPrompt({
+      title: '保存查询',
+      label: db ? `保存到数据库: ${db}` : '保存查询',
+      initial: '',
+      okText: '保存',
+      validate: (v) => (v ? null : '名称不能为空'),
+    })
+    if (name === null) return false
+    const saved = await savedQueryApi.save({ connId: t.connId, dbName: db, name, sqlText: t.sql })
+    t.savedQueryId = saved.id
+    t.db = db
+    t.title = `📝 ${name}`
+    t.savedSql = t.sql
+    void emitEvent('saved-query:changed', { connId: t.connId, db })
+    return true
   }
 
   function openTableTab(connId: string, db: string, table: string, kind: 'table' | 'structure' = 'table'): QueryTab {
@@ -220,6 +302,18 @@ export const useQueryStore = defineStore('query', () => {
   async function closeTab(id: string) {
     const t = getTab(id)
     if (!t || t.pinned) return
+    // Guard against losing unsaved/edited SQL.
+    if (isQueryDirty(t)) {
+      const choice = await confirmCloseUnsaved(t.title)
+      if (choice === 'cancel') return
+      if (choice === 'save') {
+        try {
+          if (!(await saveTabQuery(id))) return // name prompt canceled → keep tab
+        } catch {
+          return // save failed → keep tab open so the SQL isn't lost
+        }
+      }
+    }
     t.controller?.abort()
     if (t.handle) {
       try { await queryApi.closeHandle(t.handle) } catch { /* idempotent */ }
@@ -419,6 +513,9 @@ export const useQueryStore = defineStore('query', () => {
     activeTab,
     setActive,
     addTab,
+    openSavedQuery,
+    isQueryDirty,
+    saveTabQuery,
     openTableTab,
     openNewTableTab,
     promoteNewTableTab,

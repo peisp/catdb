@@ -125,11 +125,10 @@ function emitTabCommand(cmd: string) {
   tabCmdBus.value = { tabId: t.id, cmd, nonce: Date.now() }
 }
 
-// Track unsaved SQL: a tab is "dirty" iff its SQL is non-empty and hasn't
-// been run yet (heuristic for "unsaved work" — we don't have a save-to-file
-// concept yet, so this errs on the side of caution).
+// Track unsaved SQL: a tab is "dirty" iff its SQL diverges from the last
+// saved baseline (never-saved tab with typed SQL, or edited-since-save).
 const dirtyCount = computed(() => {
-  return queryStore.tabs.filter((t: any) => t.kind === 'query' && t.sql.trim() && t.status === 'idle').length
+  return queryStore.tabs.filter((t) => queryStore.isQueryDirty(t)).length
 })
 watch(dirtyCount, (v) => { void systemApi.setDirtyTabs(v) }, { immediate: true })
 

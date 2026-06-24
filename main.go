@@ -52,6 +52,7 @@ func main() {
 			application.NewService(services.NewEditService(mgr)),
 			application.NewService(services.NewTransferService(mgr)),
 			application.NewService(services.NewSystemService()),
+			application.NewService(services.NewSavedQueryService(store)),
 			application.NewService(services.NewUpdateService(store, "")),
 		},
 		Assets: application.AssetOptions{

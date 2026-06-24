@@ -100,6 +100,18 @@ func (s *Store) migrate(ctx context.Context) error {
 			key TEXT PRIMARY KEY,
 			value TEXT NOT NULL DEFAULT ''
 		)`,
+		`CREATE TABLE IF NOT EXISTS saved_query (
+			id TEXT PRIMARY KEY,
+			conn_id TEXT NOT NULL,
+			db_name TEXT NOT NULL DEFAULT '',
+			name TEXT NOT NULL,
+			sql_text TEXT NOT NULL,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			FOREIGN KEY (conn_id) REFERENCES connection(id) ON DELETE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_saved_query_scope ON saved_query(conn_id, db_name)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
@@ -107,7 +119,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		}
 	}
 	_, _ = s.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO schema_version(version, applied_at) VALUES (1, ?)`,
+		`INSERT OR IGNORE INTO schema_version(version, applied_at) VALUES (2, ?)`,
 		time.Now().Unix(),
 	)
 	return nil
@@ -333,6 +345,86 @@ func (s *Store) DeleteConnection(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	res, err := s.db.ExecContext(ctx, `DELETE FROM connection WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// --- saved queries ---
+
+// ListSavedQueries returns the saved queries scoped to a connection + database,
+// ordered by sort_order then name.
+func (s *Store) ListSavedQueries(ctx context.Context, connID, db string) ([]SavedQuery, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, conn_id, db_name, name, sql_text, sort_order, created_at, updated_at
+		FROM saved_query WHERE conn_id=? AND db_name=? ORDER BY sort_order, name`, connID, db)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SavedQuery
+	for rows.Next() {
+		var q SavedQuery
+		var created, updated int64
+		if err := rows.Scan(&q.ID, &q.ConnID, &q.DBName, &q.Name, &q.SQLText, &q.SortOrder, &created, &updated); err != nil {
+			return nil, err
+		}
+		q.CreatedAt = time.Unix(created, 0)
+		q.UpdatedAt = time.Unix(updated, 0)
+		out = append(out, q)
+	}
+	return out, rows.Err()
+}
+
+// SaveSavedQuery inserts or updates a saved query. If q.ID is empty a fresh
+// UUID is assigned; CreatedAt/UpdatedAt are managed here. On update only
+// name/sql_text/sort_order/updated_at change — conn_id/db_name are immutable.
+func (s *Store) SaveSavedQuery(ctx context.Context, q SavedQuery) (SavedQuery, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if q.Name == "" {
+		return SavedQuery{}, fmt.Errorf("storage: saved query name is required")
+	}
+	if q.ConnID == "" {
+		return SavedQuery{}, fmt.Errorf("storage: saved query connId is required")
+	}
+	now := time.Now()
+	if q.ID == "" {
+		q.ID = uuid.NewString()
+		q.CreatedAt = now
+		q.UpdatedAt = now
+		_, err := s.db.ExecContext(ctx, `
+			INSERT INTO saved_query(id, conn_id, db_name, name, sql_text, sort_order, created_at, updated_at)
+			VALUES (?,?,?,?,?,?,?,?)`,
+			q.ID, q.ConnID, q.DBName, q.Name, q.SQLText, q.SortOrder,
+			q.CreatedAt.Unix(), q.UpdatedAt.Unix())
+		if err != nil {
+			return SavedQuery{}, err
+		}
+		return q, nil
+	}
+	q.UpdatedAt = now
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE saved_query SET name=?, sql_text=?, sort_order=?, updated_at=? WHERE id=?`,
+		q.Name, q.SQLText, q.SortOrder, q.UpdatedAt.Unix(), q.ID)
+	if err != nil {
+		return SavedQuery{}, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return SavedQuery{}, ErrNotFound
+	}
+	return q, nil
+}
+
+// DeleteSavedQuery removes a saved query by ID.
+func (s *Store) DeleteSavedQuery(ctx context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	res, err := s.db.ExecContext(ctx, `DELETE FROM saved_query WHERE id=?`, id)
 	if err != nil {
 		return err
 	}

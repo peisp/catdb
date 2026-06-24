@@ -97,7 +97,11 @@ async function ensureAutocomplete() {
   if (!connId) return
   try {
     const dbs = await metaStore.ensureDatabases(connId)
-    if (dbs.length && !currentDb.value) currentDb.value = dbs[0]
+    if (!currentDb.value) {
+      // Prefer the tab's anchored db (saved query / 新建查询 from a db node).
+      const anchored = tab.value?.db
+      currentDb.value = (anchored && dbs.includes(anchored)) ? anchored : (dbs[0] ?? null)
+    }
     if (currentDb.value) {
       await metaStore.ensureSnapshot(connId, currentDb.value)
     }
@@ -111,6 +115,8 @@ async function ensureAutocomplete() {
 watch(currentDb, (db) => {
   const connId = tab.value?.connId
   if (!connId || !db) return
+  // Keep the tab's anchor db in sync so 保存 lands under the selected schema.
+  if (tab.value?.kind === 'query') tab.value.db = db
   void metaStore.ensureSnapshot(connId, db).catch(() => { /* nice-to-have */ })
 })
 
@@ -211,6 +217,18 @@ function formatSql() {
   }
 }
 
+async function saveQuery() {
+  if (!tab.value.sql.trim()) {
+    message.warning('SQL is empty')
+    return
+  }
+  try {
+    if (await store.saveTabQuery(tab.value.id)) message.success('已保存')
+  } catch (e) {
+    message.error(`保存失败: ${String(e)}`)
+  }
+}
+
 const statusBadge = computed(() => {
   const t = tab.value
   switch (t.status) {
@@ -306,6 +324,9 @@ function onSplitDown(e: PointerEvent) {
         <n-button size="small" :disabled="tab.status === 'running'" @click="formatSql">
           Format
         </n-button>
+        <n-button size="small" :disabled="tab.status === 'running'" @click="saveQuery">
+          保存
+        </n-button>
         <n-button v-if="caps?.explainPlan" size="small" :disabled="tab.status === 'running'" @click="explain">
           EXPLAIN
         </n-button>
@@ -356,6 +377,7 @@ function onSplitDown(e: PointerEvent) {
           ref="editor"
           :model-value="tab.sql"
           :on-run="run"
+          :on-save="saveQuery"
           :schema="schemaMap"
           :default-schema="currentDb ?? undefined"
           @update:model-value="onSqlUpdate"

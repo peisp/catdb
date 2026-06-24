@@ -5,6 +5,7 @@ import * as ConnectionService from "./connectionservice.js";
 import * as EditService from "./editservice.js";
 import * as MetadataService from "./metadataservice.js";
 import * as QueryService from "./queryservice.js";
+import * as SavedQueryService from "./savedqueryservice.js";
 import * as SystemService from "./systemservice.js";
 import * as TransferService from "./transferservice.js";
 import * as UpdateService from "./updateservice.js";
@@ -13,6 +14,7 @@ export {
     EditService,
     MetadataService,
     QueryService,
+    SavedQueryService,
     SystemService,
     TransferService,
     UpdateService

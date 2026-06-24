@@ -16,8 +16,11 @@ import {
 import type { TreeOption } from 'naive-ui'
 import type { ConnectionProfile } from '../../api/connections'
 import { metadata as metaApi } from '../../api'
+import { savedQuery as savedQueryApi } from '../../api'
+import { on as onEvent } from '../../api/events'
 import { useMetadataStore } from '../../stores/metadata'
 import { useConnectionsStore } from '../../stores/connections'
+import { useQueryStore } from '../../stores/query'
 import { setActiveTableContext } from '../../api/tableContextMenu'
 import { setActiveTreeContext } from '../../api/treeContextMenu'
 import { system as systemApi } from '../../api'
@@ -31,6 +34,7 @@ const emit = defineEmits<{
 
 const store = useMetadataStore()
 const connStore = useConnectionsStore()
+const queryStore = useQueryStore()
 const message = useMessage()
 
 const treeData = ref<TreeOption[]>([])
@@ -44,9 +48,13 @@ const busy = ref(false)
 const isLive = computed(() => connStore.isLive(props.connection.id))
 
 interface TreeMeta {
-  kind: 'database' | 'tableGroup' | 'viewGroup' | 'table' | 'view' | 'column'
+  kind: 'database' | 'tableGroup' | 'viewGroup' | 'queryGroup' | 'table' | 'view' | 'column' | 'query'
   db?: string
   table?: string
+  // for kind === 'query': the saved_query identity + payload.
+  queryId?: string
+  queryName?: string
+  querySql?: string
 }
 
 function nodeKey(meta: TreeMeta): string {
@@ -54,9 +62,11 @@ function nodeKey(meta: TreeMeta): string {
     case 'database': return `db:${meta.db}`
     case 'tableGroup': return `dbtables:${meta.db}`
     case 'viewGroup': return `dbviews:${meta.db}`
+    case 'queryGroup': return `dbqueries:${meta.db}`
     case 'table': return `tbl:${meta.db}:${meta.table}`
     case 'view': return `vw:${meta.db}:${meta.table}`
     case 'column': return `col:${meta.db}:${meta.table}:${meta.table}`
+    case 'query': return `q:${meta.db}:${meta.queryId}`
   }
 }
 
@@ -95,11 +105,19 @@ async function onLoad(node: TreeOption): Promise<boolean> {
   const meta = (node as any).extra as TreeMeta
   try {
     if (meta.kind === 'database') {
-      // Show Tables + Views groups under the database.
+      // Show Tables + Views + saved-queries groups under the database.
       node.children = [
         mkNode('Tables', { kind: 'tableGroup', db: meta.db }),
         mkNode('Views', { kind: 'viewGroup', db: meta.db }),
+        mkNode('查询', { kind: 'queryGroup', db: meta.db }),
       ]
+      return true
+    }
+    if (meta.kind === 'queryGroup') {
+      const list = await savedQueryApi.list(props.connection.id, meta.db!)
+      node.children = (list ?? []).map((q) =>
+        mkNode(q.name, { kind: 'query', db: meta.db, queryId: q.id, queryName: q.name, querySql: q.sqlText }, true),
+      )
       return true
     }
     if (meta.kind === 'tableGroup') {
@@ -190,6 +208,16 @@ async function refreshViewGroup(db: string) {
   await onLoad(node)
 }
 
+async function refreshQueryGroup(db: string) {
+  const node = findNodeByKey(nodeKey({ kind: 'queryGroup', db }))
+  if (!node) return
+  node.children = undefined
+  // Only reload if currently expanded — otherwise it lazy-loads on next open.
+  if (expandedKeys.value.includes(node.key as string)) {
+    await onLoad(node)
+  }
+}
+
 async function refreshColumns(db: string, table: string) {
   await store.ensureColumns(props.connection.id, db, table, true)
   const node = findNodeByKey(nodeKey({ kind: 'table', db, table }))
@@ -267,6 +295,27 @@ function onContextMenu(event: MouseEvent, node: TreeOption) {
       })
       setMenu('catdb-tree-database')
       break
+    case 'queryGroup':
+      if (!m.db) return
+      setActiveTreeContext({
+        connId,
+        db: m.db,
+        onRefreshQueries: () => refreshQueryGroup(m.db!),
+      })
+      setMenu('catdb-tree-query-group')
+      break
+    case 'query':
+      if (!m.db || !m.queryId) return
+      setActiveTreeContext({
+        connId,
+        db: m.db,
+        queryId: m.queryId,
+        queryName: m.queryName,
+        querySql: m.querySql,
+        onRefreshQueries: () => refreshQueryGroup(m.db!),
+      })
+      setMenu('catdb-tree-query')
+      break
     case 'column':
       // Columns have no menu — clear so nothing shows.
       setMenu('')
@@ -279,6 +328,18 @@ function onDblclick(_: MouseEvent, node: TreeOption) {
   // 表/视图 → 打开数据浏览
   if (m.kind === 'table' || m.kind === 'view') {
     if (m.db && m.table) emit('open-data', { db: m.db, table: m.table })
+    return
+  }
+  // 保存的查询 → 打开查询 tab（带 SQL）
+  if (m.kind === 'query') {
+    if (m.queryId) {
+      queryStore.openSavedQuery(props.connection.id, {
+        id: m.queryId,
+        name: m.queryName ?? '查询',
+        sqlText: m.querySql ?? '',
+        dbName: m.db ?? '',
+      })
+    }
     return
   }
   // 叶子节点：没有可展开的内容
@@ -335,6 +396,7 @@ function onNewDatabase() {
 // connection so the new entry appears (or the renamed/altered entry stays
 // consistent with server state).
 let offDbSaved: (() => void) | null = null
+let offQuerySaved: (() => void) | null = null
 onMounted(() => {
   offDbSaved = systemApi.onDatabaseSaved(({ connId }) => {
     if (connId !== props.connection.id) return
@@ -347,10 +409,18 @@ onMounted(() => {
       }
     })()
   })
+  // QueryTab broadcasts this after saving a query; refresh the matching db's
+  // 「查询」 group so the new/renamed entry shows without a manual refresh.
+  offQuerySaved = onEvent<{ connId: string; db: string }>('saved-query:changed', ({ connId, db }) => {
+    if (connId !== props.connection.id) return
+    void refreshQueryGroup(db)
+  })
 })
 onBeforeUnmount(() => {
   offDbSaved?.()
   offDbSaved = null
+  offQuerySaved?.()
+  offQuerySaved = null
 })
 </script>
 

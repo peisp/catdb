@@ -3,5 +3,6 @@
 
 export {
     ConnectionProfile,
-    Group
+    Group,
+    SavedQuery
 } from "./models.js";

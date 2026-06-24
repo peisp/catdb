@@ -121,6 +121,60 @@ export class Group {
     }
 }
 
+/**
+ * SavedQuery is a named SQL snippet persisted under a connection's database
+ * node in the object tree. Scoped by (ConnID, DBName); SQL text holds no
+ * secrets so it lives in SQLite alongside the connection profile.
+ */
+export class SavedQuery {
+    "id": string;
+    "connId": string;
+    "dbName": string;
+    "name": string;
+    "sqlText": string;
+    "sortOrder": number;
+    "createdAt": time$0.Time;
+    "updatedAt": time$0.Time;
+
+    /** Creates a new SavedQuery instance. */
+    constructor($$source: Partial<SavedQuery> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("connId" in $$source)) {
+            this["connId"] = "";
+        }
+        if (!("dbName" in $$source)) {
+            this["dbName"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("sqlText" in $$source)) {
+            this["sqlText"] = "";
+        }
+        if (!("sortOrder" in $$source)) {
+            this["sortOrder"] = 0;
+        }
+        if (!("createdAt" in $$source)) {
+            this["createdAt"] = null;
+        }
+        if (!("updatedAt" in $$source)) {
+            this["updatedAt"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SavedQuery instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SavedQuery {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SavedQuery($$parsedSource as Partial<SavedQuery>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = $Create.Map($Create.Any, $Create.Any);
 const $$createType1 = dbdriver$0.SSLConfig.createFrom;

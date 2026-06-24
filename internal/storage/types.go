@@ -35,6 +35,20 @@ type Group struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// SavedQuery is a named SQL snippet persisted under a connection's database
+// node in the object tree. Scoped by (ConnID, DBName); SQL text holds no
+// secrets so it lives in SQLite alongside the connection profile.
+type SavedQuery struct {
+	ID        string    `json:"id"`
+	ConnID    string    `json:"connId"`
+	DBName    string    `json:"dbName"`
+	Name      string    `json:"name"`
+	SQLText   string    `json:"sqlText"`
+	SortOrder int       `json:"sortOrder"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 // ToDBDriverConfig converts a stored profile + plaintext password into the
 // generic ConnConfig the driver layer expects. Passwords inside SSHTunnel
 // (SSH password / private-key passphrase) are kept as-is — those round-trip

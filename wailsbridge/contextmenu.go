@@ -139,6 +139,20 @@ func RegisterContextMenus(app *application.App) {
 	treeDb.Add("刷新").OnClick(emitContextEvent("ctx:tree-refresh-db"))
 	treeDb.Update()
 
+	// Saved-query group + leaf menus. The group lives under each database node
+	// alongside Tables/Views; leaves are individual saved SQL snippets.
+	treeQueryGroup := application.NewContextMenu("catdb-tree-query-group")
+	treeQueryGroup.Add("新建查询").OnClick(emitContextEvent("ctx:tree-new-query"))
+	treeQueryGroup.Add("刷新").OnClick(emitContextEvent("ctx:tree-refresh-queries"))
+	treeQueryGroup.Update()
+
+	treeQuery := application.NewContextMenu("catdb-tree-query")
+	treeQuery.Add("打开").OnClick(emitContextEvent("ctx:query-open"))
+	treeQuery.Add("重命名").OnClick(emitContextEvent("ctx:query-rename"))
+	treeQuery.AddSeparator()
+	treeQuery.Add("删除").OnClick(emitContextEvent("ctx:query-delete"))
+	treeQuery.Update()
+
 	// Connection-sidebar right-click — connect / disconnect / edit / delete.
 	// The front-end decides which actions apply based on connection state.
 	conn := application.NewContextMenu("catdb-connection")

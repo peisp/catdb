@@ -52,6 +52,8 @@ const props = defineProps<{
   modelValue: string
   /** When the user hits Cmd/Ctrl+Enter the parent runs the query. */
   onRun?: () => void
+  /** When the user hits Cmd/Ctrl+S the parent saves the query. */
+  onSave?: () => void
   /** Catalog description for schema completion. May be either:
    *    - flat: { tableName: ['col1', 'col2'] }                — single DB
    *    - nested: { dbName: { tableName: ['col1', ...] } }     — multi-DB
@@ -191,6 +193,12 @@ onMounted(() => {
       e.preventDefault()
       e.stopImmediatePropagation()
       props.onRun?.()
+      return
+    }
+    if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      props.onSave?.()
     }
   }, { capture: true })
   // On focus, ask the Go backend to switch to English input source so SQL
