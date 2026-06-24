@@ -10,6 +10,7 @@
 
 - **后端**：Go 1.22+，Wails v3 **锁定 `v3.0.0-alpha.96`**（go.mod 与 CLI 都钉死，禁止 `@latest`）
 - **前端**：Vue 3（Composition API + `<script setup>`）+ TypeScript + Vite，状态用 Pinia
+- **多语言**：`vue-i18n` v9（前端）+ `internal/i18n` 消息目录（Go 原生菜单/对话框）—— 规约见下方「多语言（i18n）」
 - **UI 框架**：Naive UI（TS-first、JS 主题系统、自带 `n-tree` 虚拟化树与表单）—— 同类对标 Tiny RDM（Wails+Vue3 数据库 GUI）即用此栈
 - **SQL 编辑器**：CodeMirror 6（`@codemirror/lang-sql`，Vue 下用 `vue-codemirror` 薄封装）—— **不用 Monaco**
 - **结果表格**：`@tanstack/vue-table` + `@tanstack/vue-virtual` —— **不用 AG Grid**（除非任务单明确要求）
@@ -64,6 +65,33 @@ frontend/src/
 10. **平台优先级**：MVP 只保证 Windows + macOS。Linux 锁 GTK3 栈（`-tags gtk3`），不为 GTK4 实验特性写代码。
 11. **UI 必须向原生靠拢、去 Web 感**：这是桌面应用不是网页。写任何前端 UI 前先读 `UI_SPEC.md`。硬性要求：系统字体栈 + 桌面字号（12–13px）、高密度布局、小圆角发丝线、克制按钮无花哨动画；右键用 **Wails 原生上下文菜单**、文件/确认用 **Wails 原生对话框**、顶层菜单走 **原生应用菜单**，不要用 HTML 浮层模拟系统级交互。判定标准：截图发出去要像桌面软件，不像网页。
 
+## 多语言（i18n）
+
+> 基线语言 **en-US**，首批双语 **en-US / zh-CN**，回退 en-US。用户偏好持久化在 `app_settings["ui.locale"]`，支持运行时切换、无需重启。加一门语言 = 新增一个前端 locale 文件 + Go 目录条目，别的不用动。
+
+**第一原则：任何用户可见文案都必须走 i18n，禁止硬编码——中文和英文都不行。** 英文硬编码"看着没问题"，但切到中文不会变，等同漏译。
+
+### 前端（vue-i18n）
+- locale 文件：`frontend/src/i18n/locales/{en-US,zh-CN}.ts`。**两个文件的 namespace 结构必须完全一致**，新增 key 两边都加（CI 心智：en/zh key 数相等、无单边键）。
+- 调用：组件模板用 `$t('ns.key')`（已开 `globalInjection`，无需引入）；`<script setup>` 与纯 `.ts`/store 用 `import { t } from '../i18n'`（相对路径按层级）。
+- 命名空间：通用原子（确定/取消/保存/各类失败提示…）进 `common.*`；模块特有措辞进各自 namespace（`queryTab.*`/`tableBrowser.*`/`structure.*`…）。后端错误码映射进 `error.*`。
+- 插值用**命名参数**：`t('ns.key', { name })`，文案写 `{name}` / `{error}` / `{n}`。
+- **不译**（保持原样）：SQL 关键字与技术 token（EXPLAIN、CSV/Excel/JSON/SQL、ON UPDATE/ON DELETE、RESTRICT/CASCADE、BTREE/HASH/ASC/DESC）、品牌名（catdb）、键盘修饰符（Cmd/Ctrl）、Language 菜单里的本族名（English / 中文（简体））。
+
+四个**必踩的坑**：
+1. **原生对话框靠按钮文案判定结果**（`btn === '删除'`）：翻译后必须比对**翻译后的 label**——先 `const xLabel = t('...')`，按钮和判断都用 `xLabel`。
+2. **模块级 `const` 数组/对象含文案**（列定义、options、tooltip 表…）：必须改 `computed(() => …)` 才能随语言切换刷新；script 内引用 computed 用 `.value`，模板自动解包。纯函数（每次渲染被调用，如 `typeFormatFor`）里内联 `t()` 即响应式。
+3. **文案内嵌 HTML 标记**（`<b>{{n}}</b>`）：用 `<i18n-t keypath="ns.key" tag="span">` + 具名 slot（`<template #foo>` 对应文案里的 `{foo}`），`<i18n-t>` 由插件全局注册。
+4. **文件里已有局部变量名 `t`**（如 `const t = tab.value`、`for (const t of …)`）：i18n 导入要么别名 `import { t as tr }`，要么让 computed **返回 key**、模板 `$t(key)` 解析——别让两个 `t` 撞上。
+- 已持久化/已渲染的字符串（tab 标题、已展开的树节点）按创建时的 locale 定型，不强求实时回译——可接受。
+
+### Go 原生层
+- 目录在 `internal/i18n`（纯 Go、locale 无关、en 基线 + zh，`T(loc,key)` 带回退）。新增条目两个 locale 都加，key 与菜单/对话框构建处对应。
+- `wailsbridge` 用 `tr(key)`（内部）/ `Tr(key)`（导出给 services）按当前 locale 译；启动 `InitMenuLocale(stored)` 后再建菜单。
+- 切换：`SettingsService.SetLocale` 持久化后调 `wailsbridge.SetMenuLocale` —— **右键菜单**直接 `RegisterContextMenus`（`ContextMenuManager.Add` 是带锁 map 写，任意 goroutine 安全）；**应用菜单**走 `application.InvokeAsync` 在主线程 `SetApplicationMenu`（原生 C 调用须主线程）。
+- **Go 侧不要塞本地化文案**：用户可见的错误/状态从 service 返回**稳定 slug**（如 `fetch-failed`），前端映射 `error.*`；纯技术/日志错误保持英文。
+- **驱动 `ConnectionSchema` 保持 locale 无关**：`Group` 用稳定 key（`general/advanced/ssl/ssh`），`Label`/`Help` 是英文基线；前端按字段 key 翻译并**回退驱动英文**（未来驱动无 i18n 条目也能显示）。
+
 ## 代码风格
 
 - Go：标准 `gofmt`/`go vet`；错误用 `fmt.Errorf("...: %w", err)` 包装并传递；公共接口写文档注释。
@@ -79,6 +107,7 @@ frontend/src/
 - [ ] 涉及 Wails API 吗？是不是该走 wailsbridge / api 层？
 - [ ] 改了 Service 公共方法吗？要重新生成 bindings 吗？
 - [ ] 涉及新驱动吗？接口实现全了吗？契约测试过吗？
+- [ ] 有新增/改动用户可见文案吗？走 i18n 了吗（中英都别硬编码）？en/zh 两个 locale 都加了吗？（看「多语言（i18n）」）
 
 ## 不确定时
 
