@@ -332,6 +332,18 @@ export default {
     notConnected: 'Not Connected',
     refreshTree: 'Refresh Object Tree',
     refreshFailed: 'Refresh failed: {error}',
+    schemaFilter: {
+      title: 'Schemas',
+      tooltip: 'Select schemas to show',
+      allSchemas: 'All Schemas',
+      filter: 'Filter',
+      searchPlaceholder: 'Filter schemas…',
+      refresh: 'Refresh schemas',
+      collapse: 'Collapse',
+      expand: 'Expand',
+      close: 'Close',
+      empty: 'No schemas',
+    },
   },
   // Connection sidebar (components/connection/ConnectionSidebar.vue).
   connectionSidebar: {

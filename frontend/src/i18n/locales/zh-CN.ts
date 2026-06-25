@@ -324,6 +324,18 @@ export default {
     notConnected: '未连接',
     refreshTree: '刷新对象树',
     refreshFailed: '刷新失败: {error}',
+    schemaFilter: {
+      title: '架构',
+      tooltip: '选择要显示的架构',
+      allSchemas: '所有架构',
+      filter: '筛选',
+      searchPlaceholder: '筛选架构…',
+      refresh: '刷新架构列表',
+      collapse: '收起',
+      expand: '展开',
+      close: '关闭',
+      empty: '无架构',
+    },
   },
   // 连接侧栏（components/connection/ConnectionSidebar.vue）。
   connectionSidebar: {

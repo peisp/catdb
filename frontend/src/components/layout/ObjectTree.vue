@@ -8,6 +8,9 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   NButton,
+  NCheckbox,
+  NInput,
+  NPopover,
   NScrollbar,
   NSpin,
   NTree,
@@ -38,7 +41,14 @@ const connStore = useConnectionsStore()
 const queryStore = useQueryStore()
 const message = useMessage()
 
-const treeData = ref<TreeOption[]>([])
+// allRootNodes holds the database node objects for every schema on the
+// server; `treeData` (bound to n-tree) filters them by `selectedSchemas`.
+// Filtering by reference — not re-mapping mkNode — keeps node identity so
+// loaded children + expansion survive toggling the schema filter.
+const allRootNodes = ref<TreeOption[]>([])
+const treeData = computed(() =>
+  allRootNodes.value.filter((n) => selectedSchemas.value.has((n as any).extra.db)),
+)
 const expandedKeys = ref<string[]>([])
 const loading = ref(false)
 // `busy` covers the in-flight period of disconnect/reconnect/refresh — we
@@ -47,6 +57,120 @@ const loading = ref(false)
 const busy = ref(false)
 
 const isLive = computed(() => connStore.isLive(props.connection.id))
+
+// --- schema filter ---
+//
+// Lets the user pick which databases (schemas) appear in the tree. Pure UI
+// hide — nothing is dropped server-side. Selection persists per connection in
+// localStorage. `followAll` means "track every schema, including ones that
+// appear later"; it stays true whenever all schemas are checked, so a new
+// schema after a refresh is auto-included.
+const FILTER_VER = 'v1'
+const filterKey = (id: string) => `catdb.schemaFilter.${FILTER_VER}.${id}`
+
+const selectedSchemas = ref<Set<string>>(new Set())
+const followAll = ref(true)
+const panelOpen = ref(false)
+const searchOpen = ref(false)
+const searchText = ref('')
+const listCollapsed = ref(false)
+// busy flag for the in-panel schema refresh action.
+const schemaBusy = ref(false)
+
+const allSchemas = computed(() => allRootNodes.value.map((n) => (n as any).extra.db as string))
+const totalCount = computed(() => allSchemas.value.length)
+const selectedCount = computed(() => selectedSchemas.value.size)
+const allChecked = computed(() => totalCount.value > 0 && selectedCount.value === totalCount.value)
+const someChecked = computed(() => selectedCount.value > 0 && !allChecked.value)
+const isChecked = (db: string) => selectedSchemas.value.has(db)
+
+// Cap big counts to 99+ in the compact trigger; the panel shows full numbers.
+const cap = (n: number) => (n > 99 ? '99+' : String(n))
+const triggerLabel = computed(() => `${cap(selectedCount.value)}/${cap(totalCount.value)}`)
+
+const visibleSchemas = computed(() => {
+  const q = searchText.value.trim().toLowerCase()
+  if (!q) return allSchemas.value
+  return allSchemas.value.filter((s) => s.toLowerCase().includes(q))
+})
+
+function loadPersisted(id: string): { followAll: boolean; schemas: string[] } | null {
+  try {
+    const raw = localStorage.getItem(filterKey(id))
+    if (!raw) return null
+    const v = JSON.parse(raw)
+    if (typeof v?.followAll === 'boolean' && Array.isArray(v?.schemas)) {
+      return { followAll: v.followAll, schemas: v.schemas.filter((s: any) => typeof s === 'string') }
+    }
+  } catch {
+    /* ignore corrupt entry — fall back to "show all" */
+  }
+  return null
+}
+
+function persistFilter() {
+  try {
+    localStorage.setItem(
+      filterKey(props.connection.id),
+      JSON.stringify({ followAll: followAll.value, schemas: [...selectedSchemas.value] }),
+    )
+  } catch {
+    /* quota / disabled storage — selection just won't persist */
+  }
+}
+
+// Reconcile the selection against the actual schema list after a (re)load:
+// drop schemas that vanished, and re-select everything when in follow-all mode.
+function reconcileSelection(dbs: string[]) {
+  const avail = new Set(dbs)
+  const next = followAll.value
+    ? new Set(dbs)
+    : new Set([...selectedSchemas.value].filter((s) => avail.has(s)))
+  selectedSchemas.value = next
+  followAll.value = dbs.length > 0 && next.size === dbs.length
+  persistFilter()
+}
+
+function toggleAll(checked: boolean) {
+  if (totalCount.value === 0) return
+  selectedSchemas.value = checked ? new Set(allSchemas.value) : new Set()
+  followAll.value = checked
+  persistFilter()
+}
+
+function toggleOne(db: string, checked: boolean) {
+  const next = new Set(selectedSchemas.value)
+  if (checked) next.add(db)
+  else next.delete(db)
+  selectedSchemas.value = next
+  // Checking the last unchecked schema re-arms follow-all (and the linked
+  // "all schemas" checkbox); unchecking any one disarms it.
+  followAll.value = totalCount.value > 0 && next.size === totalCount.value
+  persistFilter()
+}
+
+function toggleSearch() {
+  searchOpen.value = !searchOpen.value
+  if (!searchOpen.value) searchText.value = ''
+}
+
+function onPanelShow(v: boolean) {
+  panelOpen.value = v
+}
+
+async function onRefreshSchemas() {
+  if (schemaBusy.value) return
+  schemaBusy.value = true
+  try {
+    const dbs = await store.ensureDatabases(props.connection.id, true)
+    allRootNodes.value = dbs.map((db) => mkNode(db, { kind: 'database', db }))
+    reconcileSelection(dbs)
+  } catch (e) {
+    message.error(t('objectTree.refreshFailed', { error: String(e) }))
+  } finally {
+    schemaBusy.value = false
+  }
+}
 
 interface TreeMeta {
   kind: 'database' | 'tableGroup' | 'viewGroup' | 'queryGroup' | 'table' | 'view' | 'column' | 'query'
@@ -86,7 +210,8 @@ async function loadRoot() {
   loading.value = true
   try {
     const dbs = await store.ensureDatabases(props.connection.id)
-    treeData.value = dbs.map((db) => mkNode(db, { kind: 'database', db }))
+    allRootNodes.value = dbs.map((db) => mkNode(db, { kind: 'database', db }))
+    reconcileSelection(dbs)
   } catch (e) {
     message.error(`load databases failed: ${String(e)}`)
   } finally {
@@ -97,7 +222,17 @@ async function loadRoot() {
 watch(
   () => props.connection.id,
   (id, prev) => {
-    if (id !== prev) loadRoot()
+    if (id === prev) return
+    // Seed the saved schema selection before loadRoot() reconciles it against
+    // the live schema list. Reset transient panel UI on connection switch.
+    const saved = loadPersisted(id)
+    selectedSchemas.value = new Set(saved?.schemas ?? [])
+    followAll.value = saved ? saved.followAll : true
+    panelOpen.value = false
+    searchOpen.value = false
+    searchText.value = ''
+    listCollapsed.value = false
+    loadRoot()
   },
   { immediate: true },
 )
@@ -185,7 +320,7 @@ function setMenu(name: string) {
 // Walk the reactive tree to find a node by key. Returns the node (so callers
 // can mutate `children`) or null.
 function findNodeByKey(key: string): TreeOption | null {
-  const stack: TreeOption[] = [...treeData.value]
+  const stack: TreeOption[] = [...allRootNodes.value]
   while (stack.length) {
     const n = stack.shift()!
     if (n.key === key) return n
@@ -432,6 +567,115 @@ onBeforeUnmount(() => {
       <span class="status-dot" :class="{ live: isLive }" />
       <span class="title">{{ connection.name }}</span>
       <span class="spacer" />
+      <n-popover
+        v-if="isLive"
+        raw
+        trigger="click"
+        placement="bottom-start"
+        :show-arrow="false"
+        :show="panelOpen"
+        @update:show="onPanelShow"
+      >
+        <template #trigger>
+          <span class="schema-trigger" :title="$t('objectTree.schemaFilter.tooltip')">
+            <span class="st-count">{{ triggerLabel }}</span>
+            <svg class="st-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 6l4 4 4-4" />
+            </svg>
+          </span>
+        </template>
+        <div class="schema-panel">
+          <div class="sp-head">
+            <span class="sp-title">{{ $t('objectTree.schemaFilter.title') }}</span>
+            <span class="sp-spacer" />
+            <button
+              class="sp-ico"
+              type="button"
+              :class="{ spinning: schemaBusy }"
+              :disabled="schemaBusy"
+              :title="$t('objectTree.schemaFilter.refresh')"
+              @click="onRefreshSchemas"
+            >
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M13.5 3v3.5H10" />
+                <path d="M13 6.5A5.5 5.5 0 1 0 13 11" />
+              </svg>
+            </button>
+            <button
+              class="sp-ico"
+              type="button"
+              :title="listCollapsed ? $t('objectTree.schemaFilter.expand') : $t('objectTree.schemaFilter.collapse')"
+              @click="listCollapsed = !listCollapsed"
+            >
+              <svg :class="{ flip: listCollapsed }" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 10l4-4 4 4" />
+              </svg>
+            </button>
+            <button
+              class="sp-ico"
+              type="button"
+              :title="$t('objectTree.schemaFilter.close')"
+              @click="panelOpen = false"
+            >
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 4l8 8M12 4l-8 8" />
+              </svg>
+            </button>
+          </div>
+          <div class="sp-toolbar">
+            <n-checkbox
+              size="small"
+              :checked="allChecked"
+              :indeterminate="someChecked"
+              :disabled="totalCount === 0"
+              @update:checked="toggleAll"
+            >
+              {{ $t('objectTree.schemaFilter.allSchemas') }}
+            </n-checkbox>
+            <span class="sp-count">{{ selectedCount }}/{{ totalCount }}</span>
+            <span class="sp-spacer" />
+            <button
+              class="sp-filter-btn"
+              type="button"
+              :class="{ active: searchOpen }"
+              :title="$t('objectTree.schemaFilter.filter')"
+              @click="toggleSearch"
+            >
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="7" cy="7" r="4" />
+                <path d="M10 10l3 3" />
+              </svg>
+              <span>{{ $t('objectTree.schemaFilter.filter') }}</span>
+            </button>
+          </div>
+          <div v-if="searchOpen" class="sp-search">
+            <n-input
+              size="tiny"
+              v-model:value="searchText"
+              clearable
+              :placeholder="$t('objectTree.schemaFilter.searchPlaceholder')"
+            />
+          </div>
+          <div v-show="!listCollapsed" class="sp-list">
+            <n-spin :show="schemaBusy" size="small">
+              <n-scrollbar style="max-height: 240px">
+                <template v-if="visibleSchemas.length">
+                  <label v-for="s in visibleSchemas" :key="s" class="sp-row">
+                    <n-checkbox
+                      size="small"
+                      :checked="isChecked(s)"
+                      @update:checked="(c: boolean) => toggleOne(s, c)"
+                    >
+                      {{ s }}
+                    </n-checkbox>
+                  </label>
+                </template>
+                <div v-else class="sp-empty">{{ $t('objectTree.schemaFilter.empty') }}</div>
+              </n-scrollbar>
+            </n-spin>
+          </div>
+        </div>
+      </n-popover>
       <div class="actions">
         <n-button
           class="hbtn"
@@ -513,7 +757,14 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
   min-height: 30px;
 }
-.header .title { opacity: 0.75; }
+.header .title {
+  opacity: 0.75;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .header .spacer { flex: 1 1 0; }
 
 /* Tiny pulse indicator — green when the connection is live, gray when not. */
@@ -526,7 +777,120 @@ onBeforeUnmount(() => {
 }
 .status-dot.live { background: #2eb872; box-shadow: 0 0 0 2px rgba(46, 184, 114, 0.18); }
 
-.actions { display: flex; align-items: center; gap: 2px; }
+/* Schema-filter trigger chip — "3/40" next to the connection name. */
+.schema-trigger {
+  --wails-draggable: no-drag;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.28));
+  border-radius: 3px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: 0.7;
+  cursor: pointer;
+  user-select: none;
+}
+.schema-trigger:hover { opacity: 1; background: rgba(127, 127, 127, 0.1); }
+.st-count { line-height: 1; }
+.st-caret { width: 10px; height: 10px; display: block; opacity: 0.7; }
+
+/* Schema-filter dropdown panel. */
+.schema-panel {
+  --wails-draggable: no-drag;
+  width: 230px;
+  background: var(--n-color, #fff);
+  color: var(--n-text-color);
+  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.28));
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+  overflow: hidden;
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.sp-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 26px;
+  padding: 0 4px 0 8px;
+  border-bottom: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.18));
+}
+.sp-title { font-size: 11px; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.04em; }
+.sp-spacer { flex: 1 1 0; }
+.sp-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  border-radius: 3px;
+  opacity: 0.6;
+  cursor: pointer;
+}
+.sp-ico:hover:not(:disabled) { opacity: 1; background: rgba(127, 127, 127, 0.12); }
+.sp-ico:disabled { opacity: 0.35; cursor: default; }
+.sp-ico svg { width: 13px; height: 13px; display: block; }
+.sp-ico svg.flip { transform: rotate(180deg); }
+.sp-ico.spinning svg { animation: spin 0.8s linear infinite; }
+.sp-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.18));
+}
+.sp-count { font-size: 11px; opacity: 0.55; font-variant-numeric: tabular-nums; }
+.sp-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.28));
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0.75;
+}
+.sp-filter-btn:hover { opacity: 1; }
+.sp-filter-btn.active {
+  opacity: 1;
+  border-color: var(--n-color-target, #2080f0);
+  color: var(--n-color-target, #2080f0);
+}
+.sp-filter-btn svg { width: 12px; height: 12px; display: block; }
+.sp-search { padding: 6px 8px 0; }
+.sp-list { padding: 4px 0; }
+.sp-row {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  cursor: pointer;
+}
+.sp-row:hover { background: rgba(127, 127, 127, 0.1); }
+.sp-row :deep(.n-checkbox) { width: 100%; }
+.sp-row :deep(.n-checkbox__label) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sp-empty { padding: 12px 8px; text-align: center; font-size: 11px; opacity: 0.5; }
+
+.actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
 .hbtn {
   --wails-draggable: no-drag;
   opacity: 0.65;
