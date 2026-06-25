@@ -2,6 +2,12 @@
 // never import @wailsio/runtime directly (CLAUDE.md #1).
 import { Dialogs } from '@wailsio/runtime'
 import { t } from '../i18n'
+import { openConfirm } from './confirms'
+
+// Windows: Wails v3's native message dialog (Win32 MessageBoxW) ignores custom
+// button labels and renders a single "OK", so multi-button confirms are routed
+// to an in-app modal (ConfirmOverlay). macOS keeps the native NSAlert path.
+const useInAppConfirm = !navigator.platform.includes('Mac')
 
 /** One button of a confirm dialog. `value` is a stable, locale-independent id. */
 export interface ConfirmButton<V extends string = string> {
@@ -30,6 +36,7 @@ export interface ConfirmOptions<V extends string> {
  * dialog is dismissed without matching a button.
  */
 export async function confirm<V extends string>(opts: ConfirmOptions<V>): Promise<V | null> {
+  if (useInAppConfirm) return openConfirm(opts)
   const fn =
     opts.kind === 'error' ? Dialogs.Error : opts.kind === 'info' ? Dialogs.Info : Dialogs.Warning
   const label = await fn({

@@ -12,6 +12,7 @@ import { themeOverrides, darkThemeOverrides } from './styles/theme'
 import AppShell from './components/layout/AppShell.vue'
 import ConnectionEditorWindow from './components/connection/ConnectionEditorWindow.vue'
 import DatabaseEditorWindow from './components/database/DatabaseEditorWindow.vue'
+import ConfirmOverlay from './components/common/ConfirmOverlay.vue'
 
 const theme = useThemeStore()
 const naiveTheme = computed(() => (theme.mode === 'dark' ? darkTheme : null))
@@ -63,6 +64,8 @@ onMounted(() => {
       <ConnectionEditorWindow v-if="route === 'connection-editor'" />
       <DatabaseEditorWindow v-else-if="route === 'database-editor'" />
       <AppShell v-else />
+      <!-- Windows-only in-app confirm modal; mounted at root so it covers every window. -->
+      <ConfirmOverlay />
     </n-message-provider>
   </n-config-provider>
 </template>
