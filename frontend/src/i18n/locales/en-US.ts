@@ -203,6 +203,10 @@ export default {
     rowInserted: 'Row inserted',
     insertFailed: 'Insert failed: {error}',
     savedChanges: 'Saved {n} change(s)',
+    columnsPanel: 'Columns',
+    columnsTitle: 'Columns',
+    columnsFilter: 'Filter columns',
+    columnsEmpty: 'No matching columns',
   },
   // Table structure editor tabs (components/structure/*).
   structure: {

@@ -738,7 +738,22 @@ function scrollToBottom() {
   try { inst.scrollToRow(inst.rowCount - 1) } catch { /* ignore */ }
 }
 
-defineExpose({ scrollToBottom })
+// 横向滚动并选中指定数据列（body 列下标）。bodyCol 不含序号列偏移，内部补上。
+function scrollToColumn(bodyCol: number) {
+  const inst = vTableInstance.value
+  if (!inst) return
+  const colOff = (inst.rowHeaderLevelCount ?? 0) + (inst.leftRowSeriesNumberCount ?? 0)
+  const visualCol = bodyCol + colOff
+  const rowOff = inst.columnHeaderLevelCount ?? 1
+  try {
+    if (inst.scrollToCol) inst.scrollToCol(visualCol)
+    else if (inst.scrollToCell) inst.scrollToCell({ col: visualCol, row: rowOff })
+    // 选中该列首个数据单元格，给出可见的定位高亮
+    if (inst.selectCell) inst.selectCell(visualCol, rowOff)
+  } catch { /* ignore */ }
+}
+
+defineExpose({ scrollToBottom, scrollToColumn })
 
 onBeforeUnmount(() => {
   if (_pasteHandler && gridWrapRef.value) {

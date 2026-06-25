@@ -197,6 +197,10 @@ export default {
     rowInserted: '已插入行',
     insertFailed: '插入失败: {error}',
     savedChanges: '已保存 {n} 处修改',
+    columnsPanel: '字段',
+    columnsTitle: '字段列表',
+    columnsFilter: '筛选字段',
+    columnsEmpty: '无匹配字段',
   },
   // 表结构编辑各 Tab（components/structure/*）。
   structure: {

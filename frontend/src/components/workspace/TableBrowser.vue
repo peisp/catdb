@@ -9,7 +9,7 @@
 //   - 每次单元格编辑 = 一次基于原行 PK 的 UPDATE
 //   - 乐观：先本地写入，applyChange 失败则 reload 整页恢复真值
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { NAlert, NButton, NSelect, NSpin, NTag, useMessage } from 'naive-ui'
+import { NAlert, NButton, NInput, NSelect, NSpin, NTag, useMessage } from 'naive-ui'
 import { edit as editApi, metadata as metaApi } from '../../api'
 import { on } from '../../api/events'
 import { setActiveGridContext } from '../../api/gridContextMenu'
@@ -506,6 +506,51 @@ function discardChanges() {
   load()
 }
 
+// ---- columns drawer ----
+const columnsDrawerOpen = ref(false)
+const columnFilter = ref('')
+// browse 的列元数据来自查询结果（rs.Columns()），不含表字段注释；
+// 注释需另外通过 listColumns 拉取，按列名建映射。
+const commentMap = ref<Map<string, string>>(new Map())
+
+async function loadColumnComments() {
+  try {
+    const cols = await metaApi.listColumns(props.connId, props.db, props.table)
+    const map = new Map<string, string>()
+    for (const c of cols) if (c.comment) map.set(c.name, c.comment)
+    commentMap.value = map
+  } catch { /* 注释拉取失败不影响列表本身 */ }
+}
+
+function toggleColumnsDrawer() {
+  columnsDrawerOpen.value = !columnsDrawerOpen.value
+  if (columnsDrawerOpen.value && !commentMap.value.size) loadColumnComments()
+}
+
+// 携带原始列下标，定位时直接用作 body 列号
+const filteredColumns = computed(() => {
+  const q = columnFilter.value.trim().toLowerCase()
+  const list = columns.value.map((c, index) => ({
+    col: c,
+    index,
+    comment: commentMap.value.get(c.name) ?? c.comment ?? '',
+  }))
+  if (!q) return list
+  return list.filter(({ col, comment }) =>
+    col.name.toLowerCase().includes(q) || comment.toLowerCase().includes(q),
+  )
+})
+
+// 切换表/数据库时收起抽屉、清空筛选与注释缓存
+watch(
+  () => [props.connId, props.db, props.table],
+  () => { columnsDrawerOpen.value = false; columnFilter.value = ''; commentMap.value = new Map() },
+)
+
+function jumpToColumn(index: number) {
+  gridRef.value?.scrollToColumn(index)
+}
+
 // ---- filter handlers ----
 function onFilterApply(where: string, orderByClause: string) {
   filterWhere.value = where
@@ -543,6 +588,7 @@ function onFilterClear() {
         <n-button size="tiny" :disabled="loading" @click="discardChanges">{{ $t('common.cancel') }}</n-button>
       </template>
       <n-button size="tiny" @click="load" :disabled="loading">{{ $t('common.refresh') }}</n-button>
+      <n-button size="tiny" :title="$t('tableBrowser.columnsPanel')" @click="toggleColumnsDrawer">{{ $t('tableBrowser.columnsPanel') }}</n-button>
       <select class="export-select" @change="onExportSelect">
         <option value="" disabled selected>{{ $t('common.exportPlaceholder') }}</option>
         <option value="csv">CSV</option>
@@ -565,25 +611,54 @@ function onFilterClear() {
       {{ $t('tableBrowser.readOnlyBanner') }}
     </n-alert>
 
-    <n-spin :show="loading" class="data-spin">
-      <DataGrid
-        ref="gridRef"
-        :columns="columns"
-        :rows="allRows"
-        :editable="!readOnly"
-        :pk-columns="pk"
-        :dirty-cells="dirtyCells"
-        :deleted-rows="deletedRows"
-        :dirty-rows="dirtyRows"
-        :fetching="loading"
-        :sort-remote="true"
-        :sort-state="sortState"
-        @selection-change="onSelectionChange"
-        @cell-context-menu="onCellContextMenu"
-        @edit-commit="onEditCommit"
-        @sort-change="onSortChange"
-      />
-    </n-spin>
+    <div class="data-area">
+      <n-spin :show="loading" class="data-spin">
+        <DataGrid
+          ref="gridRef"
+          :columns="columns"
+          :rows="allRows"
+          :editable="!readOnly"
+          :pk-columns="pk"
+          :dirty-cells="dirtyCells"
+          :deleted-rows="deletedRows"
+          :dirty-rows="dirtyRows"
+          :fetching="loading"
+          :sort-remote="true"
+          :sort-state="sortState"
+          @selection-change="onSelectionChange"
+          @cell-context-menu="onCellContextMenu"
+          @edit-commit="onEditCommit"
+          @sort-change="onSortChange"
+        />
+      </n-spin>
+
+      <aside v-if="columnsDrawerOpen" class="cols-panel">
+        <div class="cols-head">
+          <span class="cols-title">{{ $t('tableBrowser.columnsTitle') }}</span>
+          <button class="cols-close" :title="$t('common.close')" @click="columnsDrawerOpen = false">×</button>
+        </div>
+        <div class="cols-filter">
+          <n-input
+            v-model:value="columnFilter"
+            size="small"
+            clearable
+            :placeholder="$t('tableBrowser.columnsFilter')"
+          />
+        </div>
+        <div class="cols-list">
+          <button
+            v-for="item in filteredColumns"
+            :key="item.index"
+            class="col-item"
+            @click="jumpToColumn(item.index)"
+          >
+            <span class="col-name mono">{{ item.col.name }}</span>
+            <span v-if="item.comment" class="col-comment">{{ item.comment }}</span>
+          </button>
+          <div v-if="!filteredColumns.length" class="cols-empty mute">{{ $t('tableBrowser.columnsEmpty') }}</div>
+        </div>
+      </aside>
+    </div>
 
     <div class="footer">
       <div class="pager">
@@ -647,6 +722,7 @@ function onFilterClear() {
 
 <style scoped>
 .tb { display: flex; flex-direction: column; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
+.data-area { flex: 1 1 auto; display: flex; flex-direction: row; min-width: 0; min-height: 0; overflow: hidden; }
 .toolbar {
   display: flex;
   align-items: center;
@@ -819,4 +895,76 @@ function onFilterClear() {
   width: 80px;
 }
 .mute { opacity: 0.55; font-size: 10px; }
+
+.cols-panel {
+  flex: 0 0 240px;
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.2));
+  background: var(--n-color);
+}
+.cols-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.2));
+  flex: 0 0 auto;
+}
+.cols-title { font-size: 12px; font-weight: 500; }
+.cols-close {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: default;
+  opacity: 0.6;
+  transition: background-color 120ms ease, opacity 120ms ease;
+}
+.cols-close:hover { background: var(--n-color-target, rgba(127, 127, 127, 0.12)); opacity: 1; }
+.cols-filter {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.2));
+  flex: 0 0 auto;
+}
+.cols-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 0; }
+.col-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  text-align: left;
+  padding: 5px 12px;
+  border: none;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: inherit;
+  cursor: default;
+  font-family: inherit;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.col-item:hover {
+  background: var(--n-color-target, rgba(127, 127, 127, 0.1));
+  border-left-color: var(--n-primary-color, #18a058);
+}
+.col-name { font-size: 12px; }
+.col-comment {
+  font-size: 11px;
+  opacity: 0.55;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.cols-empty { padding: 12px; text-align: center; }
 </style>
