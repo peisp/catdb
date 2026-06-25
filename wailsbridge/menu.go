@@ -46,14 +46,22 @@ func BuildApplicationMenu(app *application.App) *application.Menu {
 
 	// Edit — role items get OS-localised labels automatically.
 	editMenu := m.AddSubmenu(tr("menu.edit"))
-	editMenu.AddRole(application.Undo)
-	editMenu.AddRole(application.Redo)
-	editMenu.AddSeparator()
-	editMenu.AddRole(application.Cut)
-	editMenu.AddRole(application.Copy)
-	editMenu.AddRole(application.Paste)
-	editMenu.AddRole(application.SelectAll)
-	editMenu.AddSeparator()
+	// The standard clipboard/undo roles are added on macOS only. On Windows &
+	// Linux each of these roles registers an accelerator (Ctrl+V, Ctrl+Z…)
+	// *and* an OnClick that re-invokes the WebView's native clipboard action,
+	// so the shortcut fires twice — Ctrl+V pastes doubled content (and Ctrl+Z
+	// would undo two steps). The WebView already handles Ctrl+Z/Y/X/C/V/A
+	// natively inside inputs and the editor, so we simply omit the roles there.
+	if runtime.GOOS == "darwin" {
+		editMenu.AddRole(application.Undo)
+		editMenu.AddRole(application.Redo)
+		editMenu.AddSeparator()
+		editMenu.AddRole(application.Cut)
+		editMenu.AddRole(application.Copy)
+		editMenu.AddRole(application.Paste)
+		editMenu.AddRole(application.SelectAll)
+		editMenu.AddSeparator()
+	}
 	emitItem(editMenu, tr("menu.find"), "menu:find", "CmdOrCtrl+F")
 
 	// View
