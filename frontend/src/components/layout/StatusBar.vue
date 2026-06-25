@@ -59,7 +59,7 @@ async function onVersionClick() {
   if (checking.value) return
   checking.value = true
   try {
-    const found = await updates.check()
+    const found = await updates.check(true)
     if (found) {
       updates.openDialog()
       return

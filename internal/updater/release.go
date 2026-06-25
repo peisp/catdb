@@ -49,12 +49,17 @@ func (r *Release) Version() string {
 	return strings.TrimPrefix(r.TagName, "v")
 }
 
-// cachedFetchLatest caches the first successful result so HMR / repeated
-// calls during the same process lifetime never hit the network again.
+// We cache the last successful result for a short window so repeated calls
+// (dev HMR, a quick second click) don't hammer GitHub's unauthenticated rate
+// limit — but the TTL ensures a long-running instance still picks up a newly
+// published release. Errors are never cached: a transient failure must not
+// poison every later check until the process restarts.
+const fetchCacheTTL = 10 * time.Minute
+
 var (
-	cacheMu     sync.RWMutex
-	cachedRel   *Release
-	cachedErr   error
+	cacheMu   sync.RWMutex
+	cachedRel *Release
+	cachedAt  time.Time
 )
 
 // FetchLatest queries GitHub for the most recent NON-prerelease, NON-draft
@@ -69,10 +74,10 @@ func FetchLatest(ctx context.Context, repo string) (*Release, error) {
 	}
 
 	cacheMu.RLock()
-	if cachedRel != nil || cachedErr != nil {
-		r, e := cachedRel, cachedErr
+	if cachedRel != nil && time.Since(cachedAt) < fetchCacheTTL {
+		r := cachedRel
 		cacheMu.RUnlock()
-		return r, e
+		return r, nil
 	}
 	cacheMu.RUnlock()
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
@@ -86,26 +91,16 @@ func FetchLatest(ctx context.Context, repo string) (*Release, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		cacheMu.Lock()
-		cachedErr = err
-		cacheMu.Unlock()
 		return nil, fmt.Errorf("updater: GitHub API: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		cacheMu.Lock()
-		cachedErr = ErrNoRelease
-		cacheMu.Unlock()
 		return nil, ErrNoRelease
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		err = fmt.Errorf("updater: GitHub API %d: %s", resp.StatusCode, string(body))
-		cacheMu.Lock()
-		cachedErr = err
-		cacheMu.Unlock()
-		return nil, err
+		return nil, fmt.Errorf("updater: GitHub API %d: %s", resp.StatusCode, string(body))
 	}
 
 	var r Release
@@ -114,6 +109,7 @@ func FetchLatest(ctx context.Context, repo string) (*Release, error) {
 	}
 	cacheMu.Lock()
 	cachedRel = &r
+	cachedAt = time.Now()
 	cacheMu.Unlock()
 	return &r, nil
 }

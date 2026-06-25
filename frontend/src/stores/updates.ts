@@ -56,17 +56,23 @@ export const useUpdatesStore = defineStore('updates', () => {
     return `${y}-${m}-${day}`
   }
 
-  async function check(): Promise<boolean> {
+  // force=true performs a real check unconditionally — used by the manual
+  // "check for updates" click. The default (false) keeps the once-per-day
+  // throttle for the automatic background check on startup.
+  async function check(force = false): Promise<boolean> {
     // Development builds (VITE_APP_VERSION unset → "dev") should never
     // call the GitHub API — no rate limit to waste, no false badges.
     if (currentVersion.value === 'dev') return false
 
-    // Once-per-day gate: skip if we already checked today.
-    try {
-      const lastDate = await updateApi.getLastCheckDate()
-      if (lastDate === today()) return false
-    } catch {
-      // Swallow — stale/missing setting is non-fatal; just proceed.
+    // Once-per-day gate: skip if we already checked today. A manual click
+    // (force) bypasses this so the user always gets a fresh result.
+    if (!force) {
+      try {
+        const lastDate = await updateApi.getLastCheckDate()
+        if (lastDate === today()) return false
+      } catch {
+        // Swallow — stale/missing setting is non-fatal; just proceed.
+      }
     }
 
     lastError.value = ''
