@@ -53,7 +53,12 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: |
+          npm ci
+          # Heal npm's optional-dependency bug (npm/cli#4828): `npm ci` sometimes
+          # skips the host platform's native binding (rolldown/lightningcss),
+          # forcing a broken @napi-rs/wasm-runtime fallback. Reinstall to repair.
+          npm install --no-save
 
       - name: Build and package .app bundle
         run: task darwin:package ARCH=${{ matrix.arch }}
@@ -124,7 +129,12 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: |
+          npm ci
+          # Heal npm's optional-dependency bug (npm/cli#4828): `npm ci` sometimes
+          # skips the host platform's native binding (rolldown/lightningcss),
+          # forcing a broken @napi-rs/wasm-runtime fallback. Reinstall to repair.
+          npm install --no-save
       - name: Build frontend + generate bindings
         working-directory: frontend
         run: npm run build
