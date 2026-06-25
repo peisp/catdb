@@ -203,19 +203,6 @@ function cancel() {
   void store.cancel(tab.value.id)
 }
 
-// ---- export dropdown ----
-function onExportSelect(ev: Event) {
-  const val = (ev.target as HTMLSelectElement).value
-  if (!val) return
-  if (!tab.value.sql.trim()) {
-    message.warning(t('queryTab.exportNeedsSql'))
-    ;(ev.target as HTMLSelectElement).value = ''
-    return
-  }
-  startExport({ kind: 'query', connId: tab.value.connId, sql: tab.value.sql, defaultName: 'query-' + tab.value.id }, val as any)
-  ;(ev.target as HTMLSelectElement).value = ''
-}
-
 function onLoadMore() {
   void store.fetchMore(tab.value.id)
 }
@@ -365,16 +352,6 @@ function onSplitDown(e: PointerEvent) {
         <n-button v-if="caps?.explainPlan" size="small" :disabled="tab.status === 'running'" @click="explain">
           EXPLAIN
         </n-button>
-        <select v-if="tab.isResultSet" class="export-select" :disabled="tab.status === 'running'" @change="onExportSelect">
-          <option value="" disabled selected>{{ $t('common.exportPlaceholder') }}</option>
-          <option value="csv">CSV</option>
-          <option value="xlsx">Excel</option>
-          <option value="json">JSON</option>
-          <option value="sql">SQL</option>
-        </select>
-        <n-button v-if="tab.status === 'running'" size="small" type="warning" @click="cancel">
-          {{ $t('common.cancel') }}
-        </n-button>
         <span class="sep" />
         <select
           v-model="currentDb"
@@ -395,6 +372,9 @@ function onSplitDown(e: PointerEvent) {
         </span>
       </n-space>
       <n-space :size="6" align="center" class="hint mono">
+        <n-button v-if="tab.status === 'running'" size="small" type="warning" @click="cancel">
+          {{ $t('common.cancel') }}
+        </n-button>
         <span>{{ modifierKey }}+Enter</span>
       </n-space>
     </div>
@@ -497,25 +477,6 @@ function onSplitDown(e: PointerEvent) {
   min-width: 0;
 }
 .sep { display: inline-block; width: 1px; height: 12px; background: currentColor; opacity: 0.15; }
-.export-select {
-  font-size: 12px;
-  height: 26px;
-  padding: 0 4px;
-  border-radius: 3px;
-  border: 1px solid var(--n-border-color, rgba(127,127,127,0.25));
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  outline: none;
-  font-family: inherit;
-}
-.export-select:hover:not(:disabled) {
-  background: var(--n-color-target, rgba(127,127,127,0.12));
-}
-.export-select:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 .mute { opacity: 0.6; font-size: 12px; }
 .hint { opacity: 0.4; font-size: 11px; }
 /* Schema dropdown — native select styled to match toolbar density. */
