@@ -27,8 +27,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          # 不开 npm 缓存：恢复回来的 ~/.npm 会触发 npm 可选依赖 bug
+          # (npm/cli#4828)，把当前平台的 rolldown/lightningcss 原生 binding 标记为
+          # skipped，导致回退到半装好的 wasm-runtime 子树而构建崩溃。
 
       - name: Install build tools
         run: |
@@ -55,10 +56,16 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
-          # Heal npm's optional-dependency bug (npm/cli#4828): `npm ci` sometimes
-          # skips the host platform's native binding (rolldown/lightningcss),
-          # forcing a broken @napi-rs/wasm-runtime fallback. Reinstall to repair.
-          npm install --no-save
+          # npm/cli#4828 守卫：npm 偶发漏装当前平台的 rolldown 原生 binding，留下
+          # 半装好的 node_modules（悬空的 @emnapi/* wasm-runtime 文件），让 Task 的
+          # 文件指纹或 vite 报 `open ...: no such file or directory` 直接挂掉。
+          # 只要没有任何非 wasm 的原生 binding，就从干净状态（清掉 lockfile + npm 缓存）
+          # 重装，强制按本机平台重新解析。
+          if ! ls node_modules/@rolldown/binding-* 2>/dev/null | grep -qv wasm; then
+            echo "::warning::native rolldown binding missing, clean reinstall (npm/cli#4828)"
+            rm -rf node_modules package-lock.json ~/.npm/_cacache
+            npm install --no-audit --no-fund
+          fi
 
       - name: Build and package .app bundle
         run: task darwin:package ARCH=${{ matrix.arch }}
@@ -103,8 +110,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          # 不开 npm 缓存：恢复回来的 ~/.npm 会触发 npm 可选依赖 bug
+          # (npm/cli#4828)，把当前平台的 rolldown/lightningcss 原生 binding 标记为
+          # skipped，导致回退到半装好的 wasm-runtime 子树而构建崩溃。
 
       - name: Install Go build tools
         run: |
@@ -131,10 +139,16 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
-          # Heal npm's optional-dependency bug (npm/cli#4828): `npm ci` sometimes
-          # skips the host platform's native binding (rolldown/lightningcss),
-          # forcing a broken @napi-rs/wasm-runtime fallback. Reinstall to repair.
-          npm install --no-save
+          # npm/cli#4828 守卫：npm 偶发漏装当前平台的 rolldown 原生 binding，留下
+          # 半装好的 node_modules（悬空的 @emnapi/* wasm-runtime 文件），让 Task 的
+          # 文件指纹或 vite 报 `open ...: no such file or directory` 直接挂掉。
+          # 只要没有任何非 wasm 的原生 binding，就从干净状态（清掉 lockfile + npm 缓存）
+          # 重装，强制按本机平台重新解析。
+          if ! ls node_modules/@rolldown/binding-* 2>/dev/null | grep -qv wasm; then
+            echo "::warning::native rolldown binding missing, clean reinstall (npm/cli#4828)"
+            rm -rf node_modules package-lock.json ~/.npm/_cacache
+            npm install --no-audit --no-fund
+          fi
       - name: Build frontend + generate bindings
         working-directory: frontend
         run: npm run build
