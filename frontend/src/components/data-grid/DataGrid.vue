@@ -449,6 +449,7 @@ function rangeFromArgs(args: any): SelectionRange | null {
 
 function onReady(instance: any) {
   vTableInstance.value = instance
+  installResizeObserver()
 
   // 选区变化：拖拽中 + 单击 + 右键自动选中都走 SELECTED_CHANGED；mouseup 之后
   // 还会再补一次 SELECTED_CELL。两个都接，让 parent 拿到最新状态。
@@ -753,7 +754,39 @@ function scrollToColumn(bodyCol: number) {
   } catch { /* ignore */ }
 }
 
-defineExpose({ scrollToBottom, scrollToColumn })
+// 容器尺寸变化后强制 VTable 重算画布并重绘。
+function resize() {
+  const inst = vTableInstance.value
+  if (!inst?.resize) return
+  try { inst.resize() } catch { /* ignore */ }
+}
+
+// VTable 自带的 ResizeObserver 把回调 debounce 了 100ms（见 vtable EventHandler），
+// 拖动分隔条/侧栏这类连续变化时画布要等停手才补画。这里挂一个不防抖的原生
+// ResizeObserver，容器一变就同帧 resize()，覆盖所有改容器宽高的来源（侧栏、
+// 窗口、分屏）。仅在尺寸真变化时调用，避免与 VTable 自身重绘形成回环。
+let _ro: ResizeObserver | null = null
+let _roW = 0
+let _roH = 0
+function installResizeObserver() {
+  const el = gridWrapRef.value
+  if (!el || typeof ResizeObserver === 'undefined') return
+  _roW = el.clientWidth
+  _roH = el.clientHeight
+  _ro = new ResizeObserver(() => {
+    const node = gridWrapRef.value
+    if (!node) return
+    const w = node.clientWidth
+    const h = node.clientHeight
+    if (w === _roW && h === _roH) return
+    _roW = w
+    _roH = h
+    resize()
+  })
+  _ro.observe(el)
+}
+
+defineExpose({ scrollToBottom, scrollToColumn, resize })
 
 onBeforeUnmount(() => {
   if (_pasteHandler && gridWrapRef.value) {
@@ -762,6 +795,8 @@ onBeforeUnmount(() => {
   if (_editorCtxHandler && gridWrapRef.value) {
     gridWrapRef.value.removeEventListener('contextmenu', _editorCtxHandler, true)
   }
+  _ro?.disconnect()
+  _ro = null
 })
 
 </script>

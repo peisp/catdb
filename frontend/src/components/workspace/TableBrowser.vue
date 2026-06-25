@@ -18,6 +18,7 @@ import type { BrowseResult, ColumnMeta } from '../../api/metadata'
 import DataGrid from '../data-grid/DataGrid.vue'
 import { startExport } from '../../composables/useExport'
 import FilterBar from './FilterBar.vue'
+import ResizeHandle from '../shared/ResizeHandle.vue'
 import { t } from '../../i18n'
 
 const props = defineProps<{
@@ -527,6 +528,39 @@ function toggleColumnsDrawer() {
   if (columnsDrawerOpen.value && !commentMap.value.size) loadColumnComments()
 }
 
+// ---- 字段面板宽度（左边缘可拖动） ----
+const MIN_PANEL_W = 160
+const MAX_PANEL_W = 520
+const panelWidth = ref(240)
+const resizing = ref(false)
+let dragStartX = 0
+let dragStartW = 0
+
+function onResizePointerDown(ev: PointerEvent) {
+  if (ev.button !== 0) return
+  resizing.value = true
+  dragStartX = ev.clientX
+  dragStartW = panelWidth.value
+  ;(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+}
+
+function onResizePointerMove(ev: PointerEvent) {
+  if (!resizing.value) return
+  // 面板在右侧、把手在其左边缘：指针左移 → 面板变宽
+  const raw = dragStartW + (dragStartX - ev.clientX)
+  panelWidth.value = Math.max(MIN_PANEL_W, Math.min(MAX_PANEL_W, raw))
+  // 网格跟手重绘由 DataGrid 内置的 ResizeObserver 负责，这里不必手动触发
+}
+
+function onResizePointerUp() {
+  if (!resizing.value) return
+  resizing.value = false
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+}
+
 // 携带原始列下标，定位时直接用作 body 列号
 const filteredColumns = computed(() => {
   const q = columnFilter.value.trim().toLowerCase()
@@ -632,7 +666,20 @@ function onFilterClear() {
         />
       </n-spin>
 
-      <aside v-if="columnsDrawerOpen" class="cols-panel">
+      <aside
+        v-if="columnsDrawerOpen"
+        class="cols-panel"
+        :style="{ width: panelWidth + 'px', flexBasis: panelWidth + 'px' }"
+      >
+        <ResizeHandle
+          orientation="vertical"
+          class="cols-resize"
+          :active="resizing"
+          @pointerdown="onResizePointerDown"
+          @pointermove="onResizePointerMove"
+          @pointerup="onResizePointerUp"
+          @pointercancel="onResizePointerUp"
+        />
         <div class="cols-head">
           <span class="cols-title">{{ $t('tableBrowser.columnsTitle') }}</span>
           <button class="cols-close" :title="$t('common.close')" @click="columnsDrawerOpen = false">×</button>
@@ -897,14 +944,16 @@ function onFilterClear() {
 .mute { opacity: 0.55; font-size: 10px; }
 
 .cols-panel {
-  flex: 0 0 240px;
-  width: 240px;
+  position: relative;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
   border-left: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.2));
   background: var(--n-color);
 }
+/* 把手贴在面板左边缘（覆盖 ResizeHandle 默认 .is-vertical 的 right:0） */
+.cols-panel > .cols-resize.is-vertical { right: auto; left: 0; }
 .cols-head {
   display: flex;
   align-items: center;
