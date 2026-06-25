@@ -23,13 +23,22 @@ tasks:
       - sh: npm version
         msg: "Looks like npm isn't installed. Npm is part of the Node installer: https://nodejs.org/en/download/"
     cmds:
-      - npm install
-      # npm/cli#4828 守卫：npm 偶发漏装当前平台的 rolldown 原生 binding，留下半装好的
-      # node_modules（悬空的 @emnapi/* wasm-runtime 文件），后续 vite/指纹遍历会报
-      # `open ...: no such file or directory`。只要没有任何非 wasm 的原生 binding，
-      # 就清掉 node_modules/lockfile/npm 缓存按本机平台彻底重装。
+      # node_modules 已与 package.json 同步时绝不再跑 npm install。否则 darwin:package
+      # 走 task 管线时这次重装会和并行的 generate:bindings 文件遍历同时动 node_modules，
+      # npm 半路增删文件 → 遍历 open 到刚消失的文件 → `no such file or directory` 直接挂
+      # （报错文件每次都不一样正是这个竞态的特征）。npm 装完会写 node_modules/.package-lock.json
+      # 作同步标记；只要它在、package.json 没更新过它、且原生 binding 在，就跳过本次安装。
+      # 改了 package.json（mtime 变新）会让条件失败 → 正常重装，本地开发体验不受影响。
       - |
-        if ! ls node_modules/@rolldown/binding-* 2>/dev/null | grep -qv wasm; then
+        if [ -f node_modules/.package-lock.json ] \
+           && [ ! package.json -nt node_modules/.package-lock.json ] \
+           && ls node_modules/@rolldown/binding-* 2>/dev/null | grep -qv wasm >/dev/null; then
+          echo "frontend deps in sync, skip npm install (avoids node_modules race in task pipeline)"
+          exit 0
+        fi
+        npm install
+        # npm/cli#4828 守卫：装完仍没有非 wasm 的原生 binding（漏装）→ 清干净按本机平台重装
+        if ! ls node_modules/@rolldown/binding-* 2>/dev/null | grep -qv wasm >/dev/null; then
           echo "native rolldown binding missing, clean reinstall (npm/cli#4828)"
           rm -rf node_modules package-lock.json ~/.npm/_cacache
           npm install --no-audit --no-fund
