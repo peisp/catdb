@@ -11,7 +11,7 @@ import { useQueryStore } from '../../stores/query'
 import { LogicalType } from '../../api/metadata'
 import type { ColumnMeta, TableInfo } from '../../api/metadata'
 import DataGrid from '../data-grid/DataGrid.vue'
-import { setActiveTableContext } from '../../api/tableContextMenu'
+import { setActiveTableContext, renameTable } from '../../api/tableContextMenu'
 import { t } from '../../i18n'
 
 const props = defineProps<{
@@ -25,6 +25,8 @@ const message = useMessage()
 const tables = ref<TableInfo[]>([])
 const filterText = ref('')
 const loading = ref(false)
+// 当前选中行（DataGrid selection-change 同步），工具栏的 打开/设计/重命名 按钮以此为目标。
+const selectedRow = ref<number | null>(null)
 
 // 客户端按表名过滤
 const filteredTables = computed<TableInfo[]>(() => {
@@ -145,6 +147,42 @@ watch(
   { immediate: true },
 )
 
+// 选中行 → 目标表（过滤后坐标系）。工具栏按钮据此启用并定位。
+const selectedTable = computed<string | null>(() => {
+  if (selectedRow.value === null) return null
+  return filteredTables.value[selectedRow.value]?.name ?? null
+})
+
+function onSelectionChange(p: { range: { startRow: number } | null }) {
+  selectedRow.value = p.range ? p.range.startRow : null
+}
+
+// 切库或过滤后行集变化 → 清空选中，避免指向已不存在的行。
+watch(filteredTables, () => { selectedRow.value = null })
+
+function openSelected() {
+  const table = selectedTable.value
+  if (!table) return
+  queryStore.openTableTab(props.connId, props.db, table, 'table')
+}
+
+function editSelected() {
+  const table = selectedTable.value
+  if (!table) return
+  queryStore.openTableTab(props.connId, props.db, table, 'structure')
+}
+
+function createTable() {
+  if (!props.db) return
+  queryStore.openNewTableTab(props.connId, props.db)
+}
+
+function renameSelected() {
+  const table = selectedTable.value
+  if (!table) return
+  void renameTable({ connId: props.connId, db: props.db, table, onAfterMutate: load })
+}
+
 // 双击单元格 → 跳到该表的数据浏览 tab
 function onDblClickCell(p: { row: number }) {
   const table = filteredTables.value[p.row]
@@ -171,6 +209,14 @@ function onCellContextMenu(p: { row: number }) {
     <div class="toolbar">
       <span class="title mono">{{ db || $t('tablesOverview.title') }}</span>
       <span v-if="db" class="mute">· {{ $t('tablesOverview.tableCount', { n: filteredTables.length }) }}</span>
+      <template v-if="db">
+        <span class="sep" />
+        <n-button size="tiny" :disabled="!selectedTable" @click="openSelected">{{ $t('tablesOverview.action.open') }}</n-button>
+        <n-button size="tiny" :disabled="!db" @click="createTable">{{ $t('tablesOverview.action.newTable') }}</n-button>
+        <n-button size="tiny" :disabled="!selectedTable" @click="editSelected">{{ $t('tablesOverview.action.edit') }}</n-button>
+        <n-button size="tiny" :disabled="!selectedTable" @click="renameSelected">{{ $t('tablesOverview.action.rename') }}</n-button>
+      </template>
+      <span class="grow" />
       <n-input
         v-if="db"
         v-model:value="filterText"
@@ -179,7 +225,6 @@ function onCellContextMenu(p: { row: number }) {
         clearable
         class="filter-input"
       />
-      <span class="grow" />
       <n-button size="tiny" :disabled="loading || !db" @click="load">{{ $t('common.refresh') }}</n-button>
     </div>
 
@@ -197,6 +242,7 @@ function onCellContextMenu(p: { row: number }) {
         context-menu-name="catdb-tables-overview"
         @cell-dblclick="onDblClickCell"
         @cell-context-menu="onCellContextMenu"
+        @selection-change="onSelectionChange"
       />
     </n-spin>
   </div>
@@ -218,6 +264,7 @@ function onCellContextMenu(p: { row: number }) {
 .title { font-size: 12px; }
 .mute { opacity: 0.55; font-size: 11px; }
 .grow { flex: 1 1 auto; }
+.sep { width: 1px; align-self: stretch; margin: 2px 2px; background: var(--n-border-color, rgba(127,127,127,0.2)); }
 .filter-input { width: 160px; }
 .data-spin { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; padding: 6px; }
 .data-spin :deep(.n-spin-container),

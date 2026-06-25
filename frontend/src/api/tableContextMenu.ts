@@ -38,6 +38,49 @@ export function setActiveTableContext(ctx: ActiveCtx): void {
   active = ctx
 }
 
+/**
+ * 重命名一张表 —— 弹出输入框、执行 RENAME TABLE、回指已开 tab 并失效元数据缓存。
+ * 既被右键菜单 `ctx:tbl-rename` 调用，也被 TablesOverview 工具栏按钮直接调用。
+ */
+export async function renameTable(ctx: ActiveCtx): Promise<void> {
+  const { message } = createDiscreteApi(['message'])
+  const newName = await openTextPrompt({
+    title: t('table.rename.title'),
+    label: t('common.currentLabel', { name: `${ctx.db}.${ctx.table}` }),
+    initial: ctx.table,
+    okText: t('common.rename'),
+    validate: (v) => {
+      if (!v) return t('table.rename.empty')
+      if (v === ctx.table) return t('common.sameName')
+      if (/[`\s.]/.test(v)) return t('table.rename.invalidChars')
+      return null
+    },
+  })
+  if (newName === null) return
+  try {
+    await runQuery(
+      ctx.connId,
+      `RENAME TABLE ${quoteTable(ctx.db, ctx.table)} TO ${quoteTable(ctx.db, newName)}`,
+    )
+    // Re-point any open tabs at the new name so titles + future
+    // openTableTab lookups stay consistent.
+    const qs = useQueryStore()
+    for (const t of qs.tabs) {
+      if (t.connId !== ctx.connId || t.db !== ctx.db || t.table !== ctx.table) continue
+      t.table = newName
+      if (t.kind === 'table') t.title = `⊞ ${ctx.db}.${newName}`
+      else if (t.kind === 'structure') t.title = `⚙ ${ctx.db}.${newName}`
+    }
+    const meta = useMetadataStore()
+    meta.invalidateTables(ctx.connId, ctx.db)
+    meta.invalidateColumns(ctx.connId, ctx.db, ctx.table)
+    message.success(t('common.renamedTo', { name: newName }))
+    await ctx.onAfterMutate?.()
+  } catch (e) {
+    message.error(t('common.renameFailed', { error: String(e) }))
+  }
+}
+
 let installed = false
 
 /** Subscribe once to the Go-side `ctx:tbl-*` click events. Call from app boot. */
@@ -59,44 +102,9 @@ export function installTableContextMenuListener(): void {
     useQueryStore().openTableTab(connId, db, table, 'structure')
   })
 
-  on('ctx:tbl-rename', async () => {
+  on('ctx:tbl-rename', () => {
     if (!active) return
-    const ctx = active
-    const newName = await openTextPrompt({
-      title: t('table.rename.title'),
-      label: t('common.currentLabel', { name: `${ctx.db}.${ctx.table}` }),
-      initial: ctx.table,
-      okText: t('common.rename'),
-      validate: (v) => {
-        if (!v) return t('table.rename.empty')
-        if (v === ctx.table) return t('common.sameName')
-        if (/[`\s.]/.test(v)) return t('table.rename.invalidChars')
-        return null
-      },
-    })
-    if (newName === null) return
-    try {
-      await runQuery(
-        ctx.connId,
-        `RENAME TABLE ${quoteTable(ctx.db, ctx.table)} TO ${quoteTable(ctx.db, newName)}`,
-      )
-      // Re-point any open tabs at the new name so titles + future
-      // openTableTab lookups stay consistent.
-      const qs = useQueryStore()
-      for (const t of qs.tabs) {
-        if (t.connId !== ctx.connId || t.db !== ctx.db || t.table !== ctx.table) continue
-        t.table = newName
-        if (t.kind === 'table') t.title = `⊞ ${ctx.db}.${newName}`
-        else if (t.kind === 'structure') t.title = `⚙ ${ctx.db}.${newName}`
-      }
-      const meta = useMetadataStore()
-      meta.invalidateTables(ctx.connId, ctx.db)
-      meta.invalidateColumns(ctx.connId, ctx.db, ctx.table)
-      message.success(t('common.renamedTo', { name: newName }))
-      await ctx.onAfterMutate?.()
-    } catch (e) {
-      message.error(t('common.renameFailed', { error: String(e) }))
-    }
+    void renameTable(active)
   })
 
   on('ctx:tbl-truncate', async () => {

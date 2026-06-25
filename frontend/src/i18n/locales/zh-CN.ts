@@ -163,6 +163,12 @@ export default {
     tableCount: '{n} 张表',
     empty: '在左侧对象树点击一个数据库以查看表概览。',
     loadFailed: '加载表列表失败: {error}',
+    action: {
+      open: '打开表',
+      newTable: '新建表',
+      edit: '设计表',
+      rename: '重命名',
+    },
     col: {
       name: '表名',
       engine: '引擎',

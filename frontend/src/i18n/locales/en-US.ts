@@ -168,6 +168,12 @@ export default {
     tableCount: '{n} tables',
     empty: 'Click a database in the object tree on the left to view its table overview.',
     loadFailed: 'Failed to load table list: {error}',
+    action: {
+      open: 'Open Table',
+      newTable: 'New Table',
+      edit: 'Design Table',
+      rename: 'Rename',
+    },
     col: {
       name: 'Name',
       engine: 'Engine',
