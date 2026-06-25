@@ -159,6 +159,7 @@ export default {
   // 数据库表概览（components/workspace/TablesOverview.vue）。
   tablesOverview: {
     title: '数据库概览',
+    filterPlaceholder: '筛选表…',
     tableCount: '{n} 张表',
     empty: '在左侧对象树点击一个数据库以查看表概览。',
     loadFailed: '加载表列表失败: {error}',

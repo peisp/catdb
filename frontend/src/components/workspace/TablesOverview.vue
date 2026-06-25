@@ -5,7 +5,7 @@
 // 用 DataGrid 列出该数据库下的所有表及其元信息（Name / Engine / Rows / Comment）。
 // 双击表所在的行跳转到该表的数据浏览 tab。
 import { computed, ref, watch } from 'vue'
-import { NButton, NSpin, useMessage } from 'naive-ui'
+import { NButton, NInput, NSpin, useMessage } from 'naive-ui'
 import { metadata as metaApi } from '../../api'
 import { useQueryStore } from '../../stores/query'
 import { LogicalType } from '../../api/metadata'
@@ -23,7 +23,15 @@ const queryStore = useQueryStore()
 const message = useMessage()
 
 const tables = ref<TableInfo[]>([])
+const filterText = ref('')
 const loading = ref(false)
+
+// 客户端按表名过滤
+const filteredTables = computed<TableInfo[]>(() => {
+  const q = filterText.value.trim().toLowerCase()
+  if (!q) return tables.value
+  return tables.value.filter(t => t.name.toLowerCase().includes(q))
+})
 
 // 合成列元数据 — DataGrid 用 nativeType/logicalType 决定对齐 & 编辑器（只读所以不需要编辑器）。
 // computed 以便语言切换时表头/提示实时刷新。
@@ -41,6 +49,13 @@ const columns = computed<ColumnMeta[]>(() => [
     logicalType: LogicalType.TypeString,
     nullable: true,
     comment: t('tablesOverview.hint.engine'),
+  },
+  {
+    name: t('tablesOverview.col.comment'),
+    nativeType: 'text',
+    logicalType: LogicalType.TypeText,
+    nullable: true,
+    comment: t('tablesOverview.hint.comment'),
   },
   {
     name: t('tablesOverview.col.rows'),
@@ -77,13 +92,6 @@ const columns = computed<ColumnMeta[]>(() => [
     nullable: true,
     comment: t('tablesOverview.hint.updatedAt'),
   },
-  {
-    name: t('tablesOverview.col.comment'),
-    nativeType: 'text',
-    logicalType: LogicalType.TypeText,
-    nullable: true,
-    comment: t('tablesOverview.hint.comment'),
-  },
 ] as ColumnMeta[])
 
 function formatSize(bytes: number): string {
@@ -102,15 +110,15 @@ function formatTime(s: string): string {
 
 // 把 TableInfo[] → any[][] 给 DataGrid
 const rows = computed<any[][]>(() => {
-  return tables.value.map((t) => [
+  return filteredTables.value.map((t) => [
     t.name,
     t.engine ?? '',
+    t.comment ?? '',
     t.rows ?? 0,
     formatSize(t.dataLength ?? 0),
     t.collation ?? '',
     formatTime(t.createTime ?? ''),
     formatTime(t.updateTime ?? ''),
-    t.comment ?? '',
   ])
 })
 
@@ -139,7 +147,7 @@ watch(
 
 // 双击单元格 → 跳到该表的数据浏览 tab
 function onDblClickCell(p: { row: number }) {
-  const table = tables.value[p.row]
+  const table = filteredTables.value[p.row]
   if (!table) return
   queryStore.openTableTab(props.connId, props.db, table.name, 'table')
 }
@@ -147,7 +155,7 @@ function onDblClickCell(p: { row: number }) {
 // 右键单元格 → 把当前行对应的表名注入 catdb-tables-overview 菜单上下文。
 // 实际的 打开 / 修改 / 清空 / 删除 由 api/tablesOverviewContextMenu.ts 监听并执行。
 function onCellContextMenu(p: { row: number }) {
-  const table = tables.value[p.row]
+  const table = filteredTables.value[p.row]
   if (!table) return
   setActiveTableContext({
     connId: props.connId,
@@ -162,7 +170,15 @@ function onCellContextMenu(p: { row: number }) {
   <div class="to">
     <div class="toolbar">
       <span class="title mono">{{ db || $t('tablesOverview.title') }}</span>
-      <span v-if="db" class="mute">· {{ $t('tablesOverview.tableCount', { n: tables.length }) }}</span>
+      <span v-if="db" class="mute">· {{ $t('tablesOverview.tableCount', { n: filteredTables.length }) }}</span>
+      <n-input
+        v-if="db"
+        v-model:value="filterText"
+        :placeholder="$t('tablesOverview.filterPlaceholder')"
+        size="tiny"
+        clearable
+        class="filter-input"
+      />
       <span class="grow" />
       <n-button size="tiny" :disabled="loading || !db" @click="load">{{ $t('common.refresh') }}</n-button>
     </div>
@@ -202,6 +218,7 @@ function onCellContextMenu(p: { row: number }) {
 .title { font-size: 12px; }
 .mute { opacity: 0.55; font-size: 11px; }
 .grow { flex: 1 1 auto; }
+.filter-input { width: 160px; }
 .data-spin { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; padding: 6px; }
 .data-spin :deep(.n-spin-container),
 .data-spin :deep(.n-spin-content) {

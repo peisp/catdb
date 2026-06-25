@@ -164,6 +164,7 @@ export default {
   // Database table overview (components/workspace/TablesOverview.vue).
   tablesOverview: {
     title: 'Database Overview',
+    filterPlaceholder: 'Filter tables…',
     tableCount: '{n} tables',
     empty: 'Click a database in the object tree on the left to view its table overview.',
     loadFailed: 'Failed to load table list: {error}',
