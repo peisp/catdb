@@ -24,6 +24,16 @@ tasks:
         msg: "Looks like npm isn't installed. Npm is part of the Node installer: https://nodejs.org/en/download/"
     cmds:
       - npm install
+      # npm/cli#4828 守卫：npm 偶发漏装当前平台的 rolldown 原生 binding，留下半装好的
+      # node_modules（悬空的 @emnapi/* wasm-runtime 文件），后续 vite/指纹遍历会报
+      # `open ...: no such file or directory`。只要没有任何非 wasm 的原生 binding，
+      # 就清掉 node_modules/lockfile/npm 缓存按本机平台彻底重装。
+      - |
+        if ! ls node_modules/@rolldown/binding-* 2>/dev/null | grep -qv wasm; then
+          echo "native rolldown binding missing, clean reinstall (npm/cli#4828)"
+          rm -rf node_modules package-lock.json ~/.npm/_cacache
+          npm install --no-audit --no-fund
+        fi
 
   install:frontend:deps:bun:
     dir: frontend
