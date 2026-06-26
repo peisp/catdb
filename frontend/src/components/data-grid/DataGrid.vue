@@ -19,6 +19,8 @@ import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { ListTable, register } from '@visactor/vue-vtable'
 import { InputEditor, TextAreaEditor, DateInputEditor } from '@visactor/vtable-editors'
 import { useThemeVars } from 'naive-ui'
+import { useThemeStore } from '../../stores/theme'
+import { editorSurface } from '../../styles/theme'
 import type { ColumnMeta } from '../../api/metadata'
 import { LogicalType } from '../../api/metadata'
 import type { SelectionRange } from '../../composables/useTableSelection'
@@ -136,6 +138,7 @@ const emit = defineEmits<{
 }>()
 
 const themeVars = useThemeVars()
+const theme = useThemeStore()
 const vTableInstance = shallowRef<any>(null)
 const gridWrapRef = ref<HTMLElement | null>(null)
 
@@ -230,8 +233,11 @@ function pickAlign(col: ColumnMeta): 'left' | 'right' | 'center' {
 // ---- VTable 主题：从 Naive themeVars 派生 ----
 const tableTheme = computed(() => {
   const vars = themeVars.value
+  // Data surface follows the shared editor background (light: macOS
+  // textBackgroundColor; dark: #333) so the grid matches the SQL editor.
+  const surface = theme.mode === 'dark' ? editorSurface.dark : editorSurface.light
   return {
-    underlayBackgroundColor: vars.cardColor,
+    underlayBackgroundColor: surface,
     defaultStyle: {
       borderColor: vars.dividerColor,
       borderLineWidth: 1,
@@ -239,7 +245,7 @@ const tableTheme = computed(() => {
       fontFamily:
         '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
       color: vars.textColor1,
-      bgColor: vars.cardColor,
+      bgColor: surface,
       hover: {
         cellBgColor: vars.hoverColor,
       },
@@ -253,7 +259,7 @@ const tableTheme = computed(() => {
       hover: { cellBgColor: vars.hoverColor },
     },
     bodyStyle: {
-      bgColor: vars.cardColor,
+      bgColor: surface,
       color: vars.textColor1,
       borderColor: vars.dividerColor,
       fontSize: 12,
@@ -830,6 +836,6 @@ onBeforeUnmount(() => {
   position: relative;
   overflow: hidden;
   border-radius: 3px;
-  background: var(--n-card-color, transparent);
+  background: var(--app-content-bg);
 }
 </style>

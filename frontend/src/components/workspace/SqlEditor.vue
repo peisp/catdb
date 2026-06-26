@@ -45,6 +45,7 @@ import {
   indentWithTab,
 } from '@codemirror/commands'
 import { useThemeStore } from '../../stores/theme'
+import { editorSurface } from '../../styles/theme'
 import { mysqlExtraCompletions } from '../../editor/mysqlCompletions'
 import { emit as wailsEmit } from '../../api/events'
 
@@ -73,6 +74,17 @@ const host = ref<HTMLDivElement | null>(null)
 const view = ref<EditorView | null>(null)
 const themeCompartment = new Compartment()
 const sqlCompartment = new Compartment()
+
+// Editor chrome (syntax theme + surface background) lives in a compartment so
+// it can be swapped on light/dark switch. The background overrides oneDark's
+// built-in #282c34 — it's placed AFTER oneDark so its property wins.
+function editorChrome(dark: boolean) {
+  const bg = dark ? editorSurface.dark : editorSurface.light
+  return [
+    dark ? oneDark : [],
+    EditorView.theme({ '&': { backgroundColor: bg } }, { dark }),
+  ]
+}
 
 function buildSqlExt() {
   const cfg: SQLConfig = {
@@ -137,7 +149,7 @@ function makeState(initial: string) {
         // its own keyword + schema sources.
         MySQL.language.data.of({ autocomplete: mysqlExtraCompletions }),
       ]),
-      themeCompartment.of(theme.mode === 'dark' ? oneDark : []),
+      themeCompartment.of(editorChrome(theme.mode === 'dark')),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           emit('update:modelValue', update.state.doc.toString())
@@ -231,7 +243,7 @@ watch(
   (m) => {
     if (!view.value) return
     view.value.dispatch({
-      effects: themeCompartment.reconfigure(m === 'dark' ? oneDark : []),
+      effects: themeCompartment.reconfigure(editorChrome(m === 'dark')),
     })
   },
 )
@@ -294,6 +306,7 @@ const containerClass = computed(() => 'sql-editor ' + (theme.mode === 'dark' ? '
   overflow: hidden;
 }
 .cm-host { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; }
-.sql-editor.light { background: #fdfdfd; }
-.sql-editor.dark { background: #1e1e1e; }
+/* CodeMirror paints its own surface via editorChrome; this only covers the
+   mount gap behind it. Uses the shared --app-content-bg so it tracks the theme. */
+.cm-host, .sql-editor { background: var(--app-content-bg); }
 </style>

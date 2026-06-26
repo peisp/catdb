@@ -26,6 +26,12 @@ const common = {
   heightHuge: '36px',
 }
 
+// Shared content-surface background for the code/data editing areas (SQL editor
+// + data grid). Light follows macOS textBackgroundColor (white); dark uses a
+// DataGrip-style #333. Canvas-rendered VTable can't read CSS vars at paint time,
+// so this stays a JS constant both consumers import (single source of truth).
+export const editorSurface = { light: '#ffffff', dark: '#333333' } as const
+
 export const themeOverrides: GlobalThemeOverrides = {
   common,
   Button: {
