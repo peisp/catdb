@@ -30,17 +30,29 @@ tasks:
       # 作同步标记；只要它在、package.json 没更新过它、且原生 binding 在，就跳过本次安装。
       # 改了 package.json（mtime 变新）会让条件失败 → 正常重装，本地开发体验不受影响。
       - |
+        # 纯 shell builtin 检测，绝不调用 grep（Windows 下 task 用内置 mvdan/sh 解释器跑，
+        # grep/rm 这类外部命令不在 PATH 里会 127 直接挂）。glob + case 排除 wasm binding。
+        has_native_binding() {
+          for d in node_modules/@rolldown/binding-*; do
+            [ -e "$d" ] || continue
+            case "$d" in *wasm*) continue ;; esac
+            return 0
+          done
+          return 1
+        }
         if [ -f node_modules/.package-lock.json ] \
            && [ ! package.json -nt node_modules/.package-lock.json ] \
-           && ls node_modules/@rolldown/binding-* 2>/dev/null | grep -qv wasm >/dev/null; then
+           && has_native_binding; then
           echo "frontend deps in sync, skip npm install (avoids node_modules race in task pipeline)"
           exit 0
         fi
         npm install
-        # npm/cli#4828 守卫：装完仍没有非 wasm 的原生 binding（漏装）→ 清干净按本机平台重装
-        if ! ls node_modules/@rolldown/binding-* 2>/dev/null | grep -qv wasm >/dev/null; then
+        # npm/cli#4828 守卫：装完仍没有非 wasm 的原生 binding（漏装）→ 清干净按本机平台重装。
+        # 用 node 删目录 + npm 清缓存，避免依赖 Windows 不带的 rm。
+        if ! has_native_binding; then
           echo "native rolldown binding missing, clean reinstall (npm/cli#4828)"
-          rm -rf node_modules package-lock.json ~/.npm/_cacache
+          node -e "const fs=require('fs');fs.rmSync('node_modules',{recursive:true,force:true});fs.rmSync('package-lock.json',{force:true})"
+          npm cache clean --force
           npm install --no-audit --no-fund
         fi
 
