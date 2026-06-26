@@ -51,6 +51,10 @@ export const themeOverrides: GlobalThemeOverrides = {
   Tabs: {
     tabFontSizeMedium: '13px',
     tabPaddingMediumLine: '6px 14px',
+    // Card-tab outlines + the baseline extending from them default to Naive's
+    // dividerColor, which is lighter than the app's hairlines. Point them at the
+    // global --n-border-color (macOS separator, adapts light/dark) for consistency.
+    tabBorderColor: 'var(--n-border-color)',
   },
   Menu: {
     itemHeight: '28px',

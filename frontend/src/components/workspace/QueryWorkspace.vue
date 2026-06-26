@@ -100,6 +100,7 @@ function openCtx(e: MouseEvent, tab: QueryTabInfo) {
       closable
       addable
       size="small"
+      :tabs-padding="6"
       tab-style="min-width: 80px;"
       pane-class="ws-pane"
       pane-wrapper-class="ws-pane-wrapper"
@@ -177,7 +178,10 @@ function openCtx(e: MouseEvent, tab: QueryTabInfo) {
 }
 .ws :deep(.n-tabs-tab-pad), .ws :deep(.n-tabs-tab) { padding-top: 4px; padding-bottom: 4px; }
 .ws :deep(.n-tabs-tab) { padding-left: 8px; }
-.ws :deep(.n-tabs-nav) { flex: 0 0 auto; padding: 6px;}
+/* Vertical padding only — horizontal inset is handled by :tabs-padding so the
+   nav baseline (carried by .n-tabs-scroll-padding) runs edge-to-edge while the
+   first/last tab still keep their breathing room. */
+.ws :deep(.n-tabs-nav) { flex: 0 0 auto; padding: 6px 0;}
 /* Pane wrapper is the actual culprit when broken — give it explicit
    flex: 1 1 0 so the wrapper has a definite height equal to (n-tabs height
    - nav height). With overflow: hidden anything taller inside is clipped. */
