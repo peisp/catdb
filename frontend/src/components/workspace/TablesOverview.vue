@@ -255,7 +255,7 @@ function onCellContextMenu(p: { row: number }) {
   align-items: center;
   gap: 10px;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border-bottom: 1px solid var(--n-border-color);
   background: var(--n-color);
   font-size: 12px;
   min-width: 0;
@@ -264,7 +264,7 @@ function onCellContextMenu(p: { row: number }) {
 .title { font-size: 12px; }
 .mute { opacity: 0.55; font-size: 11px; }
 .grow { flex: 1 1 auto; }
-.sep { width: 1px; align-self: stretch; margin: 2px 2px; background: var(--n-border-color, rgba(127,127,127,0.2)); }
+.sep { width: 1px; align-self: stretch; margin: 2px 2px; background: var(--n-border-color); }
 .filter-input { width: 160px; }
 .data-spin { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; padding: 6px; }
 .data-spin :deep(.n-spin-container),

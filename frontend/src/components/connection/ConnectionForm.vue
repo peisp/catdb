@@ -786,7 +786,7 @@ function selectOptions(opts: string[]) {
    button row. All buttons cluster at the right
    (关闭 / 测试连接 / 保存) so 保存 keeps the default-action position. */
 .action-bar {
-  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border-top: 1px solid var(--n-border-color);
   background: var(--n-color, transparent);
 }
 .actions {

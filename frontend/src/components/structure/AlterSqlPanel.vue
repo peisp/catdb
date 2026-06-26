@@ -225,7 +225,7 @@ function onReset() {
   flex: 0 0 auto;
   min-height: 0;
   position: relative;
-  border-top: var(--n-border-color, rgba(127,127,127,0.2));
+  border-top: var(--n-border-color);
   background: var(--n-card-color);
 }
 .alter-panel-head {
@@ -234,8 +234,8 @@ function onReset() {
   justify-content: space-between;
   padding: 4px 8px;
   font-size: 11px;
-  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
-  border-bottom: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border-top: 1px solid var(--n-border-color);
+  border-bottom: 1px solid var(--n-border-color);
 }
 .has-changes :deep(.n-text) {
   color: var(--n-warning-color);

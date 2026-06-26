@@ -461,7 +461,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border-bottom: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border-bottom: 1px solid var(--n-border-color);
   flex: 0 0 auto;
 }
 .new-table-header .ntb-label {
@@ -486,7 +486,7 @@ onBeforeUnmount(() => {
 .group-tabs :deep(.n-tabs-nav) {
   display: flex;
   justify-content: center;
-  border-bottom: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border-bottom: 1px solid var(--n-border-color);
 }
 .group-tabs :deep(.n-tabs-rail) {
   min-width: 0;

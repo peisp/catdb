@@ -848,7 +848,7 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
   font-size: 12px;
   font-family: inherit;
   padding: 2px 4px;
-  border: var(--n-border-color, rgba(127,127,127,0.2));
+  border: var(--n-border-color);
   border-radius: 3px;
   background: var(--n-input-color, var(--n-card-color));
   color: var(--n-text-color-1);

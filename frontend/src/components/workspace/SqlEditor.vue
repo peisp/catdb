@@ -289,7 +289,7 @@ const containerClass = computed(() => 'sql-editor ' + (theme.mode === 'dark' ? '
   height: 100%;
   min-width: 0;
   min-height: 0;
-  border: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border: 1px solid var(--n-border-color);
   border-radius: 3px;
   overflow: hidden;
 }

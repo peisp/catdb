@@ -472,7 +472,7 @@ function onSplitDown(e: PointerEvent) {
   align-items: center;
   justify-content: space-between;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border-bottom: 1px solid var(--n-border-color);
   background: var(--n-color);
   min-width: 0;
 }
@@ -484,7 +484,7 @@ function onSplitDown(e: PointerEvent) {
   width: 160px;
   font-size: 12px;
   padding: 1px 6px;
-  border: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border: 1px solid var(--n-border-color);
   border-radius: 3px;
   background: var(--n-color);
   color: var(--n-text-color);

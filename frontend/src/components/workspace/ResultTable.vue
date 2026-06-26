@@ -125,7 +125,7 @@ function onExportSelect(ev: Event) {
   flex: 0 0 auto;
   font-size: 11px;
   padding: 4px 10px;
-  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border-top: 1px solid var(--n-border-color);
   background: var(--n-color);
   display: flex;
   gap: 12px;

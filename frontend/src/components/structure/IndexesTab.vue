@@ -426,7 +426,7 @@ const TYPE_OPTIONS = [
   max-width: 50%;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border-right: 1px solid var(--n-border-color);
   min-height: 0;
   position: relative;
 }
@@ -548,7 +548,7 @@ const TYPE_OPTIONS = [
 .col-wrapper {
   flex: 1 1 auto;
   display: flex;
-  border: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border: 1px solid var(--n-border-color);
   border-radius: 3px;
   min-height: 160px;
   max-height: 240px;
@@ -556,7 +556,7 @@ const TYPE_OPTIONS = [
   background: var(--n-input-color, var(--n-card-color));
 }
 .col-left {
-  border-right: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border-right: 1px solid var(--n-border-color);
   flex: 0 0 130px;
   display: flex;
   flex-direction: column;
@@ -566,7 +566,7 @@ const TYPE_OPTIONS = [
   display: flex;
   gap: 2px;
   padding: 3px 4px;
-  border-bottom: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border-bottom: 1px solid var(--n-border-color);
 }
 .col-items {
   flex: 1 1 auto;
@@ -638,7 +638,7 @@ const TYPE_OPTIONS = [
 }
 .icon-btn:hover:not(:disabled) {
   background: var(--n-hover-color);
-  border-color: var(--n-border-color, rgba(127,127,127,0.2));
+  border-color: var(--n-border-color);
   color: var(--n-text-color-1);
 }
 .icon-btn:disabled {
@@ -653,7 +653,7 @@ const TYPE_OPTIONS = [
   flex: 1 1 auto;
   min-width: 0;
   padding: 2px 4px;
-  border: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border: 1px solid var(--n-border-color);
   border-radius: 3px;
   background: var(--n-input-color, var(--n-card-color));
   color: var(--n-text-color-1);

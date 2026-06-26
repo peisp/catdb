@@ -322,7 +322,7 @@ onMounted(() => {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   opacity: 0.7;
-  border-bottom: var(--n-border-color, rgba(127,127,127,0.2));
+  border-bottom: 1px solid var(--n-border-color);
 }
 .title { font-size: 11px; }
 .list { flex: 1 1 auto; }

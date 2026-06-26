@@ -447,7 +447,7 @@ watch(
   align-items: center;
   gap: 6px;
   padding: 3px 8px;
-  border-bottom: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.2));
+  border-bottom: 1px solid var(--n-border-color);
   background: var(--n-color, transparent);
   font-size: 12px;
   position: relative;

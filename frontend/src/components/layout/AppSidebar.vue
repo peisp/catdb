@@ -170,7 +170,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-right: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border-right: 1px solid var(--n-border-color);
   background: var(--n-color);
   display: flex;
   flex-direction: column;

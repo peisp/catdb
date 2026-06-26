@@ -354,8 +354,12 @@ function onOpenTablesOverview(payload: { db: string }) {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  background: var(--n-color);
+  /* UIColor.systemBackground — light = rgb(255,255,255), dark = rgb(0,0,0) */
+  background: rgb(255, 255, 255);
   padding-top: 50px; /* keep tabs/content clear of floating controls */
+}
+@media (prefers-color-scheme: dark) {
+  .main { background: rgb(0, 0, 0); }
 }
 
 /* --- Round liquid-glass sidebar toggle ---
@@ -506,7 +510,7 @@ function onOpenTablesOverview(payload: { db: string }) {
   min-height: 0;
   overflow: hidden;
   display: flex;
-  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border-top: 1px solid var(--n-border-color);
 }
 .content > * { flex: 1 1 0; min-width: 0; min-height: 0; }
 
@@ -514,7 +518,7 @@ function onOpenTablesOverview(payload: { db: string }) {
 .status {
   flex: 0 0 22px;
   height: 22px;
-  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border-top: 1px solid var(--n-border-color);
   background: var(--n-color, transparent);
 }
 

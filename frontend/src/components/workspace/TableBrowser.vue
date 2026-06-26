@@ -775,7 +775,7 @@ function onFilterClear() {
   align-items: center;
   gap: 10px;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border-bottom: 1px solid var(--n-border-color);
   background: var(--n-color);
   font-size: 12px;
   min-width: 0;
@@ -816,7 +816,7 @@ function onFilterClear() {
   align-items: center;
   gap: 10px;
   padding: 4px 10px;
-  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.2));
+  border-top: 1px solid var(--n-border-color);
   background: var(--n-color);
   flex: 0 0 auto;
   min-width: 0;
@@ -949,7 +949,7 @@ function onFilterClear() {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-left: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.2));
+  border-left: 1px solid var(--n-border-color);
   background: var(--n-color);
 }
 /* 把手贴在面板左边缘（覆盖 ResizeHandle 默认 .is-vertical 的 right:0） */
@@ -959,7 +959,7 @@ function onFilterClear() {
   align-items: center;
   justify-content: space-between;
   padding: 6px 8px 6px 12px;
-  border-bottom: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.2));
+  border-bottom: 1px solid var(--n-border-color);
   flex: 0 0 auto;
 }
 .cols-title { font-size: 12px; font-weight: 500; }
@@ -982,7 +982,7 @@ function onFilterClear() {
 .cols-close:hover { background: var(--n-color-target, rgba(127, 127, 127, 0.12)); opacity: 1; }
 .cols-filter {
   padding: 8px 10px;
-  border-bottom: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.2));
+  border-bottom: 1px solid var(--n-border-color);
   flex: 0 0 auto;
 }
 .cols-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 0; }

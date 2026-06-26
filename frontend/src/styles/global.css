@@ -12,6 +12,20 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     -webkit-text-size-adjust: 100%;
+
+    /* Hairline border color, surfaced at :root so custom CSS that lives outside
+       a Naive component subtree (where Naive injects --n-* vars) can use
+       var(--n-border-color) without a hard-coded fallback. Values follow macOS
+       AppKit's NSColor.separatorColor (light: black @ ~10%; dark: white @ ~10%),
+       per UI_SPEC's "look native" rule. Kept in sync with the theme store, which
+       switches light/dark off prefers-color-scheme. */
+    --n-border-color: rgba(0, 0, 0, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --n-border-color: rgba(255, 255, 255, 0.2);
+    }
 }
 
 * {
