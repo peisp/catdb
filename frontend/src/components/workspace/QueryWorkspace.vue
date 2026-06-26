@@ -11,9 +11,29 @@ import TableBrowser from './TableBrowser.vue'
 import TableStructure from './TableStructure.vue'
 import TablesOverview from './TablesOverview.vue'
 import type { ConnectionProfile } from '../../api/connections'
-import type { QueryTab as QueryTabInfo } from '../../stores/query'
+import type { QueryTab as QueryTabInfo, TabKind } from '../../stores/query'
 import { useQueryStore } from '../../stores/query'
 import { setActiveTabContext } from '../../api/tabContextMenu'
+import AppIcon from '../shared/AppIcon.vue'
+import type { AppIconName } from '../shared/AppIcon.vue'
+
+// Tab icons mirror the object-tree node icons so a tab reads as the same
+// object kind as the node that opened it. structure/new-table use the column
+// (table-of-contents) glyph to read as "schema", distinct from data browse.
+const TAB_ICONS: Record<TabKind, AppIconName> = {
+  query: 'square-dashed-kanban',
+  table: 'table-2',
+  structure: 'table-of-contents',
+  'new-table': 'table-of-contents',
+  'tables-overview': 'database',
+}
+
+// Stored titles still carry an emoji prefix (used verbatim by dialogs); the
+// AppIcon replaces it visually, so strip the leading glyph for display only.
+const TITLE_EMOJI_RE = /^(?:📝|⊞|⚙|✚|📋)️?\s*/u
+function tabTitle(title: string): string {
+  return title.replace(TITLE_EMOJI_RE, '')
+}
 
 const props = defineProps<{
   connection: ConnectionProfile
@@ -115,7 +135,10 @@ function openCtx(e: MouseEvent, tab: QueryTabInfo) {
         display-directive="show:lazy"
       >
         <template #tab>
-          <span class="tab-label" @contextmenu.prevent="openCtx($event, t)" @mouseup.middle="closeTab(t.id)">{{ t.title }}</span>
+          <span class="tab-label" @contextmenu.prevent="openCtx($event, t)" @mouseup.middle="closeTab(t.id)">
+            <AppIcon :name="TAB_ICONS[t.kind]" :size="13" />
+            <span class="tab-text">{{ tabTitle(t.title) }}</span>
+          </span>
         </template>
         <QueryTab
           v-if="t.kind === 'query'"
@@ -201,4 +224,19 @@ function openCtx(e: MouseEvent, tab: QueryTabInfo) {
   overflow: hidden;
 }
 .ws :deep(.ws-pane > *) { flex: 1 1 0; min-width: 0; min-height: 0; }
+
+/* Icon + title row; cap the title width so long table/query names ellipsize
+   instead of stretching the tab bar. */
+.tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 180px;
+  vertical-align: middle;
+}
+.tab-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 </style>
