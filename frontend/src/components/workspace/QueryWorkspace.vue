@@ -15,17 +15,20 @@ import type { QueryTab as QueryTabInfo, TabKind } from '../../stores/query'
 import { useQueryStore } from '../../stores/query'
 import { setActiveTabContext } from '../../api/tabContextMenu'
 import AppIcon from '../shared/AppIcon.vue'
-import type { AppIconName } from '../shared/AppIcon.vue'
+import databaseIcon from '../../assets/icons/database.svg?raw'
+import table2Icon from '../../assets/icons/table-2.svg?raw'
+import squareDashedKanbanIcon from '../../assets/icons/square-dashed-kanban.svg?raw'
+import tableOfContentsIcon from '../../assets/icons/table-of-contents.svg?raw'
 
 // Tab icons mirror the object-tree node icons so a tab reads as the same
 // object kind as the node that opened it. structure/new-table use the column
 // (table-of-contents) glyph to read as "schema", distinct from data browse.
-const TAB_ICONS: Record<TabKind, AppIconName> = {
-  query: 'square-dashed-kanban',
-  table: 'table-2',
-  structure: 'table-of-contents',
-  'new-table': 'table-of-contents',
-  'tables-overview': 'database',
+const TAB_ICONS: Record<TabKind, string> = {
+  query: squareDashedKanbanIcon,
+  table: table2Icon,
+  structure: tableOfContentsIcon,
+  'new-table': tableOfContentsIcon,
+  'tables-overview': databaseIcon,
 }
 
 // Stored titles still carry an emoji prefix (used verbatim by dialogs); the
@@ -136,7 +139,7 @@ function openCtx(e: MouseEvent, tab: QueryTabInfo) {
       >
         <template #tab>
           <span class="tab-label" @contextmenu.prevent="openCtx($event, t)" @mouseup.middle="closeTab(t.id)">
-            <AppIcon :name="TAB_ICONS[t.kind]" :size="13" />
+            <AppIcon :src="TAB_ICONS[t.kind]" :size="13" />
             <span class="tab-text">{{ tabTitle(t.title) }}</span>
           </span>
         </template>

@@ -29,18 +29,22 @@ import { setActiveTreeContext } from '../../api/treeContextMenu'
 import { system as systemApi } from '../../api'
 import { t } from '../../i18n'
 import AppIcon from '../shared/AppIcon.vue'
-import type { AppIconName } from '../shared/AppIcon.vue'
+import databaseIcon from '../../assets/icons/database.svg?raw'
+import table2Icon from '../../assets/icons/table-2.svg?raw'
+import scanEyeIcon from '../../assets/icons/scan-eye.svg?raw'
+import squareDashedKanbanIcon from '../../assets/icons/square-dashed-kanban.svg?raw'
+import tableOfContentsIcon from '../../assets/icons/table-of-contents.svg?raw'
 
 // Per-kind node icon (lucide). Group nodes share their category's icon; the
 // column leaf keeps n-tree's default switcher-only look.
-const KIND_ICONS: Partial<Record<TreeMeta['kind'], AppIconName>> = {
-  database: 'database',
-  tableGroup: 'table-2',
-  viewGroup: 'scan-eye',
-  queryGroup: 'square-dashed-kanban',
-  table: 'table-2',
-  view: 'scan-eye',
-  query: 'square-dashed-kanban',
+const KIND_ICONS: Partial<Record<TreeMeta['kind'], string>> = {
+  database: databaseIcon,
+  tableGroup: table2Icon,
+  viewGroup: scanEyeIcon,
+  queryGroup: squareDashedKanbanIcon,
+  table: table2Icon,
+  view: scanEyeIcon,
+  query: squareDashedKanbanIcon,
 }
 
 function renderPrefix({ option }: { option: TreeOption }) {
@@ -50,10 +54,10 @@ function renderPrefix({ option }: { option: TreeOption }) {
   if (meta.kind === 'column') {
     return meta.pk
       ? h('span', { class: 'tree-pk' }, '🔑')
-      : h(AppIcon, { name: 'table-of-contents' })
+      : h(AppIcon, { src: tableOfContentsIcon })
   }
-  const name = KIND_ICONS[meta.kind]
-  return name ? h(AppIcon, { name }) : null
+  const src = KIND_ICONS[meta.kind]
+  return src ? h(AppIcon, { src }) : null
 }
 
 const props = defineProps<{ connection: ConnectionProfile }>()
