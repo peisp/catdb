@@ -9,7 +9,7 @@
 //   - 每次单元格编辑 = 一次基于原行 PK 的 UPDATE
 //   - 乐观：先本地写入，applyChange 失败则 reload 整页恢复真值
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { NAlert, NButton, NInput, NSelect, NSpin, NTag, useMessage } from 'naive-ui'
+import { NAlert, NButton, NInput, NSpin, NTag, useMessage } from 'naive-ui'
 import { edit as editApi, metadata as metaApi } from '../../api'
 import { on } from '../../api/events'
 import { setActiveGridContext } from '../../api/gridContextMenu'
@@ -756,12 +756,9 @@ function onFilterClear() {
 
       <div class="footer-right">
         <span class="mono mute">{{ $t('tableBrowser.rowsRange', { start: rowsStart, end: rowsEnd }) }}</span>
-        <n-select
-          v-model:value="pageSize"
-          :options="pageSizeOptions"
-          size="small"
-          class="size-select"
-        />
+        <select v-model="pageSize" class="size-select">
+          <option v-for="opt in pageSizeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+        </select>
       </div>
     </div>
   </div>
@@ -940,6 +937,23 @@ function onFilterClear() {
 }
 .size-select {
   width: 80px;
+  font-size: 12px;
+  height: 22px;
+  padding: 0 4px;
+  border-radius: 3px;
+  border: 1px solid var(--n-border-color, rgba(127,127,127,0.25));
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  outline: none;
+  font-family: inherit;
+}
+.size-select:hover:not(:disabled) {
+  background: var(--n-color-target, rgba(127,127,127,0.12));
+}
+.size-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .mute { opacity: 0.55; font-size: 10px; }
 
