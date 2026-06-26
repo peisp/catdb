@@ -337,7 +337,7 @@ MySQL：建立 `*ssh.Client` 后用 `mysql.RegisterDialContext("mysql+ssh", dial
 
 | 约束 | 缓解 |
 |---|---|
-| Wails v3 仍 alpha，API 可能 break | 锁 `v3.0.0-alpha.96`；wailsbridge/api 防腐层隔离 |
+| Wails v3 仍 alpha，API 可能 break | 锁 `v3.0.0-alpha2.106`；wailsbridge/api 防腐层隔离 |
 | Service 方法命名 v2→v3 已变更 | 统一用 `ServiceStartup/ServiceShutdown` |
 | WebView2 IPC body ~2MB 上限 | v3 已自动分块；但仍靠分页+虚拟滚动防卡死 |
 | Linux GTK3/GTK4 过渡期不稳 | MVP 锁 GTK3；优先 Win/Mac |

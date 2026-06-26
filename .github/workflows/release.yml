@@ -33,7 +33,7 @@ jobs:
 
       - name: Install build tools
         run: |
-          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.96
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha2.106
           go install github.com/go-task/task/v3/cmd/task@latest
           # Add GOBIN to PATH for subsequent steps
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
@@ -116,7 +116,7 @@ jobs:
 
       - name: Install Go build tools
         run: |
-          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.96
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha2.106
           go install github.com/go-task/task/v3/cmd/task@latest
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 

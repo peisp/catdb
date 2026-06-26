@@ -8,7 +8,7 @@
 
 ## 技术栈（不要擅自替换）
 
-- **后端**：Go 1.22+，Wails v3 **锁定 `v3.0.0-alpha.96`**（go.mod 与 CLI 都钉死，禁止 `@latest`）
+- **后端**：Go 1.22+，Wails v3 **锁定 `v3.0.0-alpha2.106`**（go.mod 与 CLI 都钉死，禁止 `@latest`）
 - **前端**：Vue 3（Composition API + `<script setup>`）+ TypeScript + Vite，状态用 Pinia
 - **多语言**：`vue-i18n` v9（前端）+ `internal/i18n` 消息目录（Go 原生菜单/对话框）—— 规约见下方「多语言（i18n）」
 - **UI 框架**：Naive UI（TS-first、JS 主题系统、自带 `n-tree` 虚拟化树与表单）—— 同类对标 Tiny RDM（Wails+Vue3 数据库 GUI）即用此栈

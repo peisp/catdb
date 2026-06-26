@@ -6,7 +6,7 @@ MVP 阶段 **暂时只支持 MySQL**，其他数据库类型待更新。
 
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)
 ![go](https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go&logoColor=white)
-![wails](https://img.shields.io/badge/Wails-v3.0.0--alpha.96-DF0000)
+![wails](https://img.shields.io/badge/Wails-v3.0.0--alpha2.106-DF0000)
 ![vue](https://img.shields.io/badge/Vue-3-42b883?logo=vue.js&logoColor=white)
 ![license](https://img.shields.io/badge/license-Apache--2.0-green)
 
@@ -62,7 +62,7 @@ MVP 阶段 **暂时只支持 MySQL**，其他数据库类型待更新。
 
 | 层 | 选型 |
 |---|---|
-| 后端 | Go 1.22+ ， [Wails v3.0.0-alpha.96](https://v3.wails.io/)（**版本钉死**） |
+| 后端 | Go 1.22+ ， [Wails v3.0.0-alpha2.106](https://v3.wails.io/)（**版本钉死**） |
 | 前端 | Vue 3（`<script setup>` + Composition API） + TypeScript + Vite，Pinia 管状态 |
 | UI 组件 | [Naive UI](https://www.naiveui.com/)（TS-first，JS 主题系统） |
 | SQL 编辑器 | [CodeMirror 6](https://codemirror.net/)（`@codemirror/lang-sql` + 自定义补全源） |

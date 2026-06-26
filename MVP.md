@@ -25,7 +25,7 @@
 
 **目标**：能跑起来的空壳 + 架构地基。
 
-- [ ] `wails3 init` Vue+TS 模板，go.mod 锁 `v3.0.0-alpha.96`；接入 Naive UI + Pinia
+- [ ] `wails3 init` Vue+TS 模板，go.mod 锁 `v3.0.0-alpha2.106`；接入 Naive UI + Pinia
 - [ ] 目录结构按 ARCHITECTURE.md §2 建好（wailsbridge / internal/* / plugins / frontend/src/api）
 - [ ] `wailsbridge/` 防腐层骨架：封装 app/window/event/dialog 调用
 - [ ] `frontend/src/api/` 防腐层骨架
