@@ -44,10 +44,16 @@ const KIND_ICONS: Partial<Record<TreeMeta['kind'], AppIconName>> = {
 }
 
 function renderPrefix({ option }: { option: TreeOption }) {
-  const kind = (option as any).extra?.kind as TreeMeta['kind'] | undefined
-  const name = kind ? KIND_ICONS[kind] : undefined
-  if (!name) return null
-  return h(AppIcon, { name })
+  const meta = (option as any).extra as TreeMeta | undefined
+  if (!meta) return null
+  // 列：主键用 🔑 标记（移到字段名前），普通列用 table-of-contents。
+  if (meta.kind === 'column') {
+    return meta.pk
+      ? h('span', { class: 'tree-pk' }, '🔑')
+      : h(AppIcon, { name: 'table-of-contents' })
+  }
+  const name = KIND_ICONS[meta.kind]
+  return name ? h(AppIcon, { name }) : null
 }
 
 const props = defineProps<{ connection: ConnectionProfile }>()
@@ -197,6 +203,8 @@ interface TreeMeta {
   kind: 'database' | 'tableGroup' | 'viewGroup' | 'queryGroup' | 'table' | 'view' | 'column' | 'query'
   db?: string
   table?: string
+  // for kind === 'column': whether the column is part of the primary key.
+  pk?: boolean
   // for kind === 'query': the saved_query identity + payload.
   queryId?: string
   queryName?: string
@@ -297,8 +305,8 @@ async function onLoad(node: TreeOption): Promise<boolean> {
       const cols = await store.ensureColumns(props.connection.id, meta.db!, meta.table!)
       node.children = cols.map((c) =>
         mkNode(
-          `${c.name}  ${c.nativeType}` + (c.isPrimaryKey ? '  🔑' : ''),
-          { kind: 'column', db: meta.db, table: meta.table },
+          `${c.name}  ${c.nativeType}`,
+          { kind: 'column', db: meta.db, table: meta.table, pk: c.isPrimaryKey },
           true,
         ),
       )
@@ -930,6 +938,17 @@ onBeforeUnmount(() => {
 .body { flex: 1 1 auto; min-height: 0; padding: 6px; display: flex; }
 .scroll { flex: 1 1 0; min-width: 0; min-height: 0; }
 .body :deep(.n-tree-node-content) { font-size: 12px; min-width: 0; }
+/* Primary-key marker — emoji sized to line up with the lucide AppIcon set. */
+.body :deep(.tree-pk) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 1;
+}
 .body :deep(.n-tree-node-content__text) {
   overflow: hidden;
   text-overflow: ellipsis;

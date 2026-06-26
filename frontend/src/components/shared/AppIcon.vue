@@ -9,6 +9,7 @@ import database from '../../assets/icons/database.svg?raw'
 import table2 from '../../assets/icons/table-2.svg?raw'
 import scanEye from '../../assets/icons/scan-eye.svg?raw'
 import squareDashedKanban from '../../assets/icons/square-dashed-kanban.svg?raw'
+import tableOfContents from '../../assets/icons/table-of-contents.svg?raw'
 
 const ICONS = {
   'database-zap': databaseZap,
@@ -16,6 +17,7 @@ const ICONS = {
   'table-2': table2,
   'scan-eye': scanEye,
   'square-dashed-kanban': squareDashedKanban,
+  'table-of-contents': tableOfContents,
 } as const
 
 export type AppIconName = keyof typeof ICONS
