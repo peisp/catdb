@@ -907,7 +907,12 @@ onBeforeUnmount(() => {
 }
 .body { flex: 1 1 auto; min-height: 0; padding: 6px; display: flex; }
 .scroll { flex: 1 1 0; min-width: 0; min-height: 0; }
-.body :deep(.n-tree-node-content) { font-size: 12px; }
+.body :deep(.n-tree-node-content) { font-size: 12px; min-width: 0; }
+.body :deep(.n-tree-node-content__text) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .body :deep(.n-spin-container),
 .body :deep(.n-spin-content) { height: 100%; min-height: 0; }
 </style>
