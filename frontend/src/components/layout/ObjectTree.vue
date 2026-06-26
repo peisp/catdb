@@ -5,7 +5,7 @@
 // it. Right-click → Wails native context menu (registered in
 // wailsbridge/contextmenu.go as `catdb-tree-*`, dispatched via
 // api/{table,tree}ContextMenu.ts).
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   NButton,
   NCheckbox,
@@ -28,6 +28,27 @@ import { setActiveTableContext } from '../../api/tableContextMenu'
 import { setActiveTreeContext } from '../../api/treeContextMenu'
 import { system as systemApi } from '../../api'
 import { t } from '../../i18n'
+import AppIcon from '../shared/AppIcon.vue'
+import type { AppIconName } from '../shared/AppIcon.vue'
+
+// Per-kind node icon (lucide). Group nodes share their category's icon; the
+// column leaf keeps n-tree's default switcher-only look.
+const KIND_ICONS: Partial<Record<TreeMeta['kind'], AppIconName>> = {
+  database: 'database',
+  tableGroup: 'table-2',
+  viewGroup: 'scan-eye',
+  queryGroup: 'square-dashed-kanban',
+  table: 'table-2',
+  view: 'scan-eye',
+  query: 'square-dashed-kanban',
+}
+
+function renderPrefix({ option }: { option: TreeOption }) {
+  const kind = (option as any).extra?.kind as TreeMeta['kind'] | undefined
+  const name = kind ? KIND_ICONS[kind] : undefined
+  if (!name) return null
+  return h(AppIcon, { name })
+}
 
 const props = defineProps<{ connection: ConnectionProfile }>()
 const emit = defineEmits<{
@@ -733,6 +754,7 @@ onBeforeUnmount(() => {
             :expanded-keys="expandedKeys"
             :on-load="onLoad"
             :node-props="nodeProps"
+            :render-prefix="renderPrefix"
             :style="{ height: '100%' }"
             :indent="14"
             @update:expanded-keys="(keys) => (expandedKeys = keys)"
