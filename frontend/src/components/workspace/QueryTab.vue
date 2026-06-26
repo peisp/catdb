@@ -472,7 +472,6 @@ function onSplitDown(e: PointerEvent) {
   align-items: center;
   justify-content: space-between;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--n-border-color);
   background: var(--n-color);
   min-width: 0;
 }
@@ -508,6 +507,9 @@ function onSplitDown(e: PointerEvent) {
   min-height: 0;
   overflow: hidden;
   display: grid;
+  /* Opaque content surface so the body's transparent slot padding doesn't
+     bleed the translucent .main background as a hairline under the toolbar. */
+  background: var(--app-content-bg);
 }
 /* State A: single row → editor fills everything. */
 .body-a { grid-template-rows: 1fr; }

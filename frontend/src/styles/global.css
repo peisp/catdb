@@ -19,7 +19,7 @@
        AppKit's NSColor.separatorColor (light: black @ ~10%; dark: white @ ~10%),
        per UI_SPEC's "look native" rule. Kept in sync with the theme store, which
        switches light/dark off prefers-color-scheme. */
-    --n-border-color: rgba(0, 0, 0, 0.1);
+    --n-border-color: rgba(0, 0, 0, 0.12);
 
     /* Content-surface background for the code/data editing areas (SQL editor +
        data grid). Light = macOS textBackgroundColor (white); dark = DataGrip-

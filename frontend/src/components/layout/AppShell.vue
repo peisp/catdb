@@ -355,11 +355,11 @@ function onOpenTablesOverview(payload: { db: string }) {
   display: flex;
   flex-direction: column;
   /* UIColor.systemBackground — light = rgb(255,255,255), dark = rgb(0,0,0) */
-  background: rgb(255, 255, 255);
+  background: rgb(255, 255, 255, 0.1);
   padding-top: 50px; /* keep tabs/content clear of floating controls */
 }
 @media (prefers-color-scheme: dark) {
-  .main { background: rgb(0, 0, 0); }
+  .main { background: rgb(0, 0, 0, 0.5); }
 }
 
 /* --- Round liquid-glass sidebar toggle ---
