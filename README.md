@@ -17,7 +17,7 @@ MVP 阶段 **暂时只支持 MySQL**，其他数据库类型待更新。
 ## 📸 应用截图
 
 <p align="center">
-  <img src="docs/img.png" alt="catdb 主界面：左侧对象树 + 多标签 SQL 编辑器 + 虚拟滚动结果表" width="900" />
+  <img src="docs/Light-Dark-Diagonal.png" alt="catdb 主界面：左侧对象树 + 多标签 SQL 编辑器 + 虚拟滚动结果表" width="900" />
 </p>
 
 ---
