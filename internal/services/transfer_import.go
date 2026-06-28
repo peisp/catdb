@@ -1,17 +1,16 @@
 package services
 
 import (
-	"bufio"
 	"context"
 	"encoding/csv"
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
+	"catdb/internal/core/sqlscript"
 	"catdb/internal/dbdriver"
 )
 
@@ -32,9 +31,10 @@ const (
 //   - Each non-empty row becomes one INSERT.
 //
 // For SQL:
-//   - The file is read as a series of statements separated by ';'.
-//   - Pure -- line comments are stripped; block comments / inline -- are left
-//     to the server (which handles them correctly).
+//   - The file is streamed through the shared statement splitter
+//     (internal/core/sqlscript): statements are separated on the active
+//     delimiter, with strings/comments respected and the DELIMITER directive
+//     honored, so dumps containing routines/triggers import correctly.
 type ImportOptions struct {
 	Format    ImportFormat `json:"format"`
 	Path      string       `json:"path"`
@@ -197,20 +197,17 @@ func (s *TransferService) importSQL(
 	}
 	defer f.Close()
 
-	scanner := bufio.NewScanner(f)
-	// SQL files frequently exceed 64KB on a single line (large INSERT batches).
-	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
-	var stmt strings.Builder
 	var statementsRun int64
 	var rowsAffected int64
 
-	exec := func() error {
-		s := strings.TrimSpace(stmt.String())
-		stmt.Reset()
-		if s == "" {
-			return nil
+	// Stream the file through the shared splitter: it honors quotes, comments,
+	// and the DELIMITER directive (so routine/trigger dumps import correctly),
+	// while holding at most one statement in memory at a time.
+	err = sqlscript.SplitStream(f, func(stmt string) error {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-		res, err := q.Exec(ctx, s)
+		res, err := q.Exec(ctx, stmt)
 		if err != nil {
 			return err
 		}
@@ -220,34 +217,10 @@ func (s *TransferService) importSQL(
 			emitProgress(transferID, rowsAffected, false, "")
 		}
 		return nil
-	}
-
-	for scanner.Scan() {
-		if err := ctx.Err(); err != nil {
-			emitProgress(transferID, rowsAffected, true, err.Error())
-			return ImportResult{}, err
-		}
-		line := scanner.Text()
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "--") {
-			continue
-		}
-		stmt.WriteString(line)
-		stmt.WriteByte('\n')
-		if strings.HasSuffix(strings.TrimRight(trimmed, " \t"), ";") {
-			if err := exec(); err != nil {
-				emitProgress(transferID, rowsAffected, true, err.Error())
-				return ImportResult{}, fmt.Errorf("TransferService: sql exec: %w", err)
-			}
-		}
-	}
-	if err := scanner.Err(); err != nil {
+	})
+	if err != nil {
 		emitProgress(transferID, rowsAffected, true, err.Error())
-		return ImportResult{}, fmt.Errorf("TransferService: scan: %w", err)
-	}
-	if err := exec(); err != nil {
-		emitProgress(transferID, rowsAffected, true, err.Error())
-		return ImportResult{}, err
+		return ImportResult{}, fmt.Errorf("TransferService: sql import: %w", err)
 	}
 
 	emitProgress(transferID, rowsAffected, true, "")
