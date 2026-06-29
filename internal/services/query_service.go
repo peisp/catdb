@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"catdb/internal/core/session"
+	"catdb/internal/core/sqlscript"
 	"catdb/internal/dbdriver"
 	"catdb/internal/registry"
 )
@@ -131,6 +132,17 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 		return empty, fmt.Errorf("QueryService: sql is empty")
 	}
 
+	// Split the script into statements client-side (honoring quotes, comments,
+	// and the DELIMITER directive) — the same job the mysql CLI does. The
+	// server never understands DELIMITER, and the driver runs one statement at
+	// a time, so a multi-statement script must be chopped here. Only the final
+	// statement's result is streamed back; leading ones are run and discarded.
+	stmts := sqlscript.Split(sqlText)
+	if len(stmts) == 0 {
+		return empty, fmt.Errorf("QueryService: sql is empty")
+	}
+	final := stmts[len(stmts)-1]
+
 	conn, err := s.mgr.Get(connID)
 	if err != nil {
 		// Try opening it lazily so the user doesn't see an opaque "not open"
@@ -155,9 +167,18 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 
 	start := time.Now()
 
-	if !looksLikeRowsQuery(sqlText) {
+	// Run every statement before the last; their results are discarded. Exec
+	// drives any kind of statement (SELECT included — its rows are ignored).
+	for _, st := range stmts[:len(stmts)-1] {
+		if _, err := q.Exec(tctx, st); err != nil {
+			releaseTx(tx, err)
+			return empty, classifyErr(err, tctx)
+		}
+	}
+
+	if !looksLikeRowsQuery(final) {
 		// Exec path: INSERT/UPDATE/DELETE/DDL.
-		res, err := q.Exec(tctx, sqlText)
+		res, err := q.Exec(tctx, final)
 		if err != nil {
 			releaseTx(tx, err)
 			return empty, classifyErr(err, tctx)
@@ -171,7 +192,7 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 		}, nil
 	}
 
-	rs, err := q.Query(tctx, sqlText)
+	rs, err := q.Query(tctx, final)
 	if err != nil {
 		releaseTx(tx, err)
 		return empty, classifyErr(err, tctx)
@@ -222,7 +243,7 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 	s.mu.Lock()
 	s.handles[h] = &openQuery{
 		connID:    connID,
-		sql:       sqlText,
+		sql:       final,
 		rs:        rs,
 		columns:   cols,
 		rowsRead:  len(rows),
@@ -317,6 +338,15 @@ func (s *QueryService) Explain(ctx context.Context, connID, sqlText string, opts
 		return empty, fmt.Errorf("QueryService: sql is empty")
 	}
 
+	// EXPLAIN targets a single statement — use the last one in the script
+	// (typically the user's selection) so a DELIMITER-prefixed script doesn't
+	// reach the server verbatim.
+	stmts := sqlscript.Split(sqlText)
+	if len(stmts) == 0 {
+		return empty, fmt.Errorf("QueryService: sql is empty")
+	}
+	final := stmts[len(stmts)-1]
+
 	conn, err := s.mgr.Get(connID)
 	if err != nil {
 		conn, err = s.mgr.Open(ctx, connID)
@@ -334,7 +364,7 @@ func (s *QueryService) Explain(ctx context.Context, connID, sqlText string, opts
 	}
 
 	start := time.Now()
-	rs, err := q.Explain(tctx, sqlText)
+	rs, err := q.Explain(tctx, final)
 	if err != nil {
 		releaseTx(tx, err)
 		return empty, classifyErr(err, tctx)
