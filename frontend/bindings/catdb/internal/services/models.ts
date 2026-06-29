@@ -370,9 +370,10 @@ export enum ImportFormat {
  *   - Each non-empty row becomes one INSERT.
  * 
  * For SQL:
- *   - The file is read as a series of statements separated by ';'.
- *   - Pure -- line comments are stripped; block comments / inline -- are left
- *     to the server (which handles them correctly).
+ *   - The file is streamed through the shared statement splitter
+ *     (internal/core/sqlscript): statements are separated on the active
+ *     delimiter, with strings/comments respected and the DELIMITER directive
+ *     honored, so dumps containing routines/triggers import correctly.
  */
 export class ImportOptions {
     "format": ImportFormat;
