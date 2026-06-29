@@ -168,7 +168,12 @@ export default {
       newTable: '新建表',
       edit: '设计表',
       rename: '重命名',
+      ddl: 'DDL',
     },
+    ddlTitle: 'DDL',
+    ddlSelectHint: '选择一张表以查看其 DDL。',
+    ddlFailed: '加载 DDL 失败: {error}',
+    ddlCopied: 'DDL 已复制',
     col: {
       name: '表名',
       engine: '引擎',

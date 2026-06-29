@@ -173,7 +173,12 @@ export default {
       newTable: 'New Table',
       edit: 'Design Table',
       rename: 'Rename',
+      ddl: 'DDL',
     },
+    ddlTitle: 'DDL',
+    ddlSelectHint: 'Select a table to view its DDL.',
+    ddlFailed: 'Failed to load DDL: {error}',
+    ddlCopied: 'DDL copied',
     col: {
       name: 'Name',
       engine: 'Engine',

@@ -4,13 +4,20 @@
 // 在 ObjectTree 中点击一个数据库（schema）节点时，在右侧打开一个 tab，
 // 用 DataGrid 列出该数据库下的所有表及其元信息（Name / Engine / Rows / Comment）。
 // 双击表所在的行跳转到该表的数据浏览 tab。
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { NButton, NInput, NSpin, useMessage } from 'naive-ui'
+import { Compartment, EditorState } from '@codemirror/state'
+import { EditorView } from '@codemirror/view'
+import { sql, MySQL } from '@codemirror/lang-sql'
+import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
+import { oneDark } from '@codemirror/theme-one-dark'
 import { metadata as metaApi } from '../../api'
 import { useQueryStore } from '../../stores/query'
+import { useThemeStore } from '../../stores/theme'
 import { LogicalType } from '../../api/metadata'
 import type { ColumnMeta, TableInfo } from '../../api/metadata'
 import DataGrid from '../data-grid/DataGrid.vue'
+import ResizeHandle from '../shared/ResizeHandle.vue'
 import { setActiveTableContext, renameTable } from '../../api/tableContextMenu'
 import { t } from '../../i18n'
 
@@ -20,6 +27,7 @@ const props = defineProps<{
 }>()
 
 const queryStore = useQueryStore()
+const themeStore = useThemeStore()
 const message = useMessage()
 
 const tables = ref<TableInfo[]>([])
@@ -202,6 +210,131 @@ function onCellContextMenu(p: { row: number }) {
     onAfterMutate: load,
   })
 }
+
+// ---- DDL 侧栏（右侧，参考 TableBrowser 的字段面板） ----
+const ddlPanelOpen = ref(false)
+const ddl = ref('')
+const ddlLoading = ref(false)
+
+function toggleDdlPanel() {
+  ddlPanelOpen.value = !ddlPanelOpen.value
+  if (ddlPanelOpen.value) void loadDdl()
+}
+
+async function loadDdl() {
+  const table = selectedTable.value
+  if (!table) { ddl.value = ''; return }
+  ddlLoading.value = true
+  try {
+    ddl.value = await metaApi.getCreateTable(props.connId, props.db, table)
+  } catch (e: any) {
+    ddl.value = ''
+    message.error(t('tablesOverview.ddlFailed', { error: String(e) }))
+  } finally {
+    ddlLoading.value = false
+  }
+}
+
+async function copyDdl() {
+  if (!ddl.value) return
+  try { await navigator.clipboard.writeText(ddl.value); message.success(t('tablesOverview.ddlCopied')) }
+  catch (e) { message.error(t('common.copyFailed', { error: String(e) })) }
+}
+
+// 选中表变化 → 面板打开时刷新 DDL
+watch(selectedTable, () => { if (ddlPanelOpen.value) void loadDdl() })
+
+// ---- DDL 面板宽度（左边缘可拖动） ----
+const MIN_PANEL_W = 240
+const MAX_PANEL_W = 640
+const panelWidth = ref(360)
+const resizing = ref(false)
+let dragStartX = 0
+let dragStartW = 0
+
+function onResizePointerDown(ev: PointerEvent) {
+  if (ev.button !== 0) return
+  resizing.value = true
+  dragStartX = ev.clientX
+  dragStartW = panelWidth.value
+  ;(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+}
+
+function onResizePointerMove(ev: PointerEvent) {
+  if (!resizing.value) return
+  const raw = dragStartW + (dragStartX - ev.clientX)
+  panelWidth.value = Math.max(MIN_PANEL_W, Math.min(MAX_PANEL_W, raw))
+}
+
+function onResizePointerUp() {
+  if (!resizing.value) return
+  resizing.value = false
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+}
+
+// ---- CodeMirror 只读 DDL 查看器（同 TableStructure 的 DDL 面板） ----
+const ddlHost = ref<HTMLDivElement | null>(null)
+const ddlView = ref<EditorView | null>(null)
+const ddlThemeComp = new Compartment()
+
+function initDdlEditor() {
+  if (!ddlHost.value) return
+  ddlView.value = new EditorView({
+    state: EditorState.create({
+      doc: ddl.value,
+      extensions: [
+        sql({ dialect: MySQL }),
+        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        EditorView.editable.of(false),
+        EditorView.lineWrapping,
+        EditorView.theme({
+          '&': { height: '100%', fontSize: '12px' },
+          '.cm-scroller': {
+            fontFamily:
+              'ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace',
+            overflow: 'auto',
+          },
+        }),
+        ddlThemeComp.of(themeStore.mode === 'dark' ? oneDark : []),
+      ],
+    }),
+    parent: ddlHost.value,
+  })
+}
+
+watch(ddlHost, (el) => {
+  if (el && !ddlView.value) {
+    initDdlEditor()
+  } else if (!el && ddlView.value) {
+    // 面板关闭 → host 卸载，销毁旧 view，避免重开时残留指向已移除 DOM 的实例
+    ddlView.value.destroy()
+    ddlView.value = null
+  }
+})
+
+watch(ddl, (val) => {
+  if (!ddlView.value) return
+  const cur = ddlView.value.state.doc.toString()
+  if (val !== cur) {
+    ddlView.value.dispatch({
+      changes: { from: 0, to: cur.length, insert: val ?? '' },
+    })
+  }
+})
+
+watch(() => themeStore.mode, (mode) => {
+  if (!ddlView.value) return
+  ddlView.value.dispatch({
+    effects: ddlThemeComp.reconfigure(mode === 'dark' ? oneDark : []),
+  })
+})
+
+onBeforeUnmount(() => {
+  ddlView.value?.destroy()
+})
 </script>
 
 <template>
@@ -215,6 +348,7 @@ function onCellContextMenu(p: { row: number }) {
         <n-button size="tiny" :disabled="!db" @click="createTable">{{ $t('tablesOverview.action.newTable') }}</n-button>
         <n-button size="tiny" :disabled="!selectedTable" @click="editSelected">{{ $t('tablesOverview.action.edit') }}</n-button>
         <n-button size="tiny" :disabled="!selectedTable" @click="renameSelected">{{ $t('tablesOverview.action.rename') }}</n-button>
+        <n-button size="tiny" :type="ddlPanelOpen ? 'primary' : 'default'" @click="toggleDdlPanel">{{ $t('tablesOverview.action.ddl') }}</n-button>
       </template>
       <span class="grow" />
       <n-input
@@ -231,20 +365,49 @@ function onCellContextMenu(p: { row: number }) {
     <div v-if="!db" class="empty">
       <span class="mute">{{ $t('tablesOverview.empty') }}</span>
     </div>
-    <n-spin v-else :show="loading" class="data-spin">
-      <DataGrid
-        :columns="columns"
-        :rows="rows"
-        :editable="false"
-        :sortable="true"
-        :sort-remote="false"
-        :row-height="28"
-        context-menu-name="catdb-tables-overview"
-        @cell-dblclick="onDblClickCell"
-        @cell-context-menu="onCellContextMenu"
-        @selection-change="onSelectionChange"
-      />
-    </n-spin>
+    <div v-else class="data-area">
+      <n-spin :show="loading" class="data-spin">
+        <DataGrid
+          :columns="columns"
+          :rows="rows"
+          :editable="false"
+          :sortable="true"
+          :sort-remote="false"
+          :row-height="28"
+          context-menu-name="catdb-tables-overview"
+          @cell-dblclick="onDblClickCell"
+          @cell-context-menu="onCellContextMenu"
+          @selection-change="onSelectionChange"
+        />
+      </n-spin>
+
+      <aside
+        v-if="ddlPanelOpen"
+        class="ddl-panel"
+        :style="{ width: panelWidth + 'px', flexBasis: panelWidth + 'px' }"
+      >
+        <ResizeHandle
+          orientation="vertical"
+          class="ddl-resize"
+          :active="resizing"
+          @pointerdown="onResizePointerDown"
+          @pointermove="onResizePointerMove"
+          @pointerup="onResizePointerUp"
+          @pointercancel="onResizePointerUp"
+        />
+        <div class="ddl-head">
+          <span class="ddl-title mono">{{ selectedTable || $t('tablesOverview.ddlTitle') }}</span>
+          <div class="ddl-head-actions">
+            <button v-if="ddl" class="ddl-btn" :title="$t('common.copy')" @click="copyDdl">{{ $t('common.copy') }}</button>
+            <button class="ddl-close" :title="$t('common.close')" @click="ddlPanelOpen = false">×</button>
+          </div>
+        </div>
+        <n-spin :show="ddlLoading" class="ddl-body">
+          <div v-if="!selectedTable" class="ddl-empty mute">{{ $t('tablesOverview.ddlSelectHint') }}</div>
+          <div v-else ref="ddlHost" class="ddl-host" />
+        </n-spin>
+      </aside>
+    </div>
   </div>
 </template>
 
@@ -282,4 +445,76 @@ function onCellContextMenu(p: { row: number }) {
   padding: 24px;
 }
 .empty .mute { opacity: 0.55; }
+
+.data-area { flex: 1 1 auto; display: flex; flex-direction: row; min-width: 0; min-height: 0; overflow: hidden; }
+
+.ddl-panel {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--n-border-color);
+  background: var(--n-color);
+}
+/* 把手贴在面板左边缘（覆盖 ResizeHandle 默认 .is-vertical 的 right:0） */
+.ddl-panel > .ddl-resize.is-vertical { right: auto; left: 0; }
+.ddl-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--n-border-color);
+  flex: 0 0 auto;
+}
+.ddl-title {
+  font-size: 12px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ddl-head-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.ddl-btn {
+  height: 20px;
+  padding: 0 8px;
+  font-size: 11px;
+  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.25));
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  cursor: default;
+  transition: background-color 120ms ease;
+}
+.ddl-btn:hover { background: var(--n-color-target, rgba(127, 127, 127, 0.12)); }
+.ddl-close {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: default;
+  opacity: 0.6;
+  transition: background-color 120ms ease, opacity 120ms ease;
+}
+.ddl-close:hover { background: var(--n-color-target, rgba(127, 127, 127, 0.12)); opacity: 1; }
+.ddl-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.ddl-body :deep(.n-spin-container),
+.ddl-body :deep(.n-spin-content) { height: 100%; min-height: 0; }
+.ddl-host { height: 100%; min-height: 0; overflow: hidden; }
+/* 只读编辑器默认继承 body 的 user-select:none —— 放开以便手动选中并复制 DDL */
+.ddl-host :deep(.cm-content),
+.ddl-host :deep(.cm-line) {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+.ddl-empty { padding: 16px 12px; font-size: 12px; text-align: center; }
 </style>
