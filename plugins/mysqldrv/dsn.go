@@ -32,7 +32,11 @@ func buildDSN(cfg dbdriver.ConnConfig, network, tlsName string) string {
 	c.Addr = addr
 	c.DBName = cfg.Database
 	c.AllowNativePasswords = true
-	c.ParseTime = true
+	// ParseTime=false: 让驱动把 DATE/DATETIME/TIMESTAMP 原样返回为字节串
+	// （"2006-01-02 15:04:05"），由 scanner 自己解析格式化。开启 ParseTime 会让
+	// 驱动先转成 time.Time，再被 scanner 的 RawBytes 扫描格式化成 RFC3339，
+	// 导致 scanner 的解析布局失配、落到原样回退、最终显示成带 T/时区的串。
+	c.ParseTime = false
 	c.Loc = parseLocation(cfg.Params["loc"])
 	c.Collation = stringDefault(cfg.Params["collation"], "utf8mb4_general_ci")
 

@@ -58,6 +58,72 @@ const NullSafeInputEditor = nullPreservingEditor(InputEditor)
 const NullSafeTextAreaEditor = nullPreservingEditor(TextAreaEditor)
 const NullSafeDateInputEditor = nullPreservingEditor(DateInputEditor)
 
+// ---- 时间型编辑器（date / time / datetime-local 原生 input）----
+// VTable 自带的 DateInputEditor 只用 <input type="date">，编辑 DATETIME/TIMESTAMP
+// 时丢掉时分秒、且值格式（带 T）与单元格（空格）不一致。这里按列类型用合适的
+// 原生 input，并在「单元格字符串」↔「input.value」之间做格式转换。
+// 单元格里的时间值统一是 "YYYY-MM-DD HH:mm:ss[.fff]"（见后端 scanner）。
+function toInputValue(type: string, value: any): string {
+  if (value == null) return ''
+  const s = String(value)
+  if (type === 'datetime-local') {
+    // "YYYY-MM-DD HH:mm:ss[.fff]" → "YYYY-MM-DDTHH:mm:ss"（原生 input 只到秒）
+    const m = s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)/)
+    return m ? `${m[1]}T${m[2]}` : s.replace(' ', 'T')
+  }
+  return s // date：YYYY-MM-DD；time：HH:mm:ss —— 原样
+}
+function fromInputValue(type: string, raw: string | undefined): string {
+  const v = (raw ?? '').trim()
+  if (v === '') return ''
+  if (type === 'datetime-local') {
+    let out = v.replace('T', ' ')
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(out)) out += ':00' // 补秒
+    return out
+  }
+  if (type === 'time' && /^\d{2}:\d{2}$/.test(v)) return v + ':00'
+  return v
+}
+// 工厂：构造一个使用指定原生 input 类型的编辑器（createElement 沿用
+// DateInputEditor 的风格，仅替换 type 并加 step 以露出秒字段）。
+function temporalEditor(inputType: 'time' | 'datetime-local'): typeof InputEditor {
+  return class extends (InputEditor as any) {
+    createElement() {
+      const input = document.createElement('input')
+      input.setAttribute('type', inputType)
+      input.setAttribute('step', '1') // 显示秒
+      input.style.padding = '4px'
+      input.style.width = '100%'
+      input.style.boxSizing = 'border-box'
+      input.style.position = 'absolute'
+      input.style.backgroundColor = '#FFFFFF'
+      input.style.borderRadius = '0px'
+      input.style.border = '2px solid #d9d9d9'
+      input.addEventListener('focus', () => {
+        input.style.borderColor = '#4A90E2'
+        input.style.outline = 'none'
+      })
+      input.addEventListener('blur', () => {
+        input.style.borderColor = '#d9d9d9'
+      })
+      input.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'a' && (e.ctrlKey || e.metaKey)) e.stopPropagation()
+      })
+      input.addEventListener('wheel', (e: WheelEvent) => e.preventDefault())
+      this.element = input
+      this.container.appendChild(input)
+    }
+    setValue(value: any) {
+      this.element.value = toInputValue(inputType, value)
+    }
+    getValue() {
+      return fromInputValue(inputType, this.element?.value)
+    }
+  } as unknown as typeof InputEditor
+}
+const NullSafeDateTimeEditor = nullPreservingEditor(temporalEditor('datetime-local'))
+const NullSafeTimeEditor = nullPreservingEditor(temporalEditor('time'))
+
 // ---- editor 注册：模块级单次 ----
 let editorsRegistered = false
 function ensureEditorsRegistered() {
@@ -66,8 +132,12 @@ function ensureEditorsRegistered() {
   register.editor('catdb-input', new NullSafeInputEditor({}))
   // 长文本 / JSON
   register.editor('catdb-textarea', new NullSafeTextAreaEditor({}))
-  // 日期 / 时间
+  // 日期
   register.editor('catdb-date', new NullSafeDateInputEditor({}))
+  // 时间
+  register.editor('catdb-time', new NullSafeTimeEditor({}))
+  // 日期时间 / 时间戳（含时分秒）
+  register.editor('catdb-datetime', new NullSafeDateTimeEditor({}))
   editorsRegistered = true
 }
 ensureEditorsRegistered()
@@ -162,10 +232,12 @@ function pickEditor(col: ColumnMeta): string | undefined {
   // 改 PK 即 `UPDATE t SET id=<new> WHERE id=<old>`（见 TableBrowser.pkValuesOf）。
   switch (col.logicalType) {
     case LogicalType.TypeDate:
+      return 'catdb-date'
     case LogicalType.TypeTime:
+      return 'catdb-time'
     case LogicalType.TypeDateTime:
     case LogicalType.TypeTimestamp:
-      return 'catdb-date'
+      return 'catdb-datetime'
     case LogicalType.TypeJSON:
     case LogicalType.TypeText:
       return 'catdb-textarea'

@@ -186,13 +186,13 @@ func convert(raw sql.RawBytes, t *sql.ColumnType) any {
 
 	case name == "DATETIME" || strings.HasPrefix(name, "DATETIME"):
 		if t, ok := tryParseTime(string(raw), "2006-01-02 15:04:05.999999", "2006-01-02 15:04:05"); ok {
-			return t.Format(time.RFC3339Nano)
+			return t.Format("2006-01-02 15:04:05.999999")
 		}
 		return string(raw)
 
 	case name == "TIMESTAMP" || strings.HasPrefix(name, "TIMESTAMP"):
 		if t, ok := tryParseTime(string(raw), "2006-01-02 15:04:05.999999", "2006-01-02 15:04:05"); ok {
-			return t.Format(time.RFC3339Nano)
+			return t.Format("2006-01-02 15:04:05.999999")
 		}
 		return string(raw)
 
