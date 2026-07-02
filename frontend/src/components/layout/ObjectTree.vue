@@ -185,6 +185,11 @@ function toggleSearch() {
   if (!searchOpen.value) searchText.value = ''
 }
 
+// Sync the schema filter to the shared store so QueryTab's dropdown respects it.
+watch(selectedSchemas, (sel) => {
+  queryStore.setSchemaFilter(props.connection.id, sel.size ? [...sel] : null)
+})
+
 function onPanelShow(v: boolean) {
   panelOpen.value = v
 }

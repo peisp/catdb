@@ -128,6 +128,14 @@ export const useQueryStore = defineStore('query', () => {
   // value (rather than defaulting to the first database alphabetically).
   const selectedDb = ref<Record<string, string | null>>({})
 
+  // Schema filter from the sidebar object tree — null means "show all".
+  // Query tabs filter their schema dropdown by this.
+  const schemaFilter = ref<Record<string, string[] | null>>({})
+
+  function setSchemaFilter(connId: string, schemas: string[] | null) {
+    schemaFilter.value = { ...schemaFilter.value, [connId]: schemas }
+  }
+
   function setSelectedDb(connId: string, db: string | null) {
     selectedDb.value = { ...selectedDb.value, [connId]: db }
   }
@@ -543,6 +551,8 @@ export const useQueryStore = defineStore('query', () => {
     loadCapabilities,
     selectedDb,
     setSelectedDb,
+    schemaFilter,
+    setSchemaFilter,
   }
 })
 

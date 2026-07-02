@@ -90,7 +90,9 @@ const dbOptions = computed(() => {
   const connId = tab.value?.connId
   if (!connId) return []
   const list = metaStore.databases[connId] ?? []
-  return list.map((d) => ({ label: d, value: d }))
+  const filter = store.schemaFilter[connId]
+  const filtered = filter ? list.filter((d) => filter.includes(d)) : list
+  return filtered.map((d) => ({ label: d, value: d }))
 })
 
 async function ensureAutocomplete() {
