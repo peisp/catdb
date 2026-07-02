@@ -59,6 +59,9 @@ func (s *QueryService) ServiceShutdown() error {
 	for id, h := range s.handles {
 		_ = h.rs.Close()
 		releaseTx(h.tx, nil)
+		if h.cancel != nil {
+			h.cancel()
+		}
 		delete(s.handles, id)
 	}
 	return nil
@@ -77,6 +80,11 @@ type openQuery struct {
 	// streaming ResultSet sees the right current-database, and must be
 	// committed/rolled back when the handle is closed.
 	tx dbdriver.Tx
+	// cancel tears down the context the streaming ResultSet (and tx) were
+	// created with. It is decoupled from the RunQuery call's ctx so the cursor
+	// survives after RunQuery returns; it must be called on every teardown
+	// path so we don't leak the context's watcher goroutine.
+	cancel context.CancelFunc
 }
 
 // QueryOptions tweaks one call's behaviour. All fields optional.
@@ -157,12 +165,34 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 	if timeout <= 0 {
 		timeout = DefaultQueryTimeout
 	}
-	tctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 
-	q, tx, err := s.acquireQuerier(tctx, conn, connID, opts.DefaultSchema)
+	// runCtx drives the initial execution. It is decoupled from the per-call
+	// ctx's lifetime: Wails cancels the call ctx when RunQuery returns, and a
+	// kept-open streaming ResultSet (and its tx) are bound to whatever context
+	// created them — so binding them to the call ctx would tear the cursor down
+	// the instant we return the handle. During the initial run we still honor
+	// frontend cancellation and the timeout by cancelling runCtx when the
+	// caller's ctx or the deadline fires (via AfterFunc); once we hand the
+	// cursor to a handle we detach that link and transfer runCancel to Close.
+	runCtx, runCancel := context.WithCancel(context.Background())
+	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, timeout)
+	stopLink := context.AfterFunc(timeoutCtx, runCancel)
+	// detach abandons the link + timer without cancelling runCtx (kept-open
+	// path); teardown also cancels runCtx (every other path).
+	detach := func() {
+		stopLink()
+		timeoutCancel()
+	}
+	teardown := func() {
+		detach()
+		runCancel()
+	}
+
+	q, tx, err := s.acquireQuerier(runCtx, conn, connID, opts.DefaultSchema)
 	if err != nil {
-		return empty, classifyErr(err, tctx)
+		cerr := classifyErr(err, timeoutCtx)
+		teardown()
+		return empty, cerr
 	}
 
 	start := time.Now()
@@ -170,20 +200,25 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 	// Run every statement before the last; their results are discarded. Exec
 	// drives any kind of statement (SELECT included — its rows are ignored).
 	for _, st := range stmts[:len(stmts)-1] {
-		if _, err := q.Exec(tctx, st); err != nil {
+		if _, err := q.Exec(runCtx, st); err != nil {
+			cerr := classifyErr(err, timeoutCtx)
 			releaseTx(tx, err)
-			return empty, classifyErr(err, tctx)
+			teardown()
+			return empty, cerr
 		}
 	}
 
 	if !looksLikeRowsQuery(final) {
 		// Exec path: INSERT/UPDATE/DELETE/DDL.
-		res, err := q.Exec(tctx, final)
+		res, err := q.Exec(runCtx, final)
 		if err != nil {
+			cerr := classifyErr(err, timeoutCtx)
 			releaseTx(tx, err)
-			return empty, classifyErr(err, tctx)
+			teardown()
+			return empty, cerr
 		}
 		releaseTx(tx, nil)
+		teardown()
 		return QueryRunResult{
 			ElapsedMs:   time.Since(start).Milliseconds(),
 			IsResultSet: false,
@@ -192,10 +227,12 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 		}, nil
 	}
 
-	rs, err := q.Query(tctx, final)
+	rs, err := q.Query(runCtx, final)
 	if err != nil {
+		cerr := classifyErr(err, timeoutCtx)
 		releaseTx(tx, err)
-		return empty, classifyErr(err, tctx)
+		teardown()
+		return empty, cerr
 	}
 
 	batch := opts.BatchSize
@@ -209,9 +246,11 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 
 	rows, done, err := rs.Next(batch)
 	if err != nil {
+		cerr := classifyErr(err, timeoutCtx)
 		_ = rs.Close()
 		releaseTx(tx, err)
-		return empty, classifyErr(err, tctx)
+		teardown()
+		return empty, cerr
 	}
 
 	cols := rs.Columns()
@@ -229,16 +268,20 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 		out.Done = true
 		_ = rs.Close()
 		releaseTx(tx, nil)
+		teardown()
 		return out, nil
 	}
 
 	if done {
 		_ = rs.Close()
 		releaseTx(tx, nil)
+		teardown()
 		return out, nil
 	}
 
-	// Keep the cursor open for FetchMore.
+	// Keep the cursor open for FetchMore. Detach runCtx from the per-call
+	// ctx/timeout and transfer runCancel to the handle's Close.
+	detach()
 	h := s.makeHandle()
 	s.mu.Lock()
 	s.handles[h] = &openQuery{
@@ -249,6 +292,7 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 		rowsRead:  len(rows),
 		createdAt: time.Now(),
 		tx:        tx,
+		cancel:    runCancel,
 	}
 	s.mu.Unlock()
 	out.Handle = h
@@ -275,15 +319,24 @@ func (s *QueryService) FetchMore(ctx context.Context, handle string, batch int) 
 		batch = DefaultBatchSize
 	}
 
-	tctx, cancel := context.WithTimeout(ctx, DefaultQueryTimeout)
-	defer cancel()
+	// The streaming rows are bound to the handle's own context, not this call's
+	// ctx (see RunQuery). Bridge frontend cancellation / a per-batch timeout to
+	// it by cancelling the cursor when this call's ctx fires; detach on a normal
+	// batch so the cursor stays open for the next scroll.
+	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, DefaultQueryTimeout)
+	stop := context.AfterFunc(timeoutCtx, func() {
+		if h.cancel != nil {
+			h.cancel()
+		}
+	})
+	defer timeoutCancel()
+	defer stop()
 
 	rows, done, err := h.rs.Next(batch)
 	if err != nil {
-		_ = h.rs.Close()
-		releaseTx(h.tx, err)
-		s.dropHandle(handle)
-		return empty, classifyErr(err, tctx)
+		cerr := classifyErr(err, timeoutCtx)
+		s.closeHandle(handle, h, err)
+		return empty, cerr
 	}
 	h.rowsRead += len(rows)
 	h.done = done
@@ -295,17 +348,25 @@ func (s *QueryService) FetchMore(ctx context.Context, handle string, batch int) 
 	if !done && h.rowsRead >= MaxPreviewRows {
 		out.Truncated = true
 		out.Done = true
-		_ = h.rs.Close()
-		releaseTx(h.tx, nil)
-		s.dropHandle(handle)
+		s.closeHandle(handle, h, nil)
 		return out, nil
 	}
 	if done {
-		_ = h.rs.Close()
-		releaseTx(h.tx, nil)
-		s.dropHandle(handle)
+		s.closeHandle(handle, h, nil)
 	}
 	return out, nil
+}
+
+// closeHandle tears down an open query: closes the cursor, releases the tx
+// (commit on runErr==nil, rollback otherwise), cancels the handle's context,
+// and removes it from the registry. Safe to call once per handle.
+func (s *QueryService) closeHandle(id string, h *openQuery, runErr error) {
+	_ = h.rs.Close()
+	releaseTx(h.tx, runErr)
+	if h.cancel != nil {
+		h.cancel()
+	}
+	s.dropHandle(id)
 }
 
 // Close releases a handle and its underlying cursor. Idempotent.
@@ -321,6 +382,9 @@ func (s *QueryService) Close(_ context.Context, handle string) error {
 	}
 	err := h.rs.Close()
 	releaseTx(h.tx, err)
+	if h.cancel != nil {
+		h.cancel()
+	}
 	return err
 }
 
