@@ -23,7 +23,7 @@ import { useThemeStore } from '../../stores/theme'
 import { editorSurface } from '../../styles/theme'
 import type { ColumnMeta } from '../../api/metadata'
 import { LogicalType } from '../../api/metadata'
-import { parseTSV, type SelectionRange } from '../../composables/useTableSelection'
+import { parseTSV, planPaste, type SelectionRange } from '../../composables/useTableSelection'
 
 /** Sort state for indicator sync (server-side sort). field = column index. */
 export interface SortState {
@@ -671,7 +671,8 @@ function onReady(instance: any) {
     }
   })
 
-  // 粘贴 TSV（Ctrl+V / Cmd+V）：将剪切板文本按 tab/换行分割后分布到选区
+  // 粘贴 TSV（Ctrl+V / Cmd+V）：DataGrip 语义——单值填满整个选区（整行/整列），
+  // 多值按块平铺/展开。分布逻辑在纯函数 planPaste 里，这里只做写入过滤。
   const pasteHandler = (e: ClipboardEvent) => {
     if (!props.editable) return
     e.preventDefault()
@@ -683,44 +684,35 @@ function onReady(instance: any) {
     const ranges = instance.getSelectedCellRanges?.() ?? []
     if (!ranges.length) return
 
-    // 以选区左上角为粘贴起点
-    const range = ranges[0]
-    const startRawCol = range.start.col
-    const startRawRow = range.start.row
-
     // 解析 TSV（带引号状态机：引号包裹的字段可含 Tab/换行）
     const pastedGrid = parseTSV(text)
 
-    for (let ri = 0; ri < pastedGrid.length; ri++) {
-      const cells = pastedGrid[ri]
-      for (let ci = 0; ci < cells.length; ci++) {
-        const rawCol = startRawCol + ci
-        const rawRow = startRawRow + ri
-        const body = toBody(rawCol, rawRow)
-        if (!body) continue
-        if (body.row >= props.rows.length || body.col >= props.columns.length) continue
-        // 标记删除的行在保存前不可编辑
-        if (props.deletedRows?.has(body.row)) continue
+    // 选区 body 边界；整列（点列头）/整行（点序号列）选区会落在表头/序号区，
+    // 按 rangeFromArgs 同款规则展开到整表数据列/行。
+    const range = ranges[0]
+    const inColHeader = (range.start.row - off.row) < 0 || (range.end.row - off.row) < 0
+    const inSeries = (range.start.col - off.col) < 0 || (range.end.col - off.col) < 0
+    const selBounds = {
+      row0: inColHeader ? 0 : Math.min(range.start.row, range.end.row) - off.row,
+      row1: inColHeader ? props.rows.length - 1 : Math.max(range.start.row, range.end.row) - off.row,
+      col0: inSeries ? 0 : Math.min(range.start.col, range.end.col) - off.col,
+      col1: inSeries ? props.columns.length - 1 : Math.max(range.start.col, range.end.col) - off.col,
+    }
 
-        const colMeta = props.columns[body.col]
-        const oldValue = props.rows[body.row]?.[body.col]
-        const newValue = cells[ci]
+    for (const { row, col, value } of planPaste(pastedGrid, selBounds)) {
+      if (row < 0 || col < 0 || row >= props.rows.length || col >= props.columns.length) continue
+      // 标记删除的行在保存前不可编辑
+      if (props.deletedRows?.has(row)) continue
+      const colMeta = props.columns[col]
+      // 跳过不可编辑列
+      if (!pickEditor(colMeta)) continue
+      const oldValue = props.rows[row]?.[col]
+      if (value === oldValue) continue
 
-        if (newValue === oldValue) continue
-        // 跳过不可编辑列
-        if (!pickEditor(colMeta)) continue
+      // 直接更新数组元素（与 VTable 共享同一引用）
+      props.rows[row][col] = value
 
-        // 直接更新数组元素（与 VTable 共享同一引用）
-        props.rows[body.row][body.col] = newValue
-
-        emit('edit-commit', {
-          row: body.row,
-          col: body.col,
-          oldValue,
-          newValue,
-          column: colMeta,
-        })
-      }
+      emit('edit-commit', { row, col, oldValue, newValue: value, column: colMeta })
     }
 
     try { instance.refreshRecords() } catch { /* VTable 可能无此方法 */ }

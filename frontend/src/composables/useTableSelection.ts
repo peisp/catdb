@@ -83,6 +83,41 @@ export function parseTSV(text: string): string[][] {
   return rows
 }
 
+export interface PasteWrite { row: number; col: number; value: string }
+
+/** DataGrip 式粘贴分布，返回待写入单元格（未做可编辑/边界过滤，调用方负责）：
+ *  - 单格选区：以该格为锚点把粘贴块原样展开（经典“把表格粘到这里”），可超出选区。
+ *  - 多格选区（用户主动框选，含整行/整列）：粘贴块在选区内按模平铺铺满，绝不外溢。
+ *    单值即填满整行/整列；2 格粘进 15 列 → a,b,a,b,… 重复（不整除时末尾为部分重复）。 */
+export function planPaste(
+  pastedGrid: string[][],
+  sel: { row0: number; col0: number; row1: number; col1: number },
+): PasteWrite[] {
+  const pH = pastedGrid.length
+  const pW = pastedGrid.reduce((m, r) => Math.max(m, r.length), 0)
+  if (!pH || !pW) return []
+  const writes: PasteWrite[] = []
+
+  // 单格选区 → 原样展开（可超出选区）
+  if (sel.row0 === sel.row1 && sel.col0 === sel.col1) {
+    for (let ri = 0; ri < pH; ri++) {
+      for (let ci = 0; ci < pastedGrid[ri].length; ci++) {
+        writes.push({ row: sel.row0 + ri, col: sel.col0 + ci, value: pastedGrid[ri][ci] })
+      }
+    }
+    return writes
+  }
+
+  // 多格选区 → 在选区内按模平铺铺满
+  for (let r = sel.row0; r <= sel.row1; r++) {
+    const rowArr = pastedGrid[(r - sel.row0) % pH]
+    for (let c = sel.col0; c <= sel.col1; c++) {
+      writes.push({ row: r, col: c, value: rowArr[(c - sel.col0) % pW] ?? '' })
+    }
+  }
+  return writes
+}
+
 export function useTableSelection() {
   const selection = ref<SelectionRange | null>(null)
 
