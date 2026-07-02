@@ -198,6 +198,12 @@ export function drawGrid(o: DrawGridOptions): void {
   const ph = Math.max(1, Math.ceil(o.height * dpr))
   if (o.canvas.width !== pw) o.canvas.width = pw
   if (o.canvas.height !== ph) o.canvas.height = ph
+  // CSS 尺寸与位图在同一帧原子更新——由 Vue 绑定异步改 style 会先绘出一帧
+  // 「旧位图拉伸到新尺寸」的画面，容器连续 resize 时表现为抖动。
+  const cssW = `${o.width}px`
+  const cssH = `${o.height}px`
+  if (o.canvas.style.width !== cssW) o.canvas.style.width = cssW
+  if (o.canvas.style.height !== cssH) o.canvas.style.height = cssH
   const ctx = o.canvas.getContext('2d')
   if (!ctx) return
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)

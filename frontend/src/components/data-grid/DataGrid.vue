@@ -265,6 +265,11 @@ function headerMinWidth(col: ColumnMeta): number {
 const offsets = computed(() => buildOffsets(colWidths.value))
 const totalWidth = computed(() => ROWNUM_W + (offsets.value[offsets.value.length - 1] ?? 0))
 const totalHeight = computed(() => headerH.value + props.rows.length * props.rowHeight)
+// canvas 尺寸钳到 min(视口, 内容)：canvas 绝不把 scroller 内容区撑得比
+// spacer 大，否则「canvas 撑出滚动条 → clientWidth/Height 变化 → RO 触发
+// → canvas 改尺寸 → 滚动条消失」形成布局反馈环，内容不满一屏时表格抖动。
+const canvasW = computed(() => Math.min(viewW.value, totalWidth.value))
+const canvasH = computed(() => Math.min(viewH.value, totalHeight.value))
 
 function geoOpts() {
   return {
@@ -342,7 +347,7 @@ function requestRender() {
 
 function draw() {
   const canvas = canvasRef.value
-  if (!canvas || viewW.value <= 0 || viewH.value <= 0) return
+  if (!canvas || canvasW.value <= 0 || canvasH.value <= 0) return
   const dirtySet = props.dirtyCells
   const deletedSet = props.deletedRows
   const dirtyRowSet = props.dirtyRows
@@ -353,8 +358,8 @@ function draw() {
     : clientSort.value
   drawGrid({
     canvas,
-    width: viewW.value,
-    height: viewH.value,
+    width: canvasW.value,
+    height: canvasH.value,
     theme: gridTheme.value,
     fonts: { family: FONT_FAMILY, size: FONT_SIZE },
     rowNumberWidth: ROWNUM_W,
@@ -390,9 +395,10 @@ function onScroll() {
   scrollTop.value = el.scrollTop
   scrollLeft.value = el.scrollLeft
   requestRender()
-  // 滚近底部触发 load-more，一次「进入底部区域」只发一次
+  // 滚近底部触发 load-more，一次「进入底部区域」只发一次。
+  // 必须确有垂直溢出——否则横向滚动短结果集时 remain 恒为 0 会误触发。
   const remain = el.scrollHeight - el.scrollTop - el.clientHeight
-  if (remain < props.rowHeight * 3) {
+  if (el.scrollHeight > el.clientHeight && remain < props.rowHeight * 3) {
     if (loadMoreArmed && props.rows.length) {
       loadMoreArmed = false
       emit('load-more')
@@ -420,13 +426,23 @@ function scrollCellIntoView(row: number, col: number) {
 }
 
 // ---- 命中测试 ----
+// 坐标一律以 scroller 视口为基准（sticky canvas 恒钉在 scroller 原点，
+// 两者原点重合；canvas 被钳小后 rect 不再覆盖全视口，不能再用它）。
 function hitFromEvent(e: MouseEvent): GridHit {
-  const rect = canvasRef.value!.getBoundingClientRect()
+  const rect = scrollerRef.value!.getBoundingClientRect()
   return hitTest(e.clientX - rect.left, e.clientY - rect.top, scrollLeft.value, scrollTop.value, geoOpts())
 }
 
 function inRowRange(row: number): boolean {
   return row >= 0 && row < props.rows.length
+}
+
+/** 指针落在原生滚动条上（clientWidth/Height 之外）——交给浏览器处理。 */
+function onScrollbar(e: MouseEvent): boolean {
+  const el = scrollerRef.value
+  if (!el) return true
+  const rect = el.getBoundingClientRect()
+  return e.clientX - rect.left >= el.clientWidth || e.clientY - rect.top >= el.clientHeight
 }
 
 // ---- 鼠标：选区拖拽 / 列宽拖拽 / 排序点击 ----
@@ -444,7 +460,7 @@ let drag: {
 let autoScrollRaf = 0
 
 function onMouseDown(e: MouseEvent) {
-  if (e.button !== 0) return
+  if (e.button !== 0 || onScrollbar(e)) return
   wrapRef.value?.focus()
   const hit = hitFromEvent(e)
   const cols = props.columns.length
@@ -525,7 +541,7 @@ function attachWindowDrag() {
 }
 
 function bodyCellAtPointer(clientX: number, clientY: number): { row: number; col: number } {
-  const rect = canvasRef.value!.getBoundingClientRect()
+  const rect = scrollerRef.value!.getBoundingClientRect()
   const x = clientX - rect.left
   const y = clientY - rect.top
   const contentY = y - headerH.value + scrollTop.value
@@ -597,9 +613,8 @@ function maybeAutoScroll() {
     autoScrollRaf = 0
     if (!drag || drag.mode === 'resize') return
     const el = scrollerRef.value
-    const canvas = canvasRef.value
-    if (!el || !canvas) return
-    const rect = canvas.getBoundingClientRect()
+    if (!el) return
+    const rect = el.getBoundingClientRect()
     const px = drag.pointer.x
     const py = drag.pointer.y
     let dx = 0
@@ -646,8 +661,8 @@ function onWindowDragUp() {
 // ---- hover / cursor / 表头 tooltip ----
 function onCanvasMouseMove(e: MouseEvent) {
   if (drag) return
-  const canvas = canvasRef.value
-  if (!canvas) return
+  const el = scrollerRef.value
+  if (!el) return
   const hit = hitFromEvent(e)
   let cursor = 'default'
   let title = ''
@@ -661,8 +676,8 @@ function onCanvasMouseMove(e: MouseEvent) {
   } else if (hit.region === 'cell' && inRowRange(hit.row) && hit.col >= 0) {
     nextHover = { row: hit.row, col: hit.col }
   }
-  if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor
-  if (canvas.title !== title) canvas.title = title
+  if (el.style.cursor !== cursor) el.style.cursor = cursor
+  if (el.title !== title) el.title = title
   if (hover.value?.row !== nextHover?.row || hover.value?.col !== nextHover?.col) {
     hover.value = nextHover
     requestRender()
@@ -678,6 +693,7 @@ function onMouseLeave() {
 
 // ---- 双击：emit + 列宽 auto-fit ----
 function onDblClick(e: MouseEvent) {
+  if (onScrollbar(e)) return
   const hit = hitFromEvent(e)
   if (hit.region === 'header' && hit.col >= 0) {
     const w = colWidths.value[hit.col]
@@ -709,7 +725,7 @@ function autoFitColumn(col: number) {
 
 // ---- 右键：先修选区、定菜单名，再 emit ----
 function onContextMenu(e: MouseEvent) {
-  if (!props.rows.length || !props.columns.length) return
+  if (!props.rows.length || !props.columns.length || onScrollbar(e)) return
   const hit = hitFromEvent(e)
   const sel = normSel.value
   const cols = props.columns.length
@@ -1136,7 +1152,7 @@ function scrollToColumn(bodyCol: number) {
 
 function resize() {
   syncViewport()
-  requestRender()
+  draw()
 }
 
 defineExpose({ scrollToBottom, scrollToColumn, resize })
@@ -1152,11 +1168,13 @@ function syncViewport() {
 let ro: ResizeObserver | null = null
 onMounted(() => {
   syncViewport()
-  requestRender()
+  draw()
   if (typeof ResizeObserver !== 'undefined' && scrollerRef.value) {
+    // RO 在一帧的 rAF 之后触发：这里必须同步 draw()，若等下一帧 rAF，
+    // 本帧会先 paint 一次尺寸不符的旧画面，连续拖动分隔条时持续闪抖。
     ro = new ResizeObserver(() => {
       syncViewport()
-      requestRender()
+      draw()
     })
     ro.observe(scrollerRef.value)
   }
@@ -1182,18 +1200,19 @@ onBeforeUnmount(() => {
     @keydown="onKeydown"
     @paste="onPaste"
   >
-    <div ref="scrollerRef" class="dg-scroller" @scroll="onScroll">
+    <div
+      ref="scrollerRef"
+      class="dg-scroller"
+      @scroll="onScroll"
+      @mousedown="onMouseDown"
+      @mousemove="onCanvasMouseMove"
+      @mouseleave="onMouseLeave"
+      @dblclick="onDblClick"
+      @contextmenu="onContextMenu"
+    >
       <div class="dg-spacer" :style="{ width: totalWidth + 'px', height: totalHeight + 'px' }">
-        <canvas
-          ref="canvasRef"
-          class="dg-canvas"
-          :style="{ width: viewW + 'px', height: viewH + 'px' }"
-          @mousedown="onMouseDown"
-          @mousemove="onCanvasMouseMove"
-          @mouseleave="onMouseLeave"
-          @dblclick="onDblClick"
-          @contextmenu="onContextMenu"
-        />
+        <!-- 宽高由 drawGrid 与位图同帧设置，不走 Vue 绑定（避免 resize 抖动） -->
+        <canvas ref="canvasRef" class="dg-canvas" />
         <div v-if="editing" class="dg-editor" :style="editorStyle" @mousedown.stop>
           <textarea
             v-if="editing.kind === 'textarea'"
