@@ -68,8 +68,9 @@ func TestBuildDSNDefaults(t *testing.T) {
 	if want := "root:secret@tcp(127.0.0.1:3306)/mydb"; !contains(dsn, want) {
 		t.Errorf("dsn missing %q: %s", want, dsn)
 	}
-	if !contains(dsn, "parseTime=true") {
-		t.Errorf("dsn missing parseTime=true: %s", dsn)
+	// ParseTime 必须保持关闭：scanner 依赖原样字节串自行解析时间类型（见 dsn.go）。
+	if contains(dsn, "parseTime=true") {
+		t.Errorf("dsn must not enable parseTime (scanner parses raw time strings): %s", dsn)
 	}
 	if !contains(dsn, "collation=utf8mb4_general_ci") {
 		t.Errorf("dsn missing default collation: %s", dsn)
