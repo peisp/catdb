@@ -199,12 +199,7 @@ export default {
   tableBrowser: {
     readOnlyTag: '只读 · 无主键',
     readOnlyBanner: '该表没有主键或唯一键，已禁用编辑以避免产生歧义的 UPDATE/DELETE 语句。',
-    prevPage: '上一页',
-    nextPage: '下一页',
-    allRows: '全部',
-    rowsRange: '行 {start} – {end}',
     browseFailed: '浏览失败: {error}',
-    sqlCopied: 'SQL 已复制',
     rowInserted: '已插入行',
     insertFailed: '插入失败: {error}',
     savedChanges: '已保存 {n} 处修改',
@@ -212,6 +207,18 @@ export default {
     columnsTitle: '字段列表',
     columnsFilter: '筛选字段',
     columnsEmpty: '无匹配字段',
+  },
+  // 表格底部共用状态条（components/workspace/ResultFooter.vue）。
+  resultFooter: {
+    prevPage: '上一页',
+    nextPage: '下一页',
+    allRows: '全部',
+    loadTotal: '加载总行数',
+    counting: '统计中…',
+    countFailed: '统计行数失败: {error}',
+    totalRows: '共 {n} 行',
+    totalRowsPartial: '{n}+ 行',
+    sqlCopied: 'SQL 已复制',
   },
   // 表结构编辑各 Tab（components/structure/*）。
   structure: {
@@ -376,6 +383,8 @@ export default {
     schema: '数据库',
     noSchemas: '无可用数据库',
     rowsCount: '{n} 行',
+    rowsCountPartial: '{n}+ 行（未加载完）',
+    loadingMore: '加载中…',
     affectedCount: '{n} 行受影响',
     rowsAffected: '{n} 行受影响',
     queryCanceled: '查询已取消。',
@@ -387,7 +396,6 @@ export default {
     status: {
       running: '运行中',
       done: '完成',
-      doneTruncated: '完成（已截断）',
       error: '错误',
       canceled: '已取消',
       idle: '空闲',

@@ -258,12 +258,20 @@ const statusBadge = computed(() => {
   switch (t.status) {
     case 'running': return { key: 'queryTab.status.running', type: 'info' as const }
     case 'done':
-      if (t.truncated) return { key: 'queryTab.status.doneTruncated', type: 'warning' as const }
       return { key: 'queryTab.status.done', type: 'success' as const }
     case 'error': return { key: 'queryTab.status.error', type: 'error' as const }
     case 'canceled': return { key: 'queryTab.status.canceled', type: 'warning' as const }
     default: return { key: 'queryTab.status.idle', type: 'default' as const }
   }
+})
+
+// While the streaming cursor is still draining, rowsTotal is only what we've
+// loaded so far — show it as "N+" so it doesn't read as the true total
+// (DataGrip-style). Exact count once drained.
+const rowsLabel = computed(() => {
+  const t = tab.value
+  if (!t.isResultSet || t.rowsTotal <= 0) return null
+  return { key: !t.done ? 'queryTab.rowsCountPartial' : 'queryTab.rowsCount', n: t.rowsTotal }
 })
 
 const errorKind = computed<'canceled' | 'timeout' | 'sql' | null>(() => {
@@ -368,7 +376,7 @@ function onSplitDown(e: PointerEvent) {
         <span class="sep" />
         <n-tag size="small" :type="statusBadge.type">{{ $t(statusBadge.key) }}</n-tag>
         <span v-if="tab.elapsedMs > 0" class="mono mute">{{ tab.elapsedMs }} ms</span>
-        <span v-if="tab.isResultSet && tab.rowsTotal > 0" class="mono mute">{{ $t('queryTab.rowsCount', { n: tab.rowsTotal }) }}</span>
+        <span v-if="rowsLabel" class="mono mute">{{ $t(rowsLabel.key, { n: rowsLabel.n }) }}</span>
         <span v-if="!tab.isResultSet && tab.execAffected !== null" class="mono mute">
           {{ $t('queryTab.affectedCount', { n: tab.execAffected }) }}
         </span>
@@ -441,8 +449,8 @@ function onSplitDown(e: PointerEvent) {
             :rows="tab.rows"
             :done="tab.done"
             :fetching="tab.fetching"
-            :truncated="tab.truncated"
             :rows-total="tab.rowsTotal"
+            :sql="tab.lastRunSql"
             class="result-table"
             @load-more="onLoadMore"
             @export="onResultExport"
@@ -509,9 +517,6 @@ function onSplitDown(e: PointerEvent) {
   min-height: 0;
   overflow: hidden;
   display: grid;
-  /* Opaque content surface so the body's transparent slot padding doesn't
-     bleed the translucent .main background as a hairline under the toolbar. */
-  background: var(--app-content-bg);
 }
 /* State A: single row → editor fills everything. */
 .body-a { grid-template-rows: 1fr; }
@@ -534,16 +539,16 @@ function onSplitDown(e: PointerEvent) {
 /* basis: 0 → editor's CodeMirror can never push the slot taller than its grid track */
 .editor-slot > * { flex: 1 1 0; min-width: 0; min-height: 0; }
 
+/* No padding here: ResultTable owns its own inset (grid) and keeps the footer
+   edge-to-edge, matching TableBrowser. Alerts carry their own margin instead. */
 .result-slot {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  padding: 6px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
 }
-.alert { flex: 0 0 auto; }
+.alert { flex: 0 0 auto; margin: 6px 6px 0; }
 /* basis: 0 → result table can NEVER push the result-slot taller than its
    grid track. All vertical scrolling lives inside ResultTable's .scroller. */
 .result-table { flex: 1 1 0; min-width: 0; min-height: 0; }

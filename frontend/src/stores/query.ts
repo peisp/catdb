@@ -68,12 +68,13 @@ export interface QueryTab {
   savedSql?: string
 
   // result state (used by 'query' kind only)
+  // SQL that produced the current result (editor text may have changed since).
+  lastRunSql: string
   handle: string | null
   columns: QueryColumn[]
   rows: any[][]
   rowsTotal: number
   done: boolean
-  truncated: boolean
   isResultSet: boolean
   elapsedMs: number
   execAffected: number | null
@@ -98,12 +99,12 @@ function freshTab(connId: string, opts?: { kind?: TabKind; title?: string; db?: 
     table: opts?.table,
     sql: '',
     savedSql: '',
+    lastRunSql: '',
     handle: null,
     columns: [],
     rows: [],
     rowsTotal: 0,
     done: false,
-    truncated: false,
     isResultSet: false,
     elapsedMs: 0,
     execAffected: null,
@@ -114,6 +115,10 @@ function freshTab(connId: string, opts?: { kind?: TabKind; title?: string; db?: 
     fetching: false,
   }
 }
+
+// Batch size used when auto-draining a result set to completion after a run.
+// Larger than the interactive default to cut round trips, still bounded per IPC.
+const DRAIN_BATCH = 2000
 
 export const useQueryStore = defineStore('query', () => {
   // tabs keyed by id; ordered list maintained separately for tab strip order
@@ -408,7 +413,6 @@ export const useQueryStore = defineStore('query', () => {
     t.rows = []
     t.rowsTotal = 0
     t.done = false
-    t.truncated = false
     t.isResultSet = false
     t.elapsedMs = 0
     t.execAffected = null
@@ -421,7 +425,6 @@ export const useQueryStore = defineStore('query', () => {
     t.rows = (res.rows ?? []) as any[][]
     t.rowsTotal = res.rowsTotal ?? 0
     t.done = !!res.done
-    t.truncated = !!res.truncated
     t.elapsedMs = Number(res.elapsedMs ?? 0)
     t.isResultSet = !!res.isResultSet
     t.handle = res.handle ?? null
@@ -441,7 +444,6 @@ export const useQueryStore = defineStore('query', () => {
       t.done = true
       t.handle = null
     }
-    if (b.truncated) t.truncated = true
   }
 
   async function runActive(tabId: string, options: Partial<QueryOptions> = {}) {
@@ -453,6 +455,7 @@ export const useQueryStore = defineStore('query', () => {
       t.handle = null
     }
     resetResult(t)
+    t.lastRunSql = t.sql
     t.status = 'running'
     const ctrl = new AbortController()
     t.controller = ctrl
@@ -464,8 +467,23 @@ export const useQueryStore = defineStore('query', () => {
         return
       }
       applyRun(t, res)
+      // Load the whole result set up front — the SQL editor shows full data
+      // with no manual scroll-paging. Fetch stays batched so each IPC payload
+      // stays bounded (铁律 #5); fetching blocks scroll-triggered fetchMore.
+      t.fetching = true
+      while (t.handle && !t.done) {
+        const b = await queryApi.fetchMore(t.handle, DRAIN_BATCH, ctrl.signal)
+        if (ctrl.signal.aborted) {
+          t.handle = null
+          t.status = 'canceled'
+          t.errorMessage = 'canceled by user'
+          return
+        }
+        applyBatch(t, b)
+      }
     } catch (e: any) {
       if (ctrl.signal.aborted) {
+        t.handle = null
         t.status = 'canceled'
         t.errorMessage = 'canceled by user'
       } else {
@@ -474,6 +492,7 @@ export const useQueryStore = defineStore('query', () => {
       }
     } finally {
       t.controller = null
+      t.fetching = false
     }
   }
 
@@ -510,6 +529,7 @@ export const useQueryStore = defineStore('query', () => {
     if (!t) return
     if (t.status === 'running') return
     resetResult(t)
+    t.lastRunSql = t.sql
     t.status = 'running'
     const ctrl = new AbortController()
     t.controller = ctrl

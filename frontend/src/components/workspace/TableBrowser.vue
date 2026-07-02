@@ -18,6 +18,7 @@ import type { BrowseResult, ColumnMeta } from '../../api/metadata'
 import DataGrid from '../data-grid/DataGrid.vue'
 import { startExport } from '../../composables/useExport'
 import FilterBar from './FilterBar.vue'
+import ResultFooter from './ResultFooter.vue'
 import ResizeHandle from '../shared/ResizeHandle.vue'
 import { t } from '../../i18n'
 
@@ -33,13 +34,11 @@ const message = useMessage()
 const ALL_ROWS = -1
 const pageSize = ref<number>(200)
 const page = ref(1)
-// Decoupled from `page` so the user can type freely and only commit on Enter.
-const pageInput = ref<string>('1')
 const pageSizeOptions = computed(() => [
   { label: '200', value: 200 },
   { label: '500', value: 500 },
   { label: '1000', value: 1000 },
-  { label: t('tableBrowser.allRows'), value: ALL_ROWS },
+  { label: t('resultFooter.allRows'), value: ALL_ROWS },
 ])
 
 // ---- sort state ----
@@ -257,47 +256,39 @@ function onSortChange(sort: { field: number; order: 'asc' | 'desc' } | null) {
   page.value = 1  // 排序换页时回到第一页
 }
 
-watch(page, (v) => { pageInput.value = String(v) }, { immediate: true })
 watch(pageSize, () => { page.value = 1 })
 
 const isAllRows = computed(() => pageSize.value === ALL_ROWS)
 const hasPrev = computed(() => !isAllRows.value && page.value > 1)
-const hasNext = computed(() => !isAllRows.value && rows.value.length >= pageSize.value)
+const hasNext = computed(() => {
+  if (isAllRows.value) return false
+  if (totalRows.value !== null) return page.value * pageSize.value < totalRows.value
+  return rows.value.length >= pageSize.value
+})
 
-function goPrev() { if (hasPrev.value) page.value -= 1 }
-function goNext() { if (hasNext.value) page.value += 1 }
-function commitPageInput() {
-  const n = Math.floor(Number(pageInput.value))
-  if (!Number.isFinite(n) || n < 1) { pageInput.value = String(page.value); return }
-  if (n === page.value) return
-  page.value = n
-}
-
-const sqlHover = ref(false)
 const dmlSql = ref('')
 const dmlLabel = ref('')
 
-function displaySql(): string {
-  return dmlSql.value || browse.value?.sql || ''
+// ---- on-demand total row count (COUNT(*) can be a slow scan → user-triggered) ----
+const totalRows = ref<number | null>(null)
+const countLoading = ref(false)
+
+async function loadTotal() {
+  countLoading.value = true
+  try {
+    totalRows.value = await metaApi.countTableRows(props.connId, props.db, props.table, filterWhere.value)
+  } catch (e) {
+    message.error(t('resultFooter.countFailed', { error: String(e) }))
+  } finally {
+    countLoading.value = false
+  }
 }
 
-async function copySql() {
-  const sql = displaySql()
-  if (!sql) return
-  try { await navigator.clipboard.writeText(sql); message.success(t('tableBrowser.sqlCopied')) }
-  catch (e) { message.error(t('common.copyFailed', { error: String(e) })) }
-}
-
-const rowsStart = computed(() => {
-  if (rows.value.length === 0) return 0
-  return isAllRows.value ? 1 : (page.value - 1) * pageSize.value + 1
-})
-const rowsEnd = computed(() => {
-  if (rows.value.length === 0) return 0
-  return isAllRows.value
-    ? rows.value.length
-    : (page.value - 1) * pageSize.value + rows.value.length
-})
+// 换表或过滤条件变化 → 总数失效
+watch(
+  () => [props.connId, props.db, props.table, filterWhere.value],
+  () => { totalRows.value = null },
+)
 
 // ---- edit pipeline (DataGrid → edit-commit) ----
 
@@ -711,60 +702,21 @@ function onFilterClear() {
       </aside>
     </div>
 
-    <div class="footer">
-      <div class="pager">
-        <button
-          class="pgbtn"
-          :disabled="!hasPrev"
-          :title="$t('tableBrowser.prevPage')"
-          @click="goPrev"
-        >‹</button>
-        <input
-          v-model="pageInput"
-          class="page-input mono"
-          inputmode="numeric"
-          :disabled="isAllRows"
-          @keydown.enter.prevent="commitPageInput"
-          @blur="commitPageInput"
-        />
-        <button
-          class="pgbtn"
-          :disabled="!hasNext"
-          :title="$t('tableBrowser.nextPage')"
-          @click="goNext"
-        >›</button>
-      </div>
-
-      <div
-        class="sql-display"
-        @mouseenter="sqlHover = true"
-        @mouseleave="sqlHover = false"
-      >
-        <div class="sql-lines">
-          <div v-if="dmlSql" class="sql-line">
-            <code class="sql-text mono" :title="dmlSql">{{ dmlSql }}</code>
-            <n-tag size="tiny" :bordered="false" class="sql-tag">{{ dmlLabel }}</n-tag>
-          </div>
-          <div class="sql-line">
-            <code class="sql-text mono" :title="browse?.sql || ''">{{ browse?.sql || '' }}</code>
-          </div>
-        </div>
-        <button
-          v-if="displaySql()"
-          class="copy-btn"
-          :class="{ visible: sqlHover }"
-          :title="$t('common.copySql')"
-          @click="copySql"
-        >{{ $t('common.copy') }}</button>
-      </div>
-
-      <div class="footer-right">
-        <span class="mono mute">{{ $t('tableBrowser.rowsRange', { start: rowsStart, end: rowsEnd }) }}</span>
-        <select v-model="pageSize" class="size-select">
-          <option v-for="opt in pageSizeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-        </select>
-      </div>
-    </div>
+    <ResultFooter
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :page-size-options="pageSizeOptions"
+      :has-prev="hasPrev"
+      :has-next="hasNext"
+      :pager-disabled="isAllRows"
+      :total="isAllRows ? rows.length : totalRows"
+      :can-load-total="!isAllRows"
+      :count-loading="countLoading"
+      :sql="browse?.sql || ''"
+      :dml-sql="dmlSql"
+      :dml-label="dmlLabel"
+      @load-total="loadTotal"
+    />
   </div>
 </template>
 
@@ -812,153 +764,6 @@ function onFilterClear() {
   min-height: 0;
 }
 
-.footer {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 10px;
-  border-top: 1px solid var(--n-border-color);
-  background: var(--n-color);
-  flex: 0 0 auto;
-  min-width: 0;
-}
-
-.pager {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex: 0 0 auto;
-}
-.pgbtn {
-  width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 3px;
-  font-size: 14px;
-  line-height: 1;
-  color: inherit;
-  cursor: default;
-  padding: 0;
-  transition: background-color 120ms ease, border-color 120ms ease;
-}
-.pgbtn:hover:not(:disabled) {
-  background: var(--n-color-target, rgba(127, 127, 127, 0.12));
-}
-.pgbtn:disabled {
-  opacity: 0.3;
-  cursor: default;
-}
-.page-input {
-  width: 44px;
-  height: 22px;
-  text-align: center;
-  font-size: 12px;
-  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.25));
-  border-radius: 3px;
-  background: transparent;
-  color: inherit;
-  padding: 0 4px;
-  outline: none;
-  transition: border-color 120ms ease;
-}
-.page-input:focus {
-  border-color: var(--n-primary-color, #18a058);
-}
-.page-input:disabled {
-  opacity: 0.4;
-}
-
-.sql-display {
-  flex: 1 1 0;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  position: relative;
-}
-.sql-lines {
-  flex: 1 1 0;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.sql-line {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
-.sql-tag {
-  flex: 0 0 auto;
-  line-height: 1;
-  opacity: 0.6;
-  font-size: 9px;
-}
-.sql-text {
-  flex: 1 1 0;
-  min-width: 0;
-  font-size: 11px;
-  opacity: 0.7;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  user-select: text;
-  -webkit-user-select: text;
-  cursor: text;
-}
-.copy-btn {
-  flex: 0 0 auto;
-  height: 20px;
-  padding: 0 8px;
-  font-size: 11px;
-  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.25));
-  border-radius: 3px;
-  background: var(--n-color, transparent);
-  color: inherit;
-  cursor: default;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms ease, background-color 120ms ease;
-}
-.copy-btn.visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-.copy-btn:hover {
-  background: var(--n-color-target, rgba(127, 127, 127, 0.12));
-}
-
-.footer-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
-}
-.size-select {
-  width: 80px;
-  font-size: 12px;
-  height: 22px;
-  padding: 0 4px;
-  border-radius: 3px;
-  border: 1px solid var(--n-border-color, rgba(127,127,127,0.25));
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  outline: none;
-  font-family: inherit;
-}
-.size-select:hover:not(:disabled) {
-  background: var(--n-color-target, rgba(127,127,127,0.12));
-}
-.size-select:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 .mute { opacity: 0.55; font-size: 10px; }
 
 .cols-panel {

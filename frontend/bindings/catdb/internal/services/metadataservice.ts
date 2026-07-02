@@ -52,6 +52,16 @@ export function BrowseTable(connID: string, db: string, schema: string, table: s
     });
 }
 
+/**
+ * CountTableRows runs `SELECT COUNT(*) FROM db.table [WHERE …]` so the data
+ * browser can show the exact total on demand (it's a potentially slow scan,
+ * hence user-triggered rather than automatic). whereClause is the same raw
+ * FilterBar snippet BrowseTable accepts.
+ */
+export function CountTableRows(connID: string, db: string, schema: string, table: string, whereClause: string): $CancellablePromise<number> {
+    return $Call.ByName("catdb/internal/services.MetadataService.CountTableRows", connID, db, schema, table, whereClause);
+}
+
 export function GetCreateTable(connID: string, db: string, schema: string, table: string): $CancellablePromise<string> {
     return $Call.ByName("catdb/internal/services.MetadataService.GetCreateTable", connID, db, schema, table);
 }

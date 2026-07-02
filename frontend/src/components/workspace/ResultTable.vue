@@ -3,19 +3,22 @@
 // 业务装配只剩：选区追踪、剪贴板 Cmd+C、原生上下文菜单状态推送、底部 footer。
 // 渲染（虚拟化、列宽、选区高亮、键盘导航）全部下沉到 DataGrid；
 // 右键菜单走 Wails 原生（CLAUDE.md 规则 11），状态通过 setActiveGridContext 同步。
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import DataGrid from '../data-grid/DataGrid.vue'
+import ResultFooter from './ResultFooter.vue'
 import { useTableSelection, type SelectionRange } from '../../composables/useTableSelection'
 import { setActiveGridContext } from '../../api/gridContextMenu'
 import type { QueryColumn } from '../../stores/query'
+import { t } from '../../i18n'
 
 const props = defineProps<{
   columns: QueryColumn[]
   rows: any[][]
   done: boolean
   fetching: boolean
-  truncated: boolean
   rowsTotal: number
+  /** SQL that produced this result — shown in the footer. */
+  sql?: string
   /** Optional table name for INSERT/UPDATE generation. When omitted those
    *  native context-menu items silently no-op. */
   tableName?: string
@@ -26,6 +29,28 @@ const emit = defineEmits<{
   (e: 'load-more'): void
   (e: 'export', format: string): void
 }>()
+
+// ---- client-side paging（结果集已全量驻留内存，这里只做切片展示） ----
+const ALL_ROWS = -1
+const page = ref(1)
+const pageSize = ref(500)
+const pageSizeOptions = computed(() => [
+  { label: '200', value: 200 },
+  { label: '500', value: 500 },
+  { label: '1000', value: 1000 },
+  { label: t('resultFooter.allRows'), value: ALL_ROWS },
+])
+const isAllRows = computed(() => pageSize.value === ALL_ROWS)
+const pagedRows = computed<any[][]>(() => {
+  if (isAllRows.value) return props.rows
+  const start = (page.value - 1) * pageSize.value
+  return props.rows.slice(start, start + pageSize.value)
+})
+const hasPrev = computed(() => !isAllRows.value && page.value > 1)
+const hasNext = computed(() => !isAllRows.value && page.value * pageSize.value < props.rows.length)
+// 新一次执行会换掉 columns 数组引用 → 回到第 1 页
+watch(() => props.columns, () => { page.value = 1 })
+watch(pageSize, () => { page.value = 1 })
 
 const sel = useTableSelection()
 const rootRef = ref<HTMLElement | null>(null)
@@ -45,7 +70,7 @@ function onCellContextMenu(p: { row: number; col: number }) {
   // selection. Done synchronously inside the contextmenu DOM event so the
   // singleton is current by the time Go fires its callback.
   setActiveGridContext({
-    rows: props.rows,
+    rows: pagedRows.value,
     columnNames: colNames(),
     selection: sel.selection.value,
     tableName: props.tableName,
@@ -67,19 +92,12 @@ function onDocKeyDown(e: KeyboardEvent) {
   if (el?.closest?.('.cm-editor') || el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA') return
   if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'c') {
     e.preventDefault()
-    copyToClipboard(sel.formatTSV(props.rows))
+    copyToClipboard(sel.formatTSV(pagedRows.value))
   }
 }
 
 onMounted(() => document.addEventListener('keydown', onDocKeyDown))
 onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeyDown))
-
-function onExportSelect(ev: Event) {
-  const val = (ev.target as HTMLSelectElement).value
-  if (!val) return
-  emit('export', val)
-  ;(ev.target as HTMLSelectElement).value = ''
-}
 </script>
 
 <template>
@@ -87,7 +105,7 @@ function onExportSelect(ev: Event) {
     <div class="grid-wrap">
       <DataGrid
         :columns="columns"
-        :rows="rows"
+        :rows="pagedRows"
         :fetching="fetching"
         :show-types="true"
         @selection-change="onSelectionChange"
@@ -96,19 +114,22 @@ function onExportSelect(ev: Event) {
       />
     </div>
 
-    <div class="foot mono">
-      <span>{{ rowsTotal }} rows</span>
-      <span v-if="!done && !truncated" class="mute">loading more on scroll…</span>
-      <span v-if="truncated" class="truncated">truncated to preview limit — use Export for full data</span>
-      <span class="grow" />
-      <select class="export-select" :disabled="fetching" @change="onExportSelect">
-        <option value="" disabled selected>{{ $t('common.exportPlaceholder') }}</option>
-        <option value="csv">CSV</option>
-        <option value="xlsx">Excel</option>
-        <option value="json">JSON</option>
-        <option value="sql">SQL</option>
-      </select>
-    </div>
+    <ResultFooter
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :page-size-options="pageSizeOptions"
+      :has-prev="hasPrev"
+      :has-next="hasNext"
+      :pager-disabled="isAllRows"
+      :total="rowsTotal"
+      :total-partial="!done"
+      :sql="sql"
+      show-export
+      :export-disabled="fetching"
+      @export="emit('export', $event)"
+    >
+      <span v-if="!done" class="mute mono">{{ $t('queryTab.loadingMore') }}</span>
+    </ResultFooter>
   </div>
 </template>
 
@@ -119,42 +140,16 @@ function onExportSelect(ev: Event) {
   height: 100%;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
+/* Mirror TableBrowser's .data-spin: the grid area owns the 6px inset, while
+   the footer below stays edge-to-edge with its own top border. */
 .grid-wrap {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
+  padding: 6px;
 }
-.foot {
-  flex: 0 0 auto;
-  font-size: 11px;
-  padding: 4px 10px;
-  background: var(--n-color);
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  opacity: 0.85;
-}
-.mute { opacity: 0.55; }
-.truncated { color: #d0a000; }
-.grow { flex: 1 1 auto; }
-.export-select {
-  font-size: 11px;
-  height: 20px;
-  padding: 0 4px;
-  border-radius: 3px;
-  border: 1px solid var(--n-border-color, rgba(127,127,127,0.25));
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  outline: none;
-  font-family: inherit;
-}
-.export-select:hover:not(:disabled) {
-  background: var(--n-color-target, rgba(127,127,127,0.12));
-}
-.export-select:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+.mute { opacity: 0.55; font-size: 10px; }
 </style>

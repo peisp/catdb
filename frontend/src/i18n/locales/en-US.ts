@@ -205,12 +205,7 @@ export default {
     readOnlyTag: 'read-only · no primary key',
     readOnlyBanner:
       'This table has no primary or unique key. Editing is disabled to avoid ambiguous UPDATE/DELETE statements.',
-    prevPage: 'Previous page',
-    nextPage: 'Next page',
-    allRows: 'All',
-    rowsRange: 'rows {start} – {end}',
     browseFailed: 'Browse failed: {error}',
-    sqlCopied: 'SQL copied',
     rowInserted: 'Row inserted',
     insertFailed: 'Insert failed: {error}',
     savedChanges: 'Saved {n} change(s)',
@@ -218,6 +213,18 @@ export default {
     columnsTitle: 'Columns',
     columnsFilter: 'Filter columns',
     columnsEmpty: 'No matching columns',
+  },
+  // Shared result-grid footer (components/workspace/ResultFooter.vue).
+  resultFooter: {
+    prevPage: 'Previous page',
+    nextPage: 'Next page',
+    allRows: 'All',
+    loadTotal: 'Count rows',
+    counting: 'Counting…',
+    countFailed: 'Count failed: {error}',
+    totalRows: '{n} rows',
+    totalRowsPartial: '{n}+ rows',
+    sqlCopied: 'SQL copied',
   },
   // Table structure editor tabs (components/structure/*).
   structure: {
@@ -384,6 +391,8 @@ export default {
     schema: 'Schema',
     noSchemas: 'No schemas',
     rowsCount: '{n} rows',
+    rowsCountPartial: '{n}+ rows (not fully loaded)',
+    loadingMore: 'loading…',
     affectedCount: '{n} affected',
     rowsAffected: '{n} row(s) affected',
     queryCanceled: 'Query canceled.',
@@ -395,7 +404,6 @@ export default {
     status: {
       running: 'Running',
       done: 'Done',
-      doneTruncated: 'Done (truncated)',
       error: 'Error',
       canceled: 'Canceled',
       idle: 'Idle',

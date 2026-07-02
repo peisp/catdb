@@ -510,7 +510,7 @@ export class QueryOptions {
     "timeoutMs"?: number;
 
     /**
-     * hard cap for the open handle (default MaxPreviewRows)
+     * hard cap for the open handle (0 = unlimited)
      */
     "maxRows"?: number;
 

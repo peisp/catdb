@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"catdb/internal/core/session"
@@ -300,4 +301,65 @@ func (s *MetadataService) BrowseTable(ctx context.Context, connID, db, schema, t
 		}
 	}
 	return out, nil
+}
+
+// CountTableRows runs `SELECT COUNT(*) FROM db.table [WHERE …]` so the data
+// browser can show the exact total on demand (it's a potentially slow scan,
+// hence user-triggered rather than automatic). whereClause is the same raw
+// FilterBar snippet BrowseTable accepts.
+func (s *MetadataService) CountTableRows(ctx context.Context, connID, db, schema, table, whereClause string) (int64, error) {
+	if connID == "" || table == "" || (db == "" && schema == "") {
+		return 0, fmt.Errorf("MetadataService: connID, table and db (or schema) are required")
+	}
+	conn, err := s.mgr.Get(connID)
+	if err != nil {
+		conn, err = s.mgr.Open(ctx, connID)
+		if err != nil {
+			return 0, err
+		}
+	}
+	dia, err := s.resolveDialect(ctx, connID)
+	if err != nil {
+		return 0, err
+	}
+	q := conn.Querier()
+	if q == nil {
+		return 0, fmt.Errorf("MetadataService: connection has no querier")
+	}
+	stmt := fmt.Sprintf("SELECT COUNT(*) FROM %s", dbdriver.QualifyTable(dia, db, schema, table))
+	if whereClause != "" {
+		stmt = fmt.Sprintf("%s WHERE %s", stmt, whereClause)
+	}
+	rs, err := q.Query(ctx, stmt)
+	if err != nil {
+		return 0, err
+	}
+	defer rs.Close()
+	rows, _, err := rs.Next(1)
+	if err != nil {
+		return 0, err
+	}
+	if len(rows) == 0 || len(rows[0]) == 0 {
+		return 0, fmt.Errorf("MetadataService: count returned no rows")
+	}
+	switch v := rows[0][0].(type) {
+	case int64:
+		return v, nil
+	case uint64:
+		return int64(v), nil
+	case []byte:
+		n, perr := strconv.ParseInt(string(v), 10, 64)
+		if perr != nil {
+			return 0, fmt.Errorf("MetadataService: parse count: %w", perr)
+		}
+		return n, nil
+	case string:
+		n, perr := strconv.ParseInt(v, 10, 64)
+		if perr != nil {
+			return 0, fmt.Errorf("MetadataService: parse count: %w", perr)
+		}
+		return n, nil
+	default:
+		return 0, fmt.Errorf("MetadataService: unexpected count type %T", v)
+	}
 }

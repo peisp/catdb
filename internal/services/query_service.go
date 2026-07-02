@@ -26,11 +26,6 @@ const DefaultQueryTimeout = 60 * time.Second
 // defaults to.
 const DefaultBatchSize = 500
 
-// MaxPreviewRows is the safety net at the FRONT of the pipeline. The Service
-// will refuse to keep a result set open beyond this many rows — past it we
-// require the user to switch to the export path (M4) which streams to disk.
-const MaxPreviewRows = 10000
-
 // QueryService is the IPC entry point for SQL execution. It is THIN: parses
 // inputs, picks the right driver via session.Manager, and forwards. Streaming
 // state (open ResultSets) lives in its private registry keyed by handle.
@@ -85,13 +80,16 @@ type openQuery struct {
 	// survives after RunQuery returns; it must be called on every teardown
 	// path so we don't leak the context's watcher goroutine.
 	cancel context.CancelFunc
+	// maxRows caps how many rows FetchMore will hand out before force-closing
+	// the cursor (Truncated). 0 means unlimited — drain the whole result set.
+	maxRows int
 }
 
 // QueryOptions tweaks one call's behaviour. All fields optional.
 type QueryOptions struct {
 	BatchSize     int    `json:"batchSize,omitempty"`     // first-batch size (default 500)
 	TimeoutMs     int    `json:"timeoutMs,omitempty"`     // per-call ctx timeout (default 60s)
-	MaxRows       int    `json:"maxRows,omitempty"`       // hard cap for the open handle (default MaxPreviewRows)
+	MaxRows       int    `json:"maxRows,omitempty"`       // hard cap for the open handle (0 = unlimited)
 	DefaultSchema string `json:"defaultSchema,omitempty"` // when non-empty, the SQL is run with this database
 	// "selected" (e.g. MySQL `USE db`) so unqualified tables resolve to it.
 }
@@ -239,10 +237,10 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 	if batch <= 0 {
 		batch = DefaultBatchSize
 	}
+	// maxRows == 0 means unlimited: the caller drains the whole result set
+	// (the SQL editor loads full data with no preview cap). A positive cap is
+	// still honored for callers that want a bounded preview.
 	maxRows := opts.MaxRows
-	if maxRows <= 0 {
-		maxRows = MaxPreviewRows
-	}
 
 	rows, done, err := rs.Next(batch)
 	if err != nil {
@@ -263,7 +261,7 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 		IsResultSet: true,
 	}
 
-	if !done && len(rows) >= maxRows {
+	if maxRows > 0 && !done && len(rows) >= maxRows {
 		out.Truncated = true
 		out.Done = true
 		_ = rs.Close()
@@ -293,6 +291,7 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 		createdAt: time.Now(),
 		tx:        tx,
 		cancel:    runCancel,
+		maxRows:   maxRows,
 	}
 	s.mu.Unlock()
 	out.Handle = h
@@ -345,7 +344,7 @@ func (s *QueryService) FetchMore(ctx context.Context, handle string, batch int) 
 		RowsTotal: h.rowsRead,
 		Done:      done,
 	}
-	if !done && h.rowsRead >= MaxPreviewRows {
+	if h.maxRows > 0 && !done && h.rowsRead >= h.maxRows {
 		out.Truncated = true
 		out.Done = true
 		s.closeHandle(handle, h, nil)

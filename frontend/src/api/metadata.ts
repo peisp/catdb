@@ -63,6 +63,12 @@ export function getTableSummary(connId: string, db: string, table: string, schem
 export function autocompleteFor(connId: string, db: string, schema = ''): Promise<AutocompleteSnapshot> {
   return MetadataService.AutocompleteFor(connId, db, schema) as unknown as Promise<AutocompleteSnapshot>
 }
+export function countTableRows(
+  connId: string, db: string, table: string,
+  whereClause = '', schema = '',
+): Promise<number> {
+  return MetadataService.CountTableRows(connId, db, schema, table, whereClause) as unknown as Promise<number>
+}
 export function browseTable(
   connId: string, db: string, table: string,
   limit: number, offset: number,
