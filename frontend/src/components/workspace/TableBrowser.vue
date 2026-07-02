@@ -121,6 +121,7 @@ function onExportSelect(ev: Event) {
 
 // ---- selection + copy ----
 const sel = useTableSelection()
+const rootRef = ref<HTMLElement | null>(null)
 const hasSelection = computed(() => sel.selection.value !== null)
 
 function colNames(): string[] { return columns.value.map((c) => c.name) }
@@ -155,12 +156,14 @@ async function copyToClipboard(text: string) {
 
 function onDocKeyDown(e: KeyboardEvent) {
   if (!sel.hasSelection()) return
+  // 隐藏标签页（v-show 的 show:lazy 面板）不响应，避免多个 grid 抢 Cmd+C
+  if (!rootRef.value?.offsetParent) return
   // 焦点在 CodeMirror / input / textarea 中时不拦截 Cmd+C，让本地复制正常工作
   const el = e.target as HTMLElement | null
   if (el?.closest?.('.cm-editor') || el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA') return
-  if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'c') {
     e.preventDefault()
-    copyToClipboard(sel.formatTSV(rows.value, colNames(), false))
+    copyToClipboard(sel.formatTSV(rows.value))
   }
 }
 onMounted(() => document.addEventListener('keydown', onDocKeyDown))
@@ -600,7 +603,7 @@ function onFilterClear() {
 </script>
 
 <template>
-  <div class="tb">
+  <div ref="rootRef" class="tb">
     <div class="toolbar">
       <span class="title mono">{{ db }}.{{ table }}</span>
       <n-tag v-if="readOnly" size="small" type="warning">{{ $t('tableBrowser.readOnlyTag') }}</n-tag>

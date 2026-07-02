@@ -1,10 +1,11 @@
-// useTableSelection — spreadsheet-style range selection + clipboard formatting
-// for ResultTable / TableBrowser. Handles mousedown drag, Shift-click extend,
-// and Cmd/Ctrl+C to copy the selected range as tab-separated values.
+// useTableSelection — grid selection state + clipboard formatting for
+// ResultTable / TableBrowser. Selection is a single rectangular range
+// (DataGrid disables VTable's Ctrl+click multi-range select so what's
+// highlighted is exactly what copies).
 //
 // Format helpers generate TSV, INSERT, UPDATE, column names, and data+columns.
 
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { ref } from 'vue'
 
 export interface SelectionRange {
   startRow: number
@@ -34,118 +35,105 @@ function renderValue(v: any): string {
   return String(v)
 }
 
+/** 单元格含 Tab/换行/引号时按电子表格惯例加双引号包裹，避免粘贴时行列错位。 */
+function tsvCell(v: any): string {
+  const s = renderValue(v)
+  if (/[\t\n\r"]/.test(s)) return '"' + s.replace(/"/g, '""') + '"'
+  return s
+}
+
+/** 解析 TSV 文本为二维数组（tsvCell 的逆操作）。带引号状态机：
+ *  字段以 `"` 开头视为引号包裹，内部 `""` 还原为 `"`，包裹内的 Tab/换行
+ *  属于字段内容而不是分隔符。 */
+export function parseTSV(text: string): string[][] {
+  const s = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const rows: string[][] = []
+  let row: string[] = []
+  let field = ''
+  let inQuotes = false
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]
+    if (inQuotes) {
+      if (ch === '"') {
+        if (s[i + 1] === '"') { field += '"'; i++ }
+        else inQuotes = false
+      } else {
+        field += ch
+      }
+    } else if (ch === '"' && field === '') {
+      inQuotes = true
+    } else if (ch === '\t') {
+      row.push(field)
+      field = ''
+    } else if (ch === '\n') {
+      row.push(field)
+      rows.push(row)
+      row = []
+      field = ''
+    } else {
+      field += ch
+    }
+  }
+  row.push(field)
+  rows.push(row)
+  // 去掉末尾换行符产生的空行
+  if (rows.length > 1 && rows[rows.length - 1].length === 1 && rows[rows.length - 1][0] === '') {
+    rows.pop()
+  }
+  return rows
+}
+
 export function useTableSelection() {
   const selection = ref<SelectionRange | null>(null)
-  const selecting = ref(false)
-  /** When true, dragging from the row-number column should select all columns
-   *  in every row the drag passes over. Set by selectRow(), cleared by any
-   *  normal cell selection. */
-  const wholeRow = ref(false)
 
-  // ---- mouse handlers ----
-
-  function startSelection(row: number, col: number) {
-    selecting.value = true
-    wholeRow.value = false
-    selection.value = { startRow: row, startCol: col, endRow: row, endCol: col }
-  }
-
-  function extendSelection(row: number, col: number) {
-    if (!selecting.value || !selection.value) return
-    selection.value.endRow = row
-    // When in whole-row mode, keep the original col range (all columns).
-    if (!wholeRow.value) selection.value.endCol = col
-  }
-
-  function endSelection() {
-    selecting.value = false
-    wholeRow.value = false
-  }
-
-  function clearSelection() {
-    selection.value = null
-    selecting.value = false
-    wholeRow.value = false
-  }
-
-  const minRow = computed(() =>
-    selection.value ? Math.min(selection.value.startRow, selection.value.endRow) : -1,
-  )
-  const maxRow = computed(() =>
-    selection.value ? Math.max(selection.value.startRow, selection.value.endRow) : -1,
-  )
-  const minCol = computed(() =>
-    selection.value ? Math.min(selection.value.startCol, selection.value.endCol) : -1,
-  )
-  const maxCol = computed(() =>
-    selection.value ? Math.max(selection.value.startCol, selection.value.endCol) : -1,
-  )
-
-  function isSelected(row: number, col: number): boolean {
-    if (!selection.value) return false
-    // Row number column (col = -1): highlight if row is in selection range
-    if (col === -1) return row >= minRow.value && row <= maxRow.value
-    return row >= minRow.value && row <= maxRow.value && col >= minCol.value && col <= maxCol.value
+  /** 归一化（r0<=r1, c0<=c1）；无选区返回 null。 */
+  function block(): { r0: number; r1: number; c0: number; c1: number } | null {
+    const r = selection.value
+    if (!r) return null
+    return {
+      r0: Math.min(r.startRow, r.endRow),
+      r1: Math.max(r.startRow, r.endRow),
+      c0: Math.min(r.startCol, r.endCol),
+      c1: Math.max(r.startCol, r.endCol),
+    }
   }
 
   function hasSelection(): boolean {
     return selection.value !== null
   }
 
-  // ---- select a single cell ----
+  function isSelected(row: number, col: number): boolean {
+    const b = block()
+    if (!b) return false
+    return row >= b.r0 && row <= b.r1 && col >= b.c0 && col <= b.c1
+  }
+
   function selectCell(row: number, col: number) {
-    wholeRow.value = false
     selection.value = { startRow: row, startCol: col, endRow: row, endCol: col }
-  }
-
-  /** Select all columns in a row (used when clicking the row number). Also
-   *  sets selecting=true so the user can still drag to extend the range.
-   *  Subsequent drags will keep all columns selected (whole-row mode). */
-  function selectRow(row: number, colCount: number) {
-    selecting.value = true
-    wholeRow.value = true
-    selection.value = { startRow: row, startCol: 0, endRow: row, endCol: colCount - 1 }
-  }
-
-  /** Clip a column index to >= 0 so row-number cells (col = -1) are excluded
-   *  from formatted output. */
-  function dataColStart(): number {
-    return Math.max(0, minCol.value)
-  }
-  function dataColEnd(): number {
-    return Math.max(0, maxCol.value)
   }
 
   // ---- format helpers ----
 
-  function formatTSV(rows: any[][], columnNames: string[], includeHeader: boolean): string {
-    const cs = dataColStart()
-    const ce = dataColEnd()
-    const parts: string[] = []
-    if (includeHeader) {
-      parts.push(columnNames.slice(cs, ce + 1).join('\t'))
+  function formatTSV(rows: any[][]): string {
+    const b = block()
+    if (!b) return ''
+    const lines: string[] = []
+    for (let r = b.r0; r <= b.r1; r++) {
+      const line: string[] = []
+      for (let c = b.c0; c <= b.c1; c++) line.push(tsvCell(rows[r]?.[c]))
+      lines.push(line.join('\t'))
     }
-    for (let r = minRow.value; r <= maxRow.value; r++) {
-      const row: string[] = []
-      for (let c = cs; c <= ce; c++) {
-        row.push(renderValue(rows[r]?.[c]))
-      }
-      parts.push(row.join('\t'))
-    }
-    return parts.join('\n')
+    return lines.join('\n')
   }
 
   function formatInsert(rows: any[][], columnNames: string[], table: string): string {
-    const cs = dataColStart()
-    const ce = dataColEnd()
-    const cols = columnNames.slice(cs, ce + 1)
-    const colList = cols.map((c) => '`' + c + '`').join(', ')
+    const b = block()
+    if (!b) return ''
+    const colList = columnNames.slice(b.c0, b.c1 + 1).map((c) => '`' + c + '`').join(', ')
     const valueSets: string[] = []
-    for (let r = minRow.value; r <= maxRow.value; r++) {
+    for (let r = b.r0; r <= b.r1; r++) {
       const vals: string[] = []
-      for (let c = cs; c <= ce; c++) {
-        vals.push(escapeSql(rows[r]?.[c]))
-      }
+      for (let c = b.c0; c <= b.c1; c++) vals.push(escapeSql(rows[r]?.[c]))
       valueSets.push('(' + vals.join(', ') + ')')
     }
     return `INSERT INTO ${table} (${colList}) VALUES\n${valueSets.join(',\n')};`
@@ -158,13 +146,14 @@ export function useTableSelection() {
     pkColumns: string[],
   ): string {
     if (!pkColumns.length) return '-- No primary key — cannot generate UPDATE'
-    const cs = dataColStart()
-    const ce = dataColEnd()
+    const b = block()
+    if (!b) return ''
+    const selected = columnNames.slice(b.c0, b.c1 + 1)
     const parts: string[] = []
-    for (let r = minRow.value; r <= maxRow.value; r++) {
+    for (let r = b.r0; r <= b.r1; r++) {
       const setClauses: string[] = []
       const whereClauses: string[] = []
-      for (let c = cs; c <= ce; c++) {
+      for (let c = b.c0; c <= b.c1; c++) {
         const col = columnNames[c]
         const val = rows[r]?.[c]
         if (val == null) continue
@@ -176,7 +165,7 @@ export function useTableSelection() {
       }
       // Include PK columns not in the selection by looking them up from rows
       for (const pk of pkColumns) {
-        if (!columnNames.slice(cs, ce + 1).includes(pk)) {
+        if (!selected.includes(pk)) {
           const pkIdx = columnNames.indexOf(pk)
           if (pkIdx >= 0) {
             whereClauses.push('`' + pk + '` = ' + escapeSql(rows[r]?.[pkIdx]))
@@ -190,30 +179,20 @@ export function useTableSelection() {
   }
 
   function formatColumns(columnNames: string[]): string {
-    const cs = dataColStart()
-    const ce = dataColEnd()
-    return columnNames.slice(cs, ce + 1).join('\t')
+    const b = block()
+    if (!b) return ''
+    return columnNames.slice(b.c0, b.c1 + 1).join('\t')
   }
 
   function formatDataPlusColumns(rows: any[][], columnNames: string[]): string {
-    return formatColumns(columnNames) + '\n' + formatTSV(rows, columnNames, false)
+    return formatColumns(columnNames) + '\n' + formatTSV(rows)
   }
 
   return {
     selection,
-    selecting,
-    startSelection,
-    extendSelection,
-    endSelection,
-    clearSelection,
     selectCell,
-    selectRow,
     isSelected,
     hasSelection,
-    minRow,
-    maxRow,
-    minCol,
-    maxCol,
     formatTSV,
     formatInsert,
     formatUpdate,

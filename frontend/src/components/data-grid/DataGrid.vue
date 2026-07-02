@@ -23,7 +23,7 @@ import { useThemeStore } from '../../stores/theme'
 import { editorSurface } from '../../styles/theme'
 import type { ColumnMeta } from '../../api/metadata'
 import { LogicalType } from '../../api/metadata'
-import type { SelectionRange } from '../../composables/useTableSelection'
+import { parseTSV, type SelectionRange } from '../../composables/useTableSelection'
 
 /** Sort state for indicator sync (server-side sort). field = column index. */
 export interface SortState {
@@ -442,6 +442,9 @@ const tableOptions = computed<any>(() => {
       pasteValueToCell: false,
       moveEditCellOnArrowKeys: false,
       selectAllOnCtrlA: true,
+      // 禁用 Ctrl+点击多块选区：SelectionRange 只表达单个矩形，多块会出现
+      // “高亮多块但只复制一块”的错觉。Shift 扩展不受影响。
+      ctrlMultiSelect: false,
     },
     menu: { defaultHeaderMenuItems: [] },
     autoFillWidth: false,
@@ -483,7 +486,7 @@ function toBody(rawCol: number, rawRow: number): { col: number; row: number } | 
 function rangeFromArgs(args: any): SelectionRange | null {
   const ranges: any[] = Array.isArray(args?.ranges) ? args.ranges : []
   if (!ranges.length) return null
-  // 用最近一次的 range（用户最后拖出来的那块）
+  // ctrlMultiSelect 已禁用，ranges 至多一块；取末尾兼容 VTable 内部残留
   const r = ranges[ranges.length - 1]
   if (!r?.start || !r?.end) return null
 
@@ -685,15 +688,11 @@ function onReady(instance: any) {
     const startRawCol = range.start.col
     const startRawRow = range.start.row
 
-    // 解析 TSV：换行为行、制表符为列
-    const pastedLines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
-    // 去掉末尾空行（来自末尾换行符）
-    if (pastedLines.length > 1 && pastedLines[pastedLines.length - 1] === '') {
-      pastedLines.pop()
-    }
+    // 解析 TSV（带引号状态机：引号包裹的字段可含 Tab/换行）
+    const pastedGrid = parseTSV(text)
 
-    for (let ri = 0; ri < pastedLines.length; ri++) {
-      const cells = pastedLines[ri].split('\t')
+    for (let ri = 0; ri < pastedGrid.length; ri++) {
+      const cells = pastedGrid[ri]
       for (let ci = 0; ci < cells.length; ci++) {
         const rawCol = startRawCol + ci
         const rawRow = startRawRow + ri

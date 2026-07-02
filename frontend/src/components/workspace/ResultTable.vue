@@ -3,7 +3,7 @@
 // 业务装配只剩：选区追踪、剪贴板 Cmd+C、原生上下文菜单状态推送、底部 footer。
 // 渲染（虚拟化、列宽、选区高亮、键盘导航）全部下沉到 DataGrid；
 // 右键菜单走 Wails 原生（CLAUDE.md 规则 11），状态通过 setActiveGridContext 同步。
-import { onBeforeUnmount, onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import DataGrid from '../data-grid/DataGrid.vue'
 import { useTableSelection, type SelectionRange } from '../../composables/useTableSelection'
 import { setActiveGridContext } from '../../api/gridContextMenu'
@@ -28,6 +28,7 @@ const emit = defineEmits<{
 }>()
 
 const sel = useTableSelection()
+const rootRef = ref<HTMLElement | null>(null)
 
 function colNames(): string[] { return props.columns.map((c) => c.name) }
 
@@ -59,12 +60,14 @@ async function copyToClipboard(text: string) {
 
 function onDocKeyDown(e: KeyboardEvent) {
   if (!sel.hasSelection()) return
+  // 隐藏标签页（v-show 的 show:lazy 面板）不响应，避免多个 grid 抢 Cmd+C
+  if (!rootRef.value?.offsetParent) return
   // 焦点在 CodeMirror / input / textarea 中时不拦截 Cmd+C，让本地复制正常工作
   const el = e.target as HTMLElement | null
   if (el?.closest?.('.cm-editor') || el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA') return
-  if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'c') {
     e.preventDefault()
-    copyToClipboard(sel.formatTSV(props.rows, colNames(), false))
+    copyToClipboard(sel.formatTSV(props.rows))
   }
 }
 
@@ -80,7 +83,7 @@ function onExportSelect(ev: Event) {
 </script>
 
 <template>
-  <div class="result">
+  <div ref="rootRef" class="result">
     <div class="grid-wrap">
       <DataGrid
         :columns="columns"
