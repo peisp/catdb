@@ -75,6 +75,10 @@ type UpdateCheckResult struct {
 // a fully populated result even when no update is available (so the UI can
 // render "you're up to date" instead of throwing).
 func (s *UpdateService) CheckForUpdate(ctx context.Context, currentVersion string) (UpdateCheckResult, error) {
+	// ponytail: dev builds skip the GitHub API call entirely.
+	if currentVersion == "dev" {
+		return UpdateCheckResult{CurrentVersion: "dev"}, nil
+	}
 	rel, err := updater.FetchLatest(ctx, s.repo)
 	if err != nil {
 		return UpdateCheckResult{}, err
