@@ -1,29 +1,36 @@
 <script setup lang="ts">
-// DataGrid —— 整个项目唯一的 VTable 进出口（防腐层，CLAUDE.md 规则 1）。
+// DataGrid —— 自研 canvas 网格（替换 VTable，对外契约不变）。
+//
+// 结构：原生 overflow:auto scroller + 撑出总尺寸的占位 div（真实滚动条）
+//       + position:sticky 的 canvas 钉在视口重绘可视区（canvasGridRenderer）
+//       + DOM 编辑器 overlay（input/textarea/date/time/datetime-local）。
 //
 // 设计要点：
 //   - IPC 形状不动：rows 保持 any[][]，列元数据单传一次（CLAUDE.md 规则 5）
-//   - 利用 VTable 的 FieldDef = string | number 特性，直接用列下标作为 field
-//     —— 无需把 any[][] 转 records，省内存
-//   - NULL / BLOB / JSON / bigint 在 fieldFormat 里统一渲染
+//   - 所有对外 emit 的行列号都是 body 坐标系（直接可索引 props.rows）
+//   - 客户端排序（sortRemote=false）原地稳定排序 props.rows —— 复制/Set NULL
+//     都按行号索引 rows（gridContextMenu 单例），排序后坐标必须仍然一致；
+//     粘贴/编辑本就原地改 props.rows，同一模式。取消排序时从快照恢复原序。
+//   - 服务端排序（sortRemote=true）只发射 sort-change，指示器画 props.sortState
+//   - NULL / BLOB / JSON / bigint 在 cellText 里统一渲染
 //   - 主题从 Naive 的 useThemeVars() 派生，light/dark 切换走同一通道
-//   - 选区翻译成现有 SelectionRange 形状，formatters（useTableSelection）100% 复用
-//   - 编辑：VTable 的 InputEditor/TextAreaEditor/DateInputEditor 按列类型分发
-//   - 排序：sortRemote=true 时不启用 VTable 客户端排序（用 () => 0 替代），
-//     排序交互通过 sort_click 事件发射给父组件处理（服务端 ORDER BY）；
-//     sortRemote=false 时 VTable 原生处理客户端排序。
-//
-// VTable 的 row 索引把 header 算在内（row=0 是表头），所以对外发出的 row
-// 一律减去 columnHeaderLevelCount 得到 body 行号。
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
-import { ListTable, register } from '@visactor/vue-vtable'
-import { InputEditor, TextAreaEditor, DateInputEditor } from '@visactor/vtable-editors'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useThemeVars } from 'naive-ui'
 import { useThemeStore } from '../../stores/theme'
 import { editorSurface } from '../../styles/theme'
 import type { ColumnMeta } from '../../api/metadata'
 import { LogicalType } from '../../api/metadata'
 import { parseTSV, planPaste, type SelectionRange } from '../../composables/useTableSelection'
+import {
+  buildOffsets,
+  drawGrid,
+  hitTest,
+  RESIZE_ZONE,
+  SORT_ZONE_WIDTH,
+  type GridHit,
+  type GridTheme,
+  type NormRange,
+} from './canvasGridRenderer'
 
 /** Sort state for indicator sync (server-side sort). field = column index. */
 export interface SortState {
@@ -31,124 +38,10 @@ export interface SortState {
   order: 'asc' | 'desc'
 }
 
-// ---- null 安全编辑器工厂 ----
-// VTable 的 InputEditor / TextAreaEditor 在单元格值为 null 时不会调用
-// setValue，input 保持默认空字符串 ''。用户点入 null 单元格后直接离开时
-// getValue() 返回 ''，VTable 视为值变化（null → ''）触发无意义回调。
-// 该工厂为编辑器子类注入 null 保持逻辑：原始值为 null 且用户未输入时
-// getValue() 返回 null，VTable 即认为无变化，不开枪。
-function nullPreservingEditor<T extends new (config?: any) => InstanceType<T>>(EditorClass: T): T {
-  return class extends (EditorClass as any) {
-    private _origNull = false
-
-    onStart(context: any) {
-      this._origNull = context?.value == null
-      super.onStart(context)
-    }
-
-    getValue() {
-      const v = super.getValue()
-      if (this._origNull && (v === '' || v == null)) return null
-      return v
-    }
-  } as unknown as T
-}
-
-const NullSafeInputEditor = nullPreservingEditor(InputEditor)
-const NullSafeTextAreaEditor = nullPreservingEditor(TextAreaEditor)
-const NullSafeDateInputEditor = nullPreservingEditor(DateInputEditor)
-
-// ---- 时间型编辑器（date / time / datetime-local 原生 input）----
-// VTable 自带的 DateInputEditor 只用 <input type="date">，编辑 DATETIME/TIMESTAMP
-// 时丢掉时分秒、且值格式（带 T）与单元格（空格）不一致。这里按列类型用合适的
-// 原生 input，并在「单元格字符串」↔「input.value」之间做格式转换。
-// 单元格里的时间值统一是 "YYYY-MM-DD HH:mm:ss[.fff]"（见后端 scanner）。
-function toInputValue(type: string, value: any): string {
-  if (value == null) return ''
-  const s = String(value)
-  if (type === 'datetime-local') {
-    // "YYYY-MM-DD HH:mm:ss[.fff]" → "YYYY-MM-DDTHH:mm:ss"（原生 input 只到秒）
-    const m = s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)/)
-    return m ? `${m[1]}T${m[2]}` : s.replace(' ', 'T')
-  }
-  return s // date：YYYY-MM-DD；time：HH:mm:ss —— 原样
-}
-function fromInputValue(type: string, raw: string | undefined): string {
-  const v = (raw ?? '').trim()
-  if (v === '') return ''
-  if (type === 'datetime-local') {
-    let out = v.replace('T', ' ')
-    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(out)) out += ':00' // 补秒
-    return out
-  }
-  if (type === 'time' && /^\d{2}:\d{2}$/.test(v)) return v + ':00'
-  return v
-}
-// 工厂：构造一个使用指定原生 input 类型的编辑器（createElement 沿用
-// DateInputEditor 的风格，仅替换 type 并加 step 以露出秒字段）。
-function temporalEditor(inputType: 'time' | 'datetime-local'): typeof InputEditor {
-  return class extends (InputEditor as any) {
-    createElement() {
-      const input = document.createElement('input')
-      input.setAttribute('type', inputType)
-      input.setAttribute('step', '1') // 显示秒
-      input.style.padding = '4px'
-      input.style.width = '100%'
-      input.style.boxSizing = 'border-box'
-      input.style.position = 'absolute'
-      input.style.backgroundColor = '#FFFFFF'
-      input.style.borderRadius = '0px'
-      input.style.border = '2px solid #d9d9d9'
-      input.addEventListener('focus', () => {
-        input.style.borderColor = '#4A90E2'
-        input.style.outline = 'none'
-      })
-      input.addEventListener('blur', () => {
-        input.style.borderColor = '#d9d9d9'
-      })
-      input.addEventListener('keydown', (e: KeyboardEvent) => {
-        if (e.key === 'a' && (e.ctrlKey || e.metaKey)) e.stopPropagation()
-      })
-      input.addEventListener('wheel', (e: WheelEvent) => e.preventDefault())
-      this.element = input
-      this.container.appendChild(input)
-    }
-    setValue(value: any) {
-      this.element.value = toInputValue(inputType, value)
-    }
-    getValue() {
-      return fromInputValue(inputType, this.element?.value)
-    }
-  } as unknown as typeof InputEditor
-}
-const NullSafeDateTimeEditor = nullPreservingEditor(temporalEditor('datetime-local'))
-const NullSafeTimeEditor = nullPreservingEditor(temporalEditor('time'))
-
-// ---- editor 注册：模块级单次 ----
-let editorsRegistered = false
-function ensureEditorsRegistered() {
-  if (editorsRegistered) return
-  // string 单行编辑
-  register.editor('catdb-input', new NullSafeInputEditor({}))
-  // 长文本 / JSON
-  register.editor('catdb-textarea', new NullSafeTextAreaEditor({}))
-  // 日期
-  register.editor('catdb-date', new NullSafeDateInputEditor({}))
-  // 时间
-  register.editor('catdb-time', new NullSafeTimeEditor({}))
-  // 日期时间 / 时间戳（含时分秒）
-  register.editor('catdb-datetime', new NullSafeDateTimeEditor({}))
-  editorsRegistered = true
-}
-ensureEditorsRegistered()
-
-let _pasteHandler: ((e: ClipboardEvent) => void) | null = null
-let _editorCtxHandler: ((e: MouseEvent) => void) | null = null
-
 interface Props {
   columns: ColumnMeta[]
   rows: any[][]
-  /** 是否允许双击进入编辑态（read-only 模式传 false） */
+  /** 是否允许单击进入编辑态（read-only 模式传 false） */
   editable?: boolean
   /** PK 列名 —— 用于右键菜单判定（PK 列不显示「Set to NULL」）。PK 列本身可编辑。 */
   pkColumns?: string[]
@@ -160,10 +53,9 @@ interface Props {
   defaultColumnWidth?: number
   /** 是否启用手动列排序; 默认 true */
   sortable?: boolean
-  /** true=服务端排序（发射 sort-change，VTable 用无操作排序函数禁掉客户端重拍），
-   *  false=VTable 原生处理客户端排序（默认）。 */
+  /** true=服务端排序（发射 sort-change）；false=客户端原地排序（默认）。 */
   sortRemote?: boolean
-  /** 当前服务端排序状态，用于同步 VTable 排序指示器。sortRemote=true 时使用。 */
+  /** 当前服务端排序状态，用于同步排序指示器。sortRemote=true 时使用。 */
   sortState?: SortState | null
   /** 未保存的脏单元格集合（"row:col" 格式的 key），用于灰色渲染提示 */
   dirtyCells?: Set<string>
@@ -171,8 +63,7 @@ interface Props {
   deletedRows?: Set<number>
   /** 有未保存编辑的行号集合（body 坐标系 row index），# 列灰色渲染 */
   dirtyRows?: Set<number>
-  /** Wails 原生右键菜单名（覆盖默认的 catdb-grid-cell / catdb-grid-cell-edit 切换逻辑）。
-   *  传入非空字符串时，DataGrid 直接使用该名字，不再根据 pkColumns 推断。 */
+  /** Wails 原生右键菜单名（覆盖默认的 catdb-grid-cell / catdb-grid-cell-edit 切换逻辑）。 */
   contextMenuName?: string
 }
 
@@ -192,7 +83,7 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  /** 编辑提交：VTable 的 row/col 已转换为 body 坐标系（row 从 0 起） */
+  /** 编辑提交：row/col 为 body 坐标系（row 从 0 起） */
   (e: 'edit-commit', p: { row: number; col: number; oldValue: any; newValue: any; column: ColumnMeta }): void
   /** 右键单元格：x/y 为屏幕坐标（pageX/pageY） */
   (e: 'cell-context-menu', p: { row: number; col: number; x: number; y: number; value: any }): void
@@ -200,8 +91,7 @@ const emit = defineEmits<{
   (e: 'selection-change', p: { range: SelectionRange | null }): void
   /** 滚到底部，触发分页/流式追加 */
   (e: 'load-more'): void
-  /** 排序变化（sortRemote=true 时发射）：field 为列下标，order 为 'asc'/'desc'；
-   *  null 表示清除排序 */
+  /** 排序变化（sortRemote=true 时发射）：field 为列下标；null 表示清除排序 */
   (e: 'sort-change', p: { field: number; order: 'asc' | 'desc' } | null): void
   /** 双击单元格：row 为 body 行号（0 起），col 为 body 列号 */
   (e: 'cell-dblclick', p: { row: number; col: number; value: any }): void
@@ -209,8 +99,39 @@ const emit = defineEmits<{
 
 const themeVars = useThemeVars()
 const theme = useThemeStore()
-const vTableInstance = shallowRef<any>(null)
-const gridWrapRef = ref<HTMLElement | null>(null)
+
+const HEADER_H = 28
+const ROWNUM_W = 50
+const FONT_SIZE = 12
+const FONT_FAMILY =
+  '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif'
+
+// ---- refs / 状态 ----
+const wrapRef = ref<HTMLElement | null>(null)
+const scrollerRef = ref<HTMLElement | null>(null)
+const canvasRef = ref<HTMLCanvasElement | null>(null)
+const editorEl = ref<HTMLInputElement | HTMLTextAreaElement | null>(null)
+
+const viewW = ref(0)
+const viewH = ref(0)
+const scrollTop = ref(0)
+const scrollLeft = ref(0)
+
+const colWidths = ref<number[]>([])
+const selAnchor = ref<{ row: number; col: number } | null>(null)
+const selHead = ref<{ row: number; col: number } | null>(null)
+const hover = ref<{ row: number; col: number } | null>(null)
+
+type EditorKind = 'input' | 'textarea' | 'date' | 'time' | 'datetime'
+const editing = ref<{ row: number; col: number; kind: EditorKind } | null>(null)
+const editValue = ref('')
+let editOriginal: any = null
+let commitGuard = false
+
+const clientSort = ref<{ col: number; order: 'asc' | 'desc' } | null>(null)
+let originalOrder: any[][] | null = null
+
+let loadMoreArmed = true
 
 // ---- 单元格显示渲染 ----
 function renderCellValue(v: any): string {
@@ -226,65 +147,56 @@ function renderCellValue(v: any): string {
   return String(v)
 }
 
-// ---- 列类型 → 编辑器名 ----
-function pickEditor(col: ColumnMeta): string | undefined {
-  // PK / auto-increment 列允许编辑：UPDATE 的 WHERE 用改前的原始 PK 定位行，
-  // 改 PK 即 `UPDATE t SET id=<new> WHERE id=<old>`（见 TableBrowser.pkValuesOf）。
+function cellText(row: number, col: number): string {
+  const v = props.rows[row]?.[col]
+  if (v == null) return 'NULL'
+  return renderCellValue(v)
+}
+
+// ---- 列类型 → 编辑器种类 ----
+// PK / auto-increment 列允许编辑：UPDATE 的 WHERE 用改前的原始 PK 定位行。
+function pickEditorKind(col: ColumnMeta | undefined): EditorKind | null {
+  if (!col) return null
   switch (col.logicalType) {
     case LogicalType.TypeDate:
-      return 'catdb-date'
+      return 'date'
     case LogicalType.TypeTime:
-      return 'catdb-time'
+      return 'time'
     case LogicalType.TypeDateTime:
     case LogicalType.TypeTimestamp:
-      return 'catdb-datetime'
+      return 'datetime'
     case LogicalType.TypeJSON:
     case LogicalType.TypeText:
-      return 'catdb-textarea'
+      return 'textarea'
     case LogicalType.TypeBytes:
       // 二进制不在表格内编辑
-      return undefined
+      return null
     default:
-      return 'catdb-input'
+      return 'input'
   }
 }
 
-// ---- 表头最小宽度：能完整放下「文本 + 排序 icon」 ----
-//
-// VTable 默认 headerStyle padding = [10, 16, 10, 16]（见 header-helper/style/Style.ts
-// 的 _defaultPadding），排序 icon 默认 16×16、marginLeft=3（见 icons.ts 的
-// sort_downward/sort_upward/sort_normal）。我们的 headerStyle 没覆盖 padding，
-// 所以左右各 16；不强行硬编码这些常量没意义，但变了再来同步。
-//
-// 字体取自上面 headerStyle：12px / weight 500 / 系统字体栈。
-const HEADER_PADDING_LR = 32 // 左右 padding 之和（16 + 16）
-const SORT_ICON_W = 16
-const SORT_ICON_GAP = 3 // icon.marginLeft
-const HEADER_FONT =
-  '500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif'
-
-let _measureCtx: CanvasRenderingContext2D | null = null
-function getMeasureCtx(): CanvasRenderingContext2D | null {
-  if (_measureCtx) return _measureCtx
-  const c = document.createElement('canvas')
-  const ctx = c.getContext('2d')
-  if (!ctx) return null
-  ctx.font = HEADER_FONT
-  _measureCtx = ctx
-  return ctx
+// ---- 时间值：单元格字符串 ↔ 原生 input.value ----
+// 单元格里的时间值统一是 "YYYY-MM-DD HH:mm:ss[.fff]"（见后端 scanner）。
+function toInputValue(kind: EditorKind, value: any): string {
+  if (value == null) return ''
+  const s = renderCellValue(value)
+  if (kind === 'datetime') {
+    const m = s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)/)
+    return m ? `${m[1]}T${m[2]}` : s.replace(' ', 'T')
+  }
+  return s
 }
-
-function measureHeaderTextWidth(text: string): number {
-  const ctx = getMeasureCtx()
-  if (!ctx) return text.length * 8 // fallback：等宽近似
-  return ctx.measureText(text).width
-}
-
-function headerMinWidth(col: ColumnMeta): number {
-  const textW = measureHeaderTextWidth(col.name)
-  const iconW = props.sortable ? SORT_ICON_W + SORT_ICON_GAP : 0
-  // +1 px 留余量，避免亚像素渲染导致最后一个字符被裁。
-  return Math.ceil(textW + iconW + HEADER_PADDING_LR + 1)
+function fromInputValue(kind: EditorKind, raw: string): string {
+  const v = raw.trim()
+  if (v === '') return ''
+  if (kind === 'datetime') {
+    let out = v.replace('T', ' ')
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(out)) out += ':00'
+    return out
+  }
+  if (kind === 'time' && /^\d{2}:\d{2}$/.test(v)) return v + ':00'
+  return v
 }
 
 // ---- 列类型 → 对齐方式 ----
@@ -302,591 +214,954 @@ function pickAlign(col: ColumnMeta): 'left' | 'right' | 'center' {
   }
 }
 
-// ---- VTable 主题：从 Naive themeVars 派生 ----
-const tableTheme = computed(() => {
+// ---- 文本测量（表头最小宽度 / auto-fit） ----
+let _measureCtx: CanvasRenderingContext2D | null = null
+function measureCtx(): CanvasRenderingContext2D | null {
+  if (_measureCtx) return _measureCtx
+  const ctx = document.createElement('canvas').getContext('2d')
+  if (ctx) _measureCtx = ctx
+  return ctx
+}
+function measureText(text: string, font: string): number {
+  const ctx = measureCtx()
+  if (!ctx) return text.length * 8
+  ctx.font = font
+  return ctx.measureText(text).width
+}
+
+function headerMinWidth(col: ColumnMeta): number {
+  const textW = measureText(col.name, `500 ${FONT_SIZE}px ${FONT_FAMILY}`)
+  const iconW = props.sortable ? SORT_ZONE_WIDTH : 0
+  return Math.ceil(textW + iconW + 16 + 1)
+}
+
+// ---- 几何 ----
+const offsets = computed(() => buildOffsets(colWidths.value))
+const totalWidth = computed(() => ROWNUM_W + (offsets.value[offsets.value.length - 1] ?? 0))
+const totalHeight = computed(() => HEADER_H + props.rows.length * props.rowHeight)
+
+function geoOpts() {
+  return {
+    rowNumberWidth: ROWNUM_W,
+    headerHeight: HEADER_H,
+    rowHeight: props.rowHeight,
+    colOffsets: offsets.value,
+  }
+}
+
+// ---- 选区 ----
+const normSel = computed<NormRange | null>(() => {
+  const a = selAnchor.value
+  const h = selHead.value
+  if (!a || !h || !props.rows.length || !props.columns.length) return null
+  return {
+    r0: Math.max(0, Math.min(a.row, h.row)),
+    r1: Math.min(props.rows.length - 1, Math.max(a.row, h.row)),
+    c0: Math.max(0, Math.min(a.col, h.col)),
+    c1: Math.min(props.columns.length - 1, Math.max(a.col, h.col)),
+  }
+})
+
+function emitSelection() {
+  const s = normSel.value
+  emit('selection-change', {
+    range: s ? { startRow: s.r0, startCol: s.c0, endRow: s.r1, endCol: s.c1 } : null,
+  })
+}
+
+function setSelection(anchor: { row: number; col: number } | null, head?: { row: number; col: number }) {
+  selAnchor.value = anchor
+  selHead.value = anchor ? (head ?? anchor) : null
+  emitSelection()
+  requestRender()
+}
+
+function selectAll() {
+  if (!props.rows.length || !props.columns.length) return
+  setSelection({ row: 0, col: 0 }, { row: props.rows.length - 1, col: props.columns.length - 1 })
+}
+
+// ---- 主题 ----
+const gridTheme = computed<GridTheme>(() => {
   const vars = themeVars.value
-  // Data surface follows the shared editor background (light: macOS
-  // textBackgroundColor; dark: #333) so the grid matches the SQL editor.
-  const surface = theme.mode === 'dark' ? editorSurface.dark : editorSurface.light
+  const dark = theme.mode === 'dark'
+  const surface = dark ? editorSurface.dark : editorSurface.light
   return {
-    underlayBackgroundColor: surface,
-    defaultStyle: {
-      borderColor: vars.dividerColor,
-      borderLineWidth: 1,
-      fontSize: 12,
-      fontFamily:
-        '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
-      color: vars.textColor1,
-      bgColor: surface,
-      hover: {
-        cellBgColor: vars.hoverColor,
-      },
-    },
-    headerStyle: {
-      bgColor: vars.tableHeaderColor,
-      color: vars.textColor1,
-      borderColor: vars.borderColor,
-      fontSize: 12,
-      fontWeight: '500',
-      hover: { cellBgColor: vars.hoverColor },
-    },
-    bodyStyle: {
-      bgColor: surface,
-      color: vars.textColor1,
-      borderColor: vars.dividerColor,
-      fontSize: 12,
-      hover: { cellBgColor: vars.hoverColor },
-    },
-    frameStyle: {
-      borderLineWidth: 0,
-      cornerRadius: 3,
-    },
-    columnResize: {
-      lineColor: vars.primaryColorHover,
-      bgColor: vars.primaryColorSuppl,
-      width: 3,
-    },
-    selectionStyle: {
-      cellBgColor: 'rgba(32,128,240,0.14)',
-      cellBorderColor: vars.primaryColor,
-      cellBorderLineWidth: 1,
-    },
-    rowSeriesNumberStyle: {
-      bgColor: vars.tableHeaderColor,
-      color: vars.textColor3,
-      fontSize: 11,
-      textAlign: 'right',
-    },
-  } as any
-})
-
-// ---- VTable options ----
-const tableOptions = computed<any>(() => {
-  const sortFn = props.sortRemote ? () => 0 : true
-  const cols = props.columns.map((c, idx) => ({
-    field: idx,
-    title: c.name,
-    width: props.defaultColumnWidth,
-    minWidth: headerMinWidth(c),
-    // 标记删除的行在保存前不可编辑 —— editor 取函数形式，对删除行返回 undefined
-    editor: props.editable
-      ? (args: any) => {
-          if (props.deletedRows?.size && args?.table) {
-            const rowOff = args.table.columnHeaderLevelCount ?? 1
-            if (props.deletedRows.has(args.row - rowOff)) return undefined as any
-          }
-          return pickEditor(c)
-        }
-      : undefined,
-    style: (args: any) => {
-      const align = pickAlign(c)
-      // 已标记删除的行 — 整行灰色（必须在 NULL 判断之前，覆盖所有单元格）
-      if (props.deletedRows?.size && args.table) {
-        const rowOff = args.table.columnHeaderLevelCount ?? 1
-        if (props.deletedRows.has(args.row - rowOff)) {
-          return { textAlign: align, color: '#999', bgColor: 'rgba(200,200,200,0.1)' }
-        }
-      }
-      // dataValue 是 fieldFormat 前的原始值，value 是格式化后的
-      if (args?.dataValue == null) return { textAlign: align, color: '#aaa', fontStyle: 'italic' }
-      // 未保存的脏单元格显示灰色（VTable 可视坐标 → body 坐标）
-      if (props.dirtyCells?.size && args.table) {
-        const t = args.table
-        const colOff = (t.rowHeaderLevelCount ?? 0) + (t.leftRowSeriesNumberCount ?? 0)
-        const rowOff = t.columnHeaderLevelCount ?? 1
-        if (props.dirtyCells.has(`${args.row - rowOff}:${args.col - colOff}`)) {
-          return { textAlign: align, color: '#999' }
-        }
-      }
-      return { textAlign: align }
-    },
-
-    sort: props.sortable ? sortFn : undefined,
-    description: c.comment || c.nativeType,
-    fieldFormat: (record: any) => {
-      const v = record?.[idx]
-      if (v == null) return 'NULL'
-      return renderCellValue(v)
-    },
-  }))
-  return {
-    columns: cols,
-    defaultRowHeight: props.rowHeight,
-    defaultHeaderRowHeight: 28,
-    defaultColWidth: props.defaultColumnWidth,
-    rowSeriesNumber: {
-      title: '#',
-      width: 50,
-      style: (args: any) => {
-        const base = { textAlign: 'right' as const, color: '#aaa' as const, fontSize: 10 as const }
-        if (!args?.table) return base
-        const rowOff = args.table.columnHeaderLevelCount ?? 1
-        const bodyRow = args.row - rowOff
-        if (bodyRow < 0) return base
-        if (props.deletedRows?.has(bodyRow)) return { ...base, color: '#999', textDecoration: 'line-through' }
-        if (props.dirtyRows?.has(bodyRow)) return { ...base, color: '#999' }
-        return base
-      },
-    },
-    select: {
-      disableSelect: false,
-      disableHeaderSelect: false,
-    },
-    hover: {
-      highlightMode: 'cell',
-    },
-    editCellTrigger: props.editable ? 'click' : undefined,
-    keyboardOptions: {
-      // 让 parent 控制 copy 行为（保留 useTableSelection 的 TSV/INSERT/UPDATE）
-      copySelected: false,
-      pasteValueToCell: false,
-      moveEditCellOnArrowKeys: false,
-      selectAllOnCtrlA: true,
-      // 禁用 Ctrl+点击多块选区：SelectionRange 只表达单个矩形，多块会出现
-      // “高亮多块但只复制一块”的错觉。Shift 扩展不受影响。
-      ctrlMultiSelect: false,
-    },
-    menu: { defaultHeaderMenuItems: [] },
-    autoFillWidth: false,
-    autoWrapText: false,
-    theme: tableTheme.value,
+    surface,
+    headerBg: vars.tableHeaderColor,
+    text: vars.textColor1,
+    textMuted: dark ? '#777' : '#aaa',
+    border: vars.borderColor,
+    divider: vars.dividerColor,
+    hoverFill: vars.hoverColor,
+    selectionFill: 'rgba(32,128,240,0.14)',
+    selectionBorder: vars.primaryColor,
+    deletedFill: 'rgba(200,200,200,0.1)',
+    deletedText: '#999',
+    dirtyText: '#999',
+    rowNumText: vars.textColor3,
   }
 })
 
-// ---- VTable 事件 → 对外发射 ----
-//
-// 早期版本走 `:on-xxx` prop 路线踩了三个坑：
-//   1. VTable 的 SELECTED_CELL payload 是 `{ ranges, col, row }`，不是
-//      cellRange/range —— 之前的代码永远落到 fallback；
-//   2. 当 rowSeriesNumber 打开时，事件中的 col 还包含 leftRowSeriesNumberCount
-//      偏移（通常是 1），不扣会复制到错位的列；
-//   3. `:on-contextmenu-cell` 这种 kebab 命名跟 Vue 的 emit 名 `onContextMenuCell`
-//      存在大小写映射歧义，listener 经常根本没接上。
-//
-// 改成在 onReady 里直接 instance.on(eventName, handler) 订阅原生事件 —— 既能
-// 拿到 SELECTED_CHANGED（右键自动选中走的是它，vue-vtable wrapper 没暴露），
-// 又彻底绕开 prop / emit 名映射问题。
-
-function offsets(): { col: number; row: number } {
-  const inst = vTableInstance.value
-  return {
-    col: (inst?.rowHeaderLevelCount ?? 0) + (inst?.leftRowSeriesNumberCount ?? 0),
-    row: inst?.columnHeaderLevelCount ?? 1,
-  }
+// ---- 渲染调度 ----
+let renderQueued = false
+function requestRender() {
+  if (renderQueued) return
+  renderQueued = true
+  requestAnimationFrame(() => {
+    renderQueued = false
+    draw()
+  })
 }
 
-function toBody(rawCol: number, rawRow: number): { col: number; row: number } | null {
-  const off = offsets()
-  const col = rawCol - off.col
-  const row = rawRow - off.row
-  if (col < 0 || row < 0) return null
-  return { col, row }
+function draw() {
+  const canvas = canvasRef.value
+  if (!canvas || viewW.value <= 0 || viewH.value <= 0) return
+  const dirtySet = props.dirtyCells
+  const deletedSet = props.deletedRows
+  const dirtyRowSet = props.dirtyRows
+  const sortIndicator = props.sortRemote
+    ? props.sortState
+      ? { col: props.sortState.field, order: props.sortState.order }
+      : null
+    : clientSort.value
+  drawGrid({
+    canvas,
+    width: viewW.value,
+    height: viewH.value,
+    theme: gridTheme.value,
+    fonts: { family: FONT_FAMILY, size: FONT_SIZE },
+    rowNumberWidth: ROWNUM_W,
+    headerHeight: HEADER_H,
+    rowHeight: props.rowHeight,
+    colWidths: colWidths.value,
+    colOffsets: offsets.value,
+    scrollTop: scrollTop.value,
+    scrollLeft: scrollLeft.value,
+    rowCount: props.rows.length,
+    columns: props.columns.map((c) => ({ title: c.name, align: pickAlign(c) })),
+    cellText,
+    cellIsNull: (r, c) => props.rows[r]?.[c] == null,
+    isDirtyCell: (r, c) => dirtySet.has(`${r}:${c}`),
+    isDeletedRow: (r) => deletedSet.has(r),
+    isDirtyRow: (r) => dirtyRowSet.has(r),
+    selection: normSel.value,
+    hover: hover.value,
+    editing: editing.value,
+    sortable: props.sortable,
+    sortState: sortIndicator,
+  })
 }
 
-function rangeFromArgs(args: any): SelectionRange | null {
-  const ranges: any[] = Array.isArray(args?.ranges) ? args.ranges : []
-  if (!ranges.length) return null
-  // ctrlMultiSelect 已禁用，ranges 至多一块；取末尾兼容 VTable 内部残留
-  const r = ranges[ranges.length - 1]
-  if (!r?.start || !r?.end) return null
-
-  const off = offsets()
-  const sRow = r.start.row - off.row
-  const eRow = r.end.row - off.row
-  const sCol = r.start.col - off.col
-  const eCol = r.end.col - off.col
-  const colCount = props.columns.length
-  const rowCount = props.rows.length
-  if (colCount === 0 || rowCount === 0) return null
-
-  // 序号列：任意端在行表头 / 序号区 → 整行选（所有数据列）
-  // 列表头：任意端在列表头 → 整列选（所有数据行）
-  // 两者交叉（顶左角的 # 表头）→ 全选
-  const inSeriesNumber = sCol < 0 || eCol < 0
-  const inColHeader = sRow < 0 || eRow < 0
-
-  let startRow: number
-  let endRow: number
-  if (inColHeader) {
-    startRow = 0
-    endRow = rowCount - 1
+// ---- 滚动 ----
+function onScroll() {
+  const el = scrollerRef.value
+  if (!el) return
+  scrollTop.value = el.scrollTop
+  scrollLeft.value = el.scrollLeft
+  requestRender()
+  // 滚近底部触发 load-more，一次「进入底部区域」只发一次
+  const remain = el.scrollHeight - el.scrollTop - el.clientHeight
+  if (remain < props.rowHeight * 3) {
+    if (loadMoreArmed && props.rows.length) {
+      loadMoreArmed = false
+      emit('load-more')
+    }
   } else {
-    startRow = Math.min(sRow, eRow)
-    endRow = Math.max(sRow, eRow)
+    loadMoreArmed = true
   }
-
-  let startCol: number
-  let endCol: number
-  if (inSeriesNumber) {
-    startCol = 0
-    endCol = colCount - 1
-  } else {
-    startCol = Math.min(sCol, eCol)
-    endCol = Math.max(sCol, eCol)
-  }
-
-  return { startRow, startCol, endRow, endCol }
 }
 
-function onReady(instance: any) {
-  vTableInstance.value = instance
-  installResizeObserver()
+function scrollCellIntoView(row: number, col: number) {
+  const el = scrollerRef.value
+  if (!el) return
+  const cellTop = row * props.rowHeight
+  const cellBottom = cellTop + props.rowHeight
+  const viewTop = el.scrollTop
+  const viewBottom = viewTop + el.clientHeight - HEADER_H
+  if (cellTop < viewTop) el.scrollTop = cellTop
+  else if (cellBottom > viewBottom) el.scrollTop = cellBottom - (el.clientHeight - HEADER_H)
+  const cellLeft = offsets.value[col] ?? 0
+  const cellRight = cellLeft + (colWidths.value[col] ?? 0)
+  const viewLeft = el.scrollLeft
+  const viewRight = viewLeft + el.clientWidth - ROWNUM_W
+  if (cellLeft < viewLeft) el.scrollLeft = cellLeft
+  else if (cellRight > viewRight) el.scrollLeft = cellRight - (el.clientWidth - ROWNUM_W)
+}
 
-  // 选区变化：拖拽中 + 单击 + 右键自动选中都走 SELECTED_CHANGED；mouseup 之后
-  // 还会再补一次 SELECTED_CELL。两个都接，让 parent 拿到最新状态。
-  instance.on('selected_changed', (args: any) => {
-    emit('selection-change', { range: rangeFromArgs(args) })
-  })
-  instance.on('selected_cell', (args: any) => {
-    emit('selection-change', { range: rangeFromArgs(args) })
-  })
-  instance.on('selected_clear', () => {
-    emit('selection-change', { range: null })
-  })
+// ---- 命中测试 ----
+function hitFromEvent(e: MouseEvent): GridHit {
+  const rect = canvasRef.value!.getBoundingClientRect()
+  return hitTest(e.clientX - rect.left, e.clientY - rect.top, scrollLeft.value, scrollTop.value, geoOpts())
+}
 
-  // 右键单元格：VTable 已经在 rightdown 里把选区调整好了；这里把屏幕坐标 +
-  // body 坐标透传出去，parent 据此推送 setActiveGridContext。
-  // 边角情况：
-  //   - 序号列右键 → col 归零（数据列首列）
-  //   - 列表头右键 → row 归零（数据行首行）
-  //   - 顶左角 → (0, 0)
-  // parent 的 isSelected 检查会命中已被 selected_changed 扩成整行/整列/全选
-  // 的选区，不会触发 fallback 单元格选中。
-  instance.on('contextmenu_cell', (args: any) => {
-    if (args?.col == null || args?.row == null) return
-    const off = offsets()
-    const bodyRow = Math.max(0, args.row - off.row)
-    const bodyCol = Math.max(0, args.col - off.col)
-    if (!props.rows.length || !props.columns.length) return
+function inRowRange(row: number): boolean {
+  return row >= 0 && row < props.rows.length
+}
 
-    // Decide which native context menu to show:
-    //   - props.contextMenuName 非空 → 直接采用（如 catdb-tables-overview）。
-    //   - 否则：catdb-grid-cell-edit (includes "Set to NULL") when table has a PK
-    //     and NO selected column is a PK column；否则 catdb-grid-cell（仅复制项）。
-    let menuName: string
-    if (props.contextMenuName) {
-      menuName = props.contextMenuName
+// ---- 鼠标：选区拖拽 / 列宽拖拽 / 排序点击 ----
+type DragMode = 'cells' | 'rows' | 'cols' | 'resize'
+let drag: {
+  mode: DragMode
+  moved: boolean
+  clickCell: { row: number; col: number } | null
+  resizeCol: number
+  resizeStartX: number
+  resizeStartW: number
+  pointer: { x: number; y: number }
+} | null = null
+let autoScrollRaf = 0
+
+function onMouseDown(e: MouseEvent) {
+  if (e.button !== 0) return
+  wrapRef.value?.focus()
+  const hit = hitFromEvent(e)
+  const cols = props.columns.length
+  const rows = props.rows.length
+
+  if (hit.region === 'corner') {
+    selectAll()
+    return
+  }
+
+  if (hit.region === 'header') {
+    if (hit.col >= 0) {
+      const w = colWidths.value[hit.col]
+      // 列边界 → 拖拽列宽
+      if (hit.xInCol >= w - RESIZE_ZONE || (hit.xInCol < RESIZE_ZONE && hit.col > 0)) {
+        const target = hit.xInCol < RESIZE_ZONE ? hit.col - 1 : hit.col
+        drag = {
+          mode: 'resize', moved: false, clickCell: null,
+          resizeCol: target, resizeStartX: e.clientX, resizeStartW: colWidths.value[target],
+          pointer: { x: e.clientX, y: e.clientY },
+        }
+        attachWindowDrag()
+        return
+      }
+      // 排序区（表头右侧） → 排序循环
+      if (props.sortable && hit.xInCol >= w - SORT_ZONE_WIDTH) {
+        sortCycle(hit.col)
+        return
+      }
+      // 表头 → 整列选择（可拖拽扩列）
+      if (rows > 0) {
+        setSelection({ row: 0, col: hit.col }, { row: rows - 1, col: hit.col })
+        drag = { mode: 'cols', moved: false, clickCell: null, resizeCol: -1, resizeStartX: 0, resizeStartW: 0, pointer: { x: e.clientX, y: e.clientY } }
+        attachWindowDrag()
+      }
+    }
+    return
+  }
+
+  if (hit.region === 'rownum') {
+    if (inRowRange(hit.row) && cols > 0) {
+      setSelection({ row: hit.row, col: 0 }, { row: hit.row, col: cols - 1 })
+      drag = { mode: 'rows', moved: false, clickCell: null, resizeCol: -1, resizeStartX: 0, resizeStartW: 0, pointer: { x: e.clientX, y: e.clientY } }
+      attachWindowDrag()
+    }
+    return
+  }
+
+  // body 区域
+  if (!inRowRange(hit.row) || hit.col < 0) {
+    setSelection(null)
+    return
+  }
+  if (e.shiftKey && selAnchor.value) {
+    selHead.value = { row: hit.row, col: hit.col }
+    emitSelection()
+    requestRender()
+  } else {
+    setSelection({ row: hit.row, col: hit.col })
+  }
+  drag = {
+    mode: 'cells', moved: false,
+    clickCell: e.shiftKey ? null : { row: hit.row, col: hit.col },
+    resizeCol: -1, resizeStartX: 0, resizeStartW: 0,
+    pointer: { x: e.clientX, y: e.clientY },
+  }
+  attachWindowDrag()
+}
+
+function attachWindowDrag() {
+  window.addEventListener('mousemove', onWindowDragMove)
+  window.addEventListener('mouseup', onWindowDragUp)
+}
+
+function bodyCellAtPointer(clientX: number, clientY: number): { row: number; col: number } {
+  const rect = canvasRef.value!.getBoundingClientRect()
+  const x = clientX - rect.left
+  const y = clientY - rect.top
+  const contentY = y - HEADER_H + scrollTop.value
+  const row = Math.max(0, Math.min(props.rows.length - 1, Math.floor(contentY / props.rowHeight)))
+  const contentX = x - ROWNUM_W + scrollLeft.value
+  const off = offsets.value
+  let col: number
+  if (contentX <= 0) col = 0
+  else if (contentX >= off[off.length - 1]) col = props.columns.length - 1
+  else {
+    col = 0
+    let lo = 0
+    let hi = off.length - 2
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1
+      if (off[mid] <= contentX) lo = mid
+      else hi = mid - 1
+    }
+    col = lo
+  }
+  return { row, col }
+}
+
+function updateDragSelection() {
+  if (!drag || !selAnchor.value) return
+  const { row, col } = bodyCellAtPointer(drag.pointer.x, drag.pointer.y)
+  let head: { row: number; col: number }
+  if (drag.mode === 'rows') head = { row, col: props.columns.length - 1 }
+  else if (drag.mode === 'cols') head = { row: props.rows.length - 1, col }
+  else head = { row, col }
+  if (selHead.value?.row !== head.row || selHead.value?.col !== head.col) {
+    drag.moved = true
+    selHead.value = head
+    emitSelection()
+    requestRender()
+  }
+}
+
+function onWindowDragMove(e: MouseEvent) {
+  if (!drag) return
+  drag.pointer = { x: e.clientX, y: e.clientY }
+  if (drag.mode === 'resize') {
+    const meta = props.columns[drag.resizeCol]
+    const minW = meta ? headerMinWidth(meta) : 40
+    const w = Math.max(minW, drag.resizeStartW + (e.clientX - drag.resizeStartX))
+    if (colWidths.value[drag.resizeCol] !== w) {
+      colWidths.value[drag.resizeCol] = w
+      drag.moved = true
+      requestRender()
+    }
+    return
+  }
+  updateDragSelection()
+  maybeAutoScroll()
+}
+
+// 拖出 body 可视区边缘时按距离持续滚动
+function maybeAutoScroll() {
+  if (autoScrollRaf) return
+  const step = () => {
+    autoScrollRaf = 0
+    if (!drag || drag.mode === 'resize') return
+    const el = scrollerRef.value
+    const canvas = canvasRef.value
+    if (!el || !canvas) return
+    const rect = canvas.getBoundingClientRect()
+    const px = drag.pointer.x
+    const py = drag.pointer.y
+    let dx = 0
+    let dy = 0
+    if (py < rect.top + HEADER_H) dy = -Math.min(40, (rect.top + HEADER_H - py) / 2)
+    else if (py > rect.bottom) dy = Math.min(40, (py - rect.bottom) / 2)
+    if (px < rect.left + ROWNUM_W) dx = -Math.min(40, (rect.left + ROWNUM_W - px) / 2)
+    else if (px > rect.right) dx = Math.min(40, (px - rect.right) / 2)
+    if (dx || dy) {
+      el.scrollTop += dy
+      el.scrollLeft += dx
+      updateDragSelection()
+      autoScrollRaf = requestAnimationFrame(step)
+    }
+  }
+  autoScrollRaf = requestAnimationFrame(step)
+}
+
+function onWindowDragUp() {
+  window.removeEventListener('mousemove', onWindowDragMove)
+  window.removeEventListener('mouseup', onWindowDragUp)
+  if (autoScrollRaf) {
+    cancelAnimationFrame(autoScrollRaf)
+    autoScrollRaf = 0
+  }
+  const d = drag
+  drag = null
+  if (!d) return
+  // 单击（未拖动）→ 进入编辑（VTable editCellTrigger:'click' 的等价行为）
+  if (d.mode === 'cells' && !d.moved && d.clickCell) {
+    startEdit(d.clickCell.row, d.clickCell.col)
+  }
+}
+
+// ---- hover / cursor / 表头 tooltip ----
+function onCanvasMouseMove(e: MouseEvent) {
+  if (drag) return
+  const canvas = canvasRef.value
+  if (!canvas) return
+  const hit = hitFromEvent(e)
+  let cursor = 'default'
+  let title = ''
+  let nextHover: { row: number; col: number } | null = null
+  if (hit.region === 'header' && hit.col >= 0) {
+    const w = colWidths.value[hit.col]
+    if (hit.xInCol >= w - RESIZE_ZONE || (hit.xInCol < RESIZE_ZONE && hit.col > 0)) cursor = 'col-resize'
+    const meta = props.columns[hit.col]
+    title = meta?.comment || meta?.nativeType || ''
+  } else if (hit.region === 'cell' && inRowRange(hit.row) && hit.col >= 0) {
+    nextHover = { row: hit.row, col: hit.col }
+  }
+  if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor
+  if (canvas.title !== title) canvas.title = title
+  if (hover.value?.row !== nextHover?.row || hover.value?.col !== nextHover?.col) {
+    hover.value = nextHover
+    requestRender()
+  }
+}
+
+function onMouseLeave() {
+  if (hover.value) {
+    hover.value = null
+    requestRender()
+  }
+}
+
+// ---- 双击：emit + 列宽 auto-fit ----
+function onDblClick(e: MouseEvent) {
+  const hit = hitFromEvent(e)
+  if (hit.region === 'header' && hit.col >= 0) {
+    const w = colWidths.value[hit.col]
+    if (hit.xInCol >= w - RESIZE_ZONE || (hit.xInCol < RESIZE_ZONE && hit.col > 0)) {
+      autoFitColumn(hit.xInCol < RESIZE_ZONE ? hit.col - 1 : hit.col)
+    }
+    return
+  }
+  if (hit.region === 'cell' && inRowRange(hit.row) && hit.col >= 0) {
+    emit('cell-dblclick', { row: hit.row, col: hit.col, value: props.rows[hit.row]?.[hit.col] })
+  }
+}
+
+// 按可视行 + 上下各一屏采样测量（大结果集不全量扫描）
+function autoFitColumn(col: number) {
+  const meta = props.columns[col]
+  if (!meta) return
+  const font = `${FONT_SIZE}px ${FONT_FAMILY}`
+  const first = Math.max(0, Math.floor(scrollTop.value / props.rowHeight) - 100)
+  const last = Math.min(props.rows.length - 1, first + 300)
+  let maxW = 0
+  for (let r = first; r <= last; r++) {
+    const w = measureText(cellText(r, col), font)
+    if (w > maxW) maxW = w
+  }
+  colWidths.value[col] = Math.min(600, Math.max(headerMinWidth(meta), Math.ceil(maxW) + 20))
+  requestRender()
+}
+
+// ---- 右键：先修选区、定菜单名，再 emit ----
+function onContextMenu(e: MouseEvent) {
+  if (!props.rows.length || !props.columns.length) return
+  const hit = hitFromEvent(e)
+  const sel = normSel.value
+  const cols = props.columns.length
+  const rows = props.rows.length
+
+  // 选区修正：右键落点在选区外 → 按区域重选（VTable rightdown 的等价行为）
+  if (hit.region === 'corner') {
+    selectAll()
+  } else if (hit.region === 'header' && hit.col >= 0) {
+    const covered = sel && hit.col >= sel.c0 && hit.col <= sel.c1 && sel.r0 === 0 && sel.r1 === rows - 1
+    if (!covered) setSelection({ row: 0, col: hit.col }, { row: rows - 1, col: hit.col })
+  } else if (hit.region === 'rownum' && inRowRange(hit.row)) {
+    const covered = sel && hit.row >= sel.r0 && hit.row <= sel.r1 && sel.c0 === 0 && sel.c1 === cols - 1
+    if (!covered) setSelection({ row: hit.row, col: 0 }, { row: hit.row, col: cols - 1 })
+  } else if (hit.region === 'cell' && inRowRange(hit.row) && hit.col >= 0) {
+    const covered = sel && hit.row >= sel.r0 && hit.row <= sel.r1 && hit.col >= sel.c0 && hit.col <= sel.c1
+    if (!covered) setSelection({ row: hit.row, col: hit.col })
+  }
+
+  // 菜单名判定：
+  //   - props.contextMenuName 非空 → 直接采用（如 catdb-tables-overview）。
+  //   - 否则：有 PK 且选中列不含 PK 列 → catdb-grid-cell-edit（含 Set to NULL），
+  //     否则 catdb-grid-cell（仅复制项）。
+  let menuName: string
+  if (props.contextMenuName) {
+    menuName = props.contextMenuName
+  } else {
+    let showSetNull = props.pkColumns.length > 0
+    const s = normSel.value
+    if (showSetNull && s) {
+      for (let c = s.c0; c <= s.c1 && showSetNull; c++) {
+        if (props.pkColumns.includes(props.columns[c]?.name)) showSetNull = false
+      }
+    }
+    menuName = showSetNull ? 'catdb-grid-cell-edit' : 'catdb-grid-cell'
+  }
+  wrapRef.value?.style.setProperty('--custom-contextmenu', menuName)
+
+  const bodyRow = Math.max(0, Math.min(rows - 1, hit.row))
+  const bodyCol = Math.max(0, hit.col)
+  emit('cell-context-menu', {
+    row: bodyRow,
+    col: bodyCol,
+    x: e.pageX,
+    y: e.pageY,
+    value: props.rows[bodyRow]?.[bodyCol],
+  })
+}
+
+// ---- 排序 ----
+function sortCycle(col: number) {
+  const cur = props.sortRemote
+    ? props.sortState && props.sortState.field === col
+      ? props.sortState.order
+      : null
+    : clientSort.value?.col === col
+      ? clientSort.value.order
+      : null
+  const next: 'asc' | 'desc' | null = cur === null ? 'asc' : cur === 'asc' ? 'desc' : null
+
+  if (props.sortRemote) {
+    emit('sort-change', next ? { field: col, order: next } : null)
+    return
+  }
+  clientSort.value = next ? { col, order: next } : null
+  applyClientSort()
+}
+
+function toNum(v: any): number {
+  if (typeof v === 'number') return v
+  if (v && typeof v === 'object' && v.__type__ === 'bigint') return Number(v.value)
+  return Number(v)
+}
+
+function makeComparator(col: number, order: 'asc' | 'desc') {
+  const lt = props.columns[col]?.logicalType
+  const numeric =
+    lt === LogicalType.TypeInt ||
+    lt === LogicalType.TypeBigInt ||
+    lt === LogicalType.TypeFloat ||
+    lt === LogicalType.TypeDecimal
+  const dir = order === 'asc' ? 1 : -1
+  return (a: any[], b: any[]): number => {
+    const va = a?.[col]
+    const vb = b?.[col]
+    if (va == null && vb == null) return 0
+    if (va == null) return 1 // NULL 恒排末尾
+    if (vb == null) return -1
+    let cmp: number
+    if (numeric) {
+      const na = toNum(va)
+      const nb = toNum(vb)
+      cmp = na < nb ? -1 : na > nb ? 1 : 0
     } else {
-      let showSetNull = props.pkColumns.length > 0
-      if (showSetNull) {
-        const ranges = instance.getSelectedCellRanges?.() ?? []
-        for (const r of ranges) {
-          const sCol = Math.max(0, r.start.col - off.col)
-          const eCol = Math.max(0, r.end.col - off.col)
-          for (let c = sCol; c <= eCol && showSetNull; c++) {
-            if (props.pkColumns.includes(props.columns[c]?.name)) {
-              showSetNull = false
-            }
-          }
-        }
-      }
-      menuName = showSetNull ? 'catdb-grid-cell-edit' : 'catdb-grid-cell'
+      cmp = renderCellValue(va).localeCompare(renderCellValue(vb))
     }
-    gridWrapRef.value?.style.setProperty('--custom-contextmenu', menuName)
+    return dir * cmp
+  }
+}
 
-    const ev: MouseEvent | undefined = args.event ?? args.federatedEvent?.nativeEvent
-    emit('cell-context-menu', {
-      row: bodyRow,
-      col: bodyCol,
-      x: ev?.pageX ?? 0,
-      y: ev?.pageY ?? 0,
-      value: props.rows[bodyRow]?.[bodyCol],
-    })
-  })
-
-  // 双击单元格：发射 body 坐标 + 原始值，parent 可用于导航等用途。
-  instance.on('dblclick_cell', (args: any) => {
-    if (args?.col == null || args?.row == null) return
-    const body = toBody(args.col, args.row)
-    if (!body) return
-    emit('cell-dblclick', {
-      row: body.row,
-      col: body.col,
-      value: props.rows[body.row]?.[body.col],
-    })
-  })
-
-  // 单元格编辑提交：VTable 内部已乐观更新 record；parent 决定是否回滚。
-  instance.on('change_cell_value', (args: any) => {
-    if (args?.col == null || args?.row == null) return
-    const body = toBody(args.col, args.row)
-    if (!body) return
-    const meta = props.columns[body.col]
-    if (!meta) return
-
-    // 用户点进 NULL 单元格后直接离开（不输入内容），编辑器可能提交空串 '' 或
-    // 格式化文本 'NULL'，导致 VTable 把 null 乐观更新成了字符串。这里检测到
-    // 此类伪编辑就回滚为 null，不触发 edit-commit。
-    // 注意：VTable 的 change_cell_value 事件字段是 rawValue（改前原值）/ changedValue
-    // （改后新值），没有 originValue。
-    if (args.rawValue == null && (args.changedValue === '' || args.changedValue === 'NULL')) {
-      vTableInstance.value?.updateCell?.(args.row, args.col, null)
-      return
+// 客户端排序：原地稳定排序 props.rows；取消排序时从快照恢复原序。
+function applyClientSort() {
+  const rows = props.rows
+  const s = clientSort.value
+  if (!s) {
+    if (originalOrder) {
+      rows.splice(0, rows.length, ...originalOrder)
+      originalOrder = null
     }
+  } else {
+    if (!originalOrder) originalOrder = rows.slice()
+    rows.sort(makeComparator(s.col, s.order))
+  }
+  requestRender()
+}
 
-    emit('edit-commit', {
-      row: body.row,
-      col: body.col,
-      oldValue: args.rawValue,
-      newValue: args.changedValue,
-      column: meta,
-    })
+// ---- 编辑 ----
+function startEdit(row: number, col: number) {
+  if (!props.editable || props.fetching) return
+  if (props.deletedRows.has(row)) return
+  const meta = props.columns[col]
+  const kind = pickEditorKind(meta)
+  if (!kind) return
+  const raw = props.rows[row]?.[col]
+  editOriginal = raw
+  if (kind === 'datetime' || kind === 'time' || kind === 'date') {
+    editValue.value = toInputValue(kind, raw)
+  } else {
+    editValue.value = raw == null ? '' : renderCellValue(raw)
+  }
+  editing.value = { row, col, kind }
+  requestRender()
+  nextTick(() => {
+    const el = editorEl.value
+    if (!el) return
+    el.focus()
+    if (el instanceof HTMLInputElement && (kind === 'input')) el.select()
   })
+}
 
-  // 滚到底部：触发分页/流式追加
-  instance.on('scroll_vertical_end', () => emit('load-more'))
+function commitEdit(): boolean {
+  const ed = editing.value
+  if (!ed || commitGuard) return false
+  commitGuard = true
+  const { row, col, kind } = ed
+  const meta = props.columns[col]
+  let v: string = editValue.value
+  if (kind === 'datetime' || kind === 'time') v = fromInputValue(kind, v)
+  editing.value = null
+  commitGuard = false
+  requestRender()
 
-  // Tab/Shift+Tab：移动到下一个/上一个单元格并自动进入编辑模式
-  instance.on('keydown', (args: any) => {
-    const e: KeyboardEvent = args?.event ?? args?.federatedEvent?.nativeEvent
-    if (!e || e.key !== 'Tab' || !props.editable) return
+  // null 保持：原值为 NULL 且用户未输入 → 视为无变化
+  if (editOriginal == null && v === '') return false
+  // 值未变 → 不发射
+  if (editOriginal != null && v === renderCellValue(editOriginal)) return false
+
+  const oldValue = editOriginal
+  if (props.rows[row]) props.rows[row][col] = v
+  emit('edit-commit', { row, col, oldValue, newValue: v, column: meta })
+  return true
+}
+
+function cancelEdit() {
+  editing.value = null
+  requestRender()
+  wrapRef.value?.focus()
+}
+
+function onEditorBlur() {
+  commitEdit()
+}
+
+function onEditorKeydown(e: KeyboardEvent) {
+  e.stopPropagation()
+  if (e.isComposing) return // IME 组字中的按键不触发提交/取消
+  if (e.key === 'Escape') {
     e.preventDefault()
+    cancelEdit()
+    return
+  }
+  if (e.key === 'Tab') {
+    e.preventDefault()
+    const ed = editing.value
+    commitEdit()
+    if (ed) moveTabFrom(ed.row, ed.col, e.shiftKey)
+    return
+  }
+  if (e.key === 'Enter') {
+    const isTextarea = editing.value?.kind === 'textarea'
+    if (isTextarea && e.shiftKey) return // Shift+Enter 换行
+    e.preventDefault()
+    commitEdit()
+    wrapRef.value?.focus()
+  }
+}
 
-    const off = offsets()
-    const ranges = instance.getSelectedCellRanges?.() ?? []
-    if (!ranges.length) return
-    const cur = ranges[ranges.length - 1].end
-    const maxCol = off.col + props.columns.length - 1
-    const maxRow = off.row + props.rows.length - 1
+const editorStyle = computed(() => {
+  const ed = editing.value
+  if (!ed) return {}
+  const left = ROWNUM_W + (offsets.value[ed.col] ?? 0)
+  const top = HEADER_H + ed.row * props.rowHeight
+  const width = colWidths.value[ed.col] ?? props.defaultColumnWidth
+  const height = ed.kind === 'textarea' ? Math.max(props.rowHeight * 4, 96) : props.rowHeight
+  return {
+    left: `${left}px`,
+    top: `${top}px`,
+    width: `${width}px`,
+    height: `${height}px`,
+  }
+})
 
-    let nextCol = cur.col
-    let nextRow = cur.row
-    if (e.shiftKey) {
-      if (cur.col > off.col) { nextCol = cur.col - 1 }
-      else if (cur.row > off.row) { nextCol = maxCol; nextRow = cur.row - 1 }
-      else return
-    } else {
-      if (cur.col < maxCol) { nextCol = cur.col + 1 }
-      else if (cur.row < maxRow) { nextCol = off.col; nextRow = cur.row + 1 }
-      else return
-    }
+const editorInputType = computed(() => {
+  switch (editing.value?.kind) {
+    case 'date': return 'date'
+    case 'time': return 'time'
+    case 'datetime': return 'datetime-local'
+    default: return 'text'
+  }
+})
 
-    // 检查目标列是否允许编辑（pk/autoIncrement 列无 editor）
-    const bodyCol = nextCol - off.col
-    if (bodyCol >= 0 && bodyCol < props.columns.length && pickEditor(props.columns[bodyCol])) {
-      instance.selectCell(nextCol, nextRow)
-      instance.startEditCell(nextRow, nextCol)
-    } else {
-      instance.selectCell(nextCol, nextRow)
-    }
-  })
+// ---- 键盘 ----
+function activeCell(): { row: number; col: number } | null {
+  return selHead.value
+}
 
-  // 粘贴 TSV（Ctrl+V / Cmd+V）：DataGrip 语义——单值填满整个选区（整行/整列），
-  // 多值按块平铺/展开。分布逻辑在纯函数 planPaste 里，这里只做写入过滤。
-  const pasteHandler = (e: ClipboardEvent) => {
+function moveTabFrom(row: number, col: number, shift: boolean) {
+  if (!props.editable) return
+  const maxCol = props.columns.length - 1
+  const maxRow = props.rows.length - 1
+  let r = row
+  let c = col
+  if (shift) {
+    if (c > 0) c--
+    else if (r > 0) { r--; c = maxCol }
+    else return
+  } else {
+    if (c < maxCol) c++
+    else if (r < maxRow) { r++; c = 0 }
+    else return
+  }
+  setSelection({ row: r, col: c })
+  scrollCellIntoView(r, c)
+  if (pickEditorKind(props.columns[c])) startEdit(r, c)
+}
+
+function onKeydown(e: KeyboardEvent) {
+  if (editing.value) return
+  if (e.key === 'Escape') {
+    setSelection(null)
+    return
+  }
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'a' || e.key === 'A')) {
+    e.preventDefault()
+    selectAll()
+    return
+  }
+  if (e.key === 'Tab') {
     if (!props.editable) return
     e.preventDefault()
-
-    const text = e.clipboardData?.getData('text/plain')
-    if (!text) return
-
-    const off = offsets()
-    const ranges = instance.getSelectedCellRanges?.() ?? []
-    if (!ranges.length) return
-
-    // 解析 TSV（带引号状态机：引号包裹的字段可含 Tab/换行）
-    const pastedGrid = parseTSV(text)
-
-    // 选区 body 边界；整列（点列头）/整行（点序号列）选区会落在表头/序号区，
-    // 按 rangeFromArgs 同款规则展开到整表数据列/行。
-    const range = ranges[0]
-    const inColHeader = (range.start.row - off.row) < 0 || (range.end.row - off.row) < 0
-    const inSeries = (range.start.col - off.col) < 0 || (range.end.col - off.col) < 0
-    const selBounds = {
-      row0: inColHeader ? 0 : Math.min(range.start.row, range.end.row) - off.row,
-      row1: inColHeader ? props.rows.length - 1 : Math.max(range.start.row, range.end.row) - off.row,
-      col0: inSeries ? 0 : Math.min(range.start.col, range.end.col) - off.col,
-      col1: inSeries ? props.columns.length - 1 : Math.max(range.start.col, range.end.col) - off.col,
-    }
-
-    for (const { row, col, value } of planPaste(pastedGrid, selBounds)) {
-      if (row < 0 || col < 0 || row >= props.rows.length || col >= props.columns.length) continue
-      // 标记删除的行在保存前不可编辑
-      if (props.deletedRows?.has(row)) continue
-      const colMeta = props.columns[col]
-      // 跳过不可编辑列
-      if (!pickEditor(colMeta)) continue
-      const oldValue = props.rows[row]?.[col]
-      if (value === oldValue) continue
-
-      // 直接更新数组元素（与 VTable 共享同一引用）
-      props.rows[row][col] = value
-
-      emit('edit-commit', { row, col, oldValue, newValue: value, column: colMeta })
-    }
-
-    try { instance.refreshRecords() } catch { /* VTable 可能无此方法 */ }
+    const cur = activeCell()
+    if (cur) moveTabFrom(cur.row, cur.col, e.shiftKey)
+    return
   }
-  _pasteHandler = pasteHandler as any
-  gridWrapRef.value?.addEventListener('paste', pasteHandler)
-
-  // 编辑器输入框上的右键：VTable 的 contextmenu_cell 不会在 input 元素上触发，
-  // 导致 --custom-contextmenu 停留在默认值 catdb-grid-cell（没有 Set to NULL）。
-  // 用 capture phase 拦截，重新判定正确菜单。
-  _editorCtxHandler = (e: MouseEvent) => {
-    if (!props.editable || props.contextMenuName) return
-    const target = e.target as HTMLElement
-    if (!target.closest('input, textarea')) return
+  if (e.key === 'Enter') {
+    const cur = activeCell()
+    if (cur && props.editable) {
+      e.preventDefault()
+      startEdit(cur.row, cur.col)
+    }
+    return
+  }
+  const arrows: Record<string, [number, number]> = {
+    ArrowUp: [-1, 0],
+    ArrowDown: [1, 0],
+    ArrowLeft: [0, -1],
+    ArrowRight: [0, 1],
+  }
+  const delta = arrows[e.key]
+  if (delta && props.rows.length && props.columns.length) {
     e.preventDefault()
-    const inst = vTableInstance.value
-    if (!inst) return
-    const cell = inst.getCellAtPos(e.clientX, e.clientY)
-    if (!cell || cell.col == null || cell.row == null) return
-    const off = offsets()
-    const bodyCol = Math.max(0, cell.col - off.col)
-    if (bodyCol >= props.columns.length) return
-    let showSetNull = props.pkColumns.length > 0
-    if (showSetNull && props.pkColumns.includes(props.columns[bodyCol]?.name)) {
-      showSetNull = false
-    }
-    gridWrapRef.value?.style.setProperty(
-      '--custom-contextmenu',
-      showSetNull ? 'catdb-grid-cell-edit' : 'catdb-grid-cell',
-    )
-  }
-  gridWrapRef.value?.addEventListener('contextmenu', _editorCtxHandler, true)
-
-  // 排序点击：sortRemote=true 时发射给父组件做服务端排序
-  instance.on('sort_click', (args: any) => {
-    if (!props.sortRemote) return
-    const field = args?.field
-    const order = args?.order
-    if (field == null || order == null) return
-    if (order === 'normal' || order === 'NORMAL') {
-      emit('sort-change', null)
+    const base = selHead.value ?? { row: 0, col: 0 }
+    const r = Math.max(0, Math.min(props.rows.length - 1, base.row + delta[0]))
+    const c = Math.max(0, Math.min(props.columns.length - 1, base.col + delta[1]))
+    if (e.shiftKey && selAnchor.value) {
+      selHead.value = { row: r, col: c }
+      emitSelection()
+      requestRender()
     } else {
-      emit('sort-change', { field: Number(field), order: order.toLowerCase() as 'asc' | 'desc' })
+      setSelection({ row: r, col: c })
     }
-  })
+    scrollCellIntoView(r, c)
+  }
 }
 
-// 监听 rows 变化时滚到顶（避免新列保留旧滚动位置）
+// ---- 粘贴 TSV（Ctrl+V / Cmd+V）：DataGrip 语义 ----
+// 单值填满整个选区（整行/整列），多值按块平铺/展开。分布逻辑在纯函数 planPaste。
+function onPaste(e: ClipboardEvent) {
+  if (!props.editable || editing.value) return
+  e.preventDefault()
+  const text = e.clipboardData?.getData('text/plain')
+  if (!text) return
+  const s = normSel.value
+  if (!s) return
+
+  const pastedGrid = parseTSV(text)
+  const selBounds = { row0: s.r0, row1: s.r1, col0: s.c0, col1: s.c1 }
+
+  for (const { row, col, value } of planPaste(pastedGrid, selBounds)) {
+    if (row < 0 || col < 0 || row >= props.rows.length || col >= props.columns.length) continue
+    // 标记删除的行在保存前不可编辑
+    if (props.deletedRows.has(row)) continue
+    const colMeta = props.columns[col]
+    // 跳过不可编辑列
+    if (!pickEditorKind(colMeta)) continue
+    const oldValue = props.rows[row]?.[col]
+    if (value === oldValue) continue
+    props.rows[row][col] = value
+    emit('edit-commit', { row, col, oldValue, newValue: value, column: colMeta })
+  }
+  requestRender()
+}
+
+// ---- 列宽初始化 / props 监听 ----
+function resetColumnWidths() {
+  colWidths.value = props.columns.map((c) => Math.max(props.defaultColumnWidth, headerMinWidth(c)))
+}
+
+// 列「签名」不变（同表刷新重建 columns 数组）时保留列宽/选区/排序，
+// 等价 VTable 的 keep-column-width-change；签名变了才整体重置。
+let columnsSig = ''
+function columnsSignature(): string {
+  return props.columns.map((c) => `${c.name} ${c.logicalType}`).join('')
+}
+
 watch(
   () => props.columns,
   () => {
-    const inst = vTableInstance.value
-    if (inst?.scrollTo) {
-      try { inst.scrollTo({ scrollTop: 0, scrollLeft: 0 }) } catch { /* ignore */ }
+    const sig = columnsSignature()
+    if (sig === columnsSig && colWidths.value.length === props.columns.length) {
+      requestRender()
+      return
     }
+    columnsSig = sig
+    resetColumnWidths()
+    clientSort.value = null
+    originalOrder = null
+    selAnchor.value = null
+    selHead.value = null
+    editing.value = null
+    hover.value = null
+    loadMoreArmed = true
+    const el = scrollerRef.value
+    if (el) {
+      el.scrollTop = 0
+      el.scrollLeft = 0
+    }
+    requestRender()
   },
+  { immediate: true },
 )
 
-// 同步服务端排序状态到 VTable 指示器
-watch(
-  () => props.sortState,
-  (state) => {
-    const inst = vTableInstance.value
-    if (!inst?.updateSortState) return
-    if (!props.sortRemote) return
-    if (!state) {
-      inst.updateSortState(null, false)
-    } else {
-      inst.updateSortState({ field: state.field, order: state.order }, false)
-    }
-  },
-  { deep: true },
-)
-
-// 服务端排序时，rows 变化会清掉 VTable 的排序指示器，需要等重渲染完成后恢复。
+// rows 数组身份变化（computed 重算 / 新查询 / 追加批次产生新数组）
 watch(
   () => props.rows,
   () => {
-    if (!props.sortRemote || !props.sortState) return
-    const inst = vTableInstance.value
-    if (!inst?.updateSortState) return
-    requestAnimationFrame(() => {
-      inst.updateSortState({ field: props.sortState!.field, order: props.sortState!.order }, false)
-    })
+    loadMoreArmed = true
+    // 客户端排序保持生效：新数组重新快照原序并排序
+    if (!props.sortRemote && clientSort.value) {
+      originalOrder = props.rows.slice()
+      props.rows.sort(makeComparator(clientSort.value.col, clientSort.value.order))
+    } else {
+      originalOrder = null
+    }
+    // 选区/编辑态钳到新边界
+    if (editing.value && editing.value.row >= props.rows.length) editing.value = null
+    if (selHead.value && (selHead.value.row >= props.rows.length || !props.rows.length)) {
+      selAnchor.value = null
+      selHead.value = null
+      emitSelection()
+    }
+    requestRender()
   },
+)
+
+// 渲染依赖的其余 props / 主题变化 → 重绘。rows.length 覆盖流式追加
+// （同一数组 in-place push，身份不变）的场景。
+watch(
+  [
+    () => props.rows.length,
+    () => props.dirtyCells,
+    () => props.deletedRows,
+    () => props.dirtyRows,
+    () => props.sortState,
+    () => props.rowHeight,
+    gridTheme,
+  ],
+  () => requestRender(),
   { deep: false },
 )
 
-// 滚动到最后一行（新增行后定位用）。rowCount 含表头，最后一行即末尾数据行。
+// ---- 对外方法 ----
 function scrollToBottom() {
-  const inst = vTableInstance.value
-  if (!inst?.scrollToRow) return
-  try { inst.scrollToRow(inst.rowCount - 1) } catch { /* ignore */ }
+  const el = scrollerRef.value
+  if (!el) return
+  el.scrollTop = el.scrollHeight
 }
 
-// 横向滚动并选中指定数据列（body 列下标）。bodyCol 不含序号列偏移，内部补上。
+// 横向滚动并选中指定数据列首个单元格（body 列下标）。只动水平位置，
+// 不打断用户当前的垂直浏览位置。
 function scrollToColumn(bodyCol: number) {
-  const inst = vTableInstance.value
-  if (!inst) return
-  const colOff = (inst.rowHeaderLevelCount ?? 0) + (inst.leftRowSeriesNumberCount ?? 0)
-  const visualCol = bodyCol + colOff
-  const rowOff = inst.columnHeaderLevelCount ?? 1
-  try {
-    if (inst.scrollToCol) inst.scrollToCol(visualCol)
-    else if (inst.scrollToCell) inst.scrollToCell({ col: visualCol, row: rowOff })
-    // 选中该列首个数据单元格，给出可见的定位高亮
-    if (inst.selectCell) inst.selectCell(visualCol, rowOff)
-  } catch { /* ignore */ }
+  if (bodyCol < 0 || bodyCol >= props.columns.length) return
+  const el = scrollerRef.value
+  if (el) {
+    const cellLeft = offsets.value[bodyCol] ?? 0
+    const cellRight = cellLeft + (colWidths.value[bodyCol] ?? 0)
+    const viewLeft = el.scrollLeft
+    const viewRight = viewLeft + el.clientWidth - ROWNUM_W
+    if (cellLeft < viewLeft) el.scrollLeft = cellLeft
+    else if (cellRight > viewRight) el.scrollLeft = cellRight - (el.clientWidth - ROWNUM_W)
+  }
+  if (props.rows.length) setSelection({ row: 0, col: bodyCol })
 }
 
-// 容器尺寸变化后强制 VTable 重算画布并重绘。
 function resize() {
-  const inst = vTableInstance.value
-  if (!inst?.resize) return
-  try { inst.resize() } catch { /* ignore */ }
-}
-
-// VTable 自带的 ResizeObserver 把回调 debounce 了 100ms（见 vtable EventHandler），
-// 拖动分隔条/侧栏这类连续变化时画布要等停手才补画。这里挂一个不防抖的原生
-// ResizeObserver，容器一变就同帧 resize()，覆盖所有改容器宽高的来源（侧栏、
-// 窗口、分屏）。仅在尺寸真变化时调用，避免与 VTable 自身重绘形成回环。
-let _ro: ResizeObserver | null = null
-let _roW = 0
-let _roH = 0
-function installResizeObserver() {
-  const el = gridWrapRef.value
-  if (!el || typeof ResizeObserver === 'undefined') return
-  _roW = el.clientWidth
-  _roH = el.clientHeight
-  _ro = new ResizeObserver(() => {
-    const node = gridWrapRef.value
-    if (!node) return
-    const w = node.clientWidth
-    const h = node.clientHeight
-    if (w === _roW && h === _roH) return
-    _roW = w
-    _roH = h
-    resize()
-  })
-  _ro.observe(el)
+  syncViewport()
+  requestRender()
 }
 
 defineExpose({ scrollToBottom, scrollToColumn, resize })
 
-onBeforeUnmount(() => {
-  if (_pasteHandler && gridWrapRef.value) {
-    gridWrapRef.value.removeEventListener('paste', _pasteHandler)
+// ---- 视口尺寸 ----
+function syncViewport() {
+  const el = scrollerRef.value
+  if (!el) return
+  viewW.value = el.clientWidth
+  viewH.value = el.clientHeight
+}
+
+let ro: ResizeObserver | null = null
+onMounted(() => {
+  syncViewport()
+  requestRender()
+  if (typeof ResizeObserver !== 'undefined' && scrollerRef.value) {
+    ro = new ResizeObserver(() => {
+      syncViewport()
+      requestRender()
+    })
+    ro.observe(scrollerRef.value)
   }
-  if (_editorCtxHandler && gridWrapRef.value) {
-    gridWrapRef.value.removeEventListener('contextmenu', _editorCtxHandler, true)
-  }
-  _ro?.disconnect()
-  _ro = null
 })
 
+onBeforeUnmount(() => {
+  ro?.disconnect()
+  ro = null
+  window.removeEventListener('mousemove', onWindowDragMove)
+  window.removeEventListener('mouseup', onWindowDragUp)
+  if (autoScrollRaf) cancelAnimationFrame(autoScrollRaf)
+})
 </script>
 
 <template>
   <!-- --custom-contextmenu 触发 Wails 原生上下文菜单（wailsbridge/contextmenu.go 中注册）。
-       默认 catdb-grid-cell；contextMenuName prop 非空时改用该名字（如 catdb-tables-overview）。
-       CSS 变量在画布子节点也生效。 -->
+       默认 catdb-grid-cell；contextMenuName prop 非空时改用该名字（如 catdb-tables-overview）。 -->
   <div
-    ref="gridWrapRef"
+    ref="wrapRef"
     class="datagrid-wrap"
     :style="{ '--custom-contextmenu': props.contextMenuName || 'catdb-grid-cell' }"
+    tabindex="0"
+    @keydown="onKeydown"
+    @paste="onPaste"
   >
-    <ListTable
-      :options="tableOptions"
-      :records="rows"
-      width="100%"
-      height="100%"
-      :keep-column-width-change="true"
-      :on-ready="onReady"
-    />
+    <div ref="scrollerRef" class="dg-scroller" @scroll="onScroll">
+      <div class="dg-spacer" :style="{ width: totalWidth + 'px', height: totalHeight + 'px' }">
+        <canvas
+          ref="canvasRef"
+          class="dg-canvas"
+          :style="{ width: viewW + 'px', height: viewH + 'px' }"
+          @mousedown="onMouseDown"
+          @mousemove="onCanvasMouseMove"
+          @mouseleave="onMouseLeave"
+          @dblclick="onDblClick"
+          @contextmenu="onContextMenu"
+        />
+        <div v-if="editing" class="dg-editor" :style="editorStyle" @mousedown.stop>
+          <textarea
+            v-if="editing.kind === 'textarea'"
+            ref="editorEl"
+            v-model="editValue"
+            spellcheck="false"
+            @keydown="onEditorKeydown"
+            @blur="onEditorBlur"
+          />
+          <input
+            v-else
+            ref="editorEl"
+            v-model="editValue"
+            :type="editorInputType"
+            :step="editing.kind === 'datetime' || editing.kind === 'time' ? 1 : undefined"
+            spellcheck="false"
+            @keydown="onEditorKeydown"
+            @blur="onEditorBlur"
+          />
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -900,5 +1175,46 @@ onBeforeUnmount(() => {
   overflow: hidden;
   border-radius: 3px;
   background: var(--app-content-bg);
+  outline: none;
+}
+
+.dg-scroller {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: none;
+}
+
+.dg-spacer {
+  position: relative;
+}
+
+.dg-canvas {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  display: block;
+}
+
+.dg-editor {
+  position: absolute;
+  z-index: 2;
+}
+
+.dg-editor input,
+.dg-editor textarea {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 2px 6px;
+  font: 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', sans-serif;
+  color: var(--n-text-color, inherit);
+  background: v-bind('gridTheme.surface');
+  border: 2px solid v-bind('gridTheme.selectionBorder');
+  border-radius: 0;
+  outline: none;
+  resize: none;
 }
 </style>
