@@ -31,8 +31,8 @@ export function exportQuery(connId: string, sql: string, opts: ExportOptions, si
   return p as unknown as Promise<ExportResult>
 }
 
-export function exportTable(connId: string, db: string, table: string, opts: ExportOptions, signal?: AbortSignal): Promise<ExportResult> {
-  const p = TransferService.ExportTable(connId, db, table, opts)
+export function exportTable(connId: string, db: string, table: string, opts: ExportOptions, signal?: AbortSignal, schema = ''): Promise<ExportResult> {
+  const p = TransferService.ExportTable(connId, db, schema, table, opts)
   if (signal) {
     if (signal.aborted) p.cancel?.()
     else signal.addEventListener('abort', () => p.cancel?.(), { once: true })

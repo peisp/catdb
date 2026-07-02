@@ -120,14 +120,17 @@ type Dialect interface {
 // Rule (see CLAUDE.md #4): UPDATE/DELETE MUST be keyed on a primary or unique
 // key. Tables with no such key are flagged read-only by the core layer; no
 // write statement is produced for them.
+//
+// All methods address the table as (db, schema, table) — the driver decides
+// how to qualify and quote it (MySQL ignores schema, Postgres ignores db).
 type Editor interface {
 	// PrimaryKeys returns the column names of the table's primary key (or its
 	// chosen unique key, if no PK exists). Empty slice → table is read-only.
 	PrimaryKeys(ctx context.Context, db, schema, table string) ([]string, error)
 
-	BuildInsert(table string, row map[string]any) (sql string, args []any, err error)
-	BuildUpdate(table string, pk, changes map[string]any) (sql string, args []any, err error)
-	BuildDelete(table string, pk map[string]any) (sql string, args []any, err error)
+	BuildInsert(db, schema, table string, row map[string]any) (sql string, args []any, err error)
+	BuildUpdate(db, schema, table string, pk, changes map[string]any) (sql string, args []any, err error)
+	BuildDelete(db, schema, table string, pk map[string]any) (sql string, args []any, err error)
 }
 
 // Tx is an open transaction. It is also a Querier so the same Exec/Query
@@ -136,4 +139,21 @@ type Tx interface {
 	Querier
 	Commit() error
 	Rollback() error
+}
+
+// QualifyTable renders a fully qualified, quoted table reference from its
+// (db, schema, table) parts, skipping empty ones. MySQL passes schema=""
+// → `db`.`table`; schema-ful databases get all three levels.
+func QualifyTable(d Dialect, db, schema, table string) string {
+	out := ""
+	for _, part := range []string{db, schema, table} {
+		if part == "" {
+			continue
+		}
+		if out != "" {
+			out += "."
+		}
+		out += d.QuoteIdentifier(part)
+	}
+	return out
 }

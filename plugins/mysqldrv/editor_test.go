@@ -7,7 +7,7 @@ import (
 
 func TestBuildInsert(t *testing.T) {
 	e := editor{dialect: dialect{}}
-	sqlText, args, err := e.BuildInsert("users", map[string]any{
+	sqlText, args, err := e.BuildInsert("", "", "users", map[string]any{
 		"name":  "Alice",
 		"email": "a@example.com",
 	})
@@ -25,7 +25,19 @@ func TestBuildInsert(t *testing.T) {
 
 func TestBuildInsert_DbTable(t *testing.T) {
 	e := editor{dialect: dialect{}}
-	sqlText, _, err := e.BuildInsert("app.users", map[string]any{"id": 1})
+	sqlText, _, err := e.BuildInsert("app", "", "users", map[string]any{"id": 1})
+	if err != nil {
+		t.Fatalf("BuildInsert: %v", err)
+	}
+	if sqlText != "INSERT INTO `app`.`users` (`id`) VALUES (?)" {
+		t.Errorf("got %q", sqlText)
+	}
+}
+
+func TestBuildInsert_SchemaCollapsesToDB(t *testing.T) {
+	// MySQL has no schema level distinct from database — schema wins when set.
+	e := editor{dialect: dialect{}}
+	sqlText, _, err := e.BuildInsert("ignored", "app", "users", map[string]any{"id": 1})
 	if err != nil {
 		t.Fatalf("BuildInsert: %v", err)
 	}
@@ -36,17 +48,17 @@ func TestBuildInsert_DbTable(t *testing.T) {
 
 func TestBuildInsert_EmptyRefused(t *testing.T) {
 	e := editor{dialect: dialect{}}
-	if _, _, err := e.BuildInsert("users", nil); err == nil {
+	if _, _, err := e.BuildInsert("", "", "users", nil); err == nil {
 		t.Fatal("expected error for empty row")
 	}
-	if _, _, err := e.BuildInsert("", map[string]any{"a": 1}); err == nil {
+	if _, _, err := e.BuildInsert("", "", "", map[string]any{"a": 1}); err == nil {
 		t.Fatal("expected error for empty table")
 	}
 }
 
 func TestBuildUpdate(t *testing.T) {
 	e := editor{dialect: dialect{}}
-	sqlText, args, err := e.BuildUpdate("users",
+	sqlText, args, err := e.BuildUpdate("", "", "users",
 		map[string]any{"id": 7},
 		map[string]any{"name": "Alice", "email": "a@example.com"},
 	)
@@ -64,14 +76,14 @@ func TestBuildUpdate(t *testing.T) {
 
 func TestBuildUpdate_RefusesEmptyPK(t *testing.T) {
 	e := editor{dialect: dialect{}}
-	if _, _, err := e.BuildUpdate("users", nil, map[string]any{"a": 1}); err == nil {
+	if _, _, err := e.BuildUpdate("", "", "users", nil, map[string]any{"a": 1}); err == nil {
 		t.Fatal("expected error: keyless UPDATE forbidden")
 	}
 }
 
 func TestBuildUpdate_RefusesEmptyChanges(t *testing.T) {
 	e := editor{dialect: dialect{}}
-	if _, _, err := e.BuildUpdate("users", map[string]any{"id": 1}, nil); err == nil {
+	if _, _, err := e.BuildUpdate("", "", "users", map[string]any{"id": 1}, nil); err == nil {
 		t.Fatal("expected error: no changes")
 	}
 }
@@ -79,7 +91,7 @@ func TestBuildUpdate_RefusesEmptyChanges(t *testing.T) {
 func TestBuildUpdate_NullablePK(t *testing.T) {
 	// pk value nil → IS NULL, not = ?
 	e := editor{dialect: dialect{}}
-	sqlText, args, err := e.BuildUpdate("t",
+	sqlText, args, err := e.BuildUpdate("", "", "t",
 		map[string]any{"k": nil},
 		map[string]any{"v": 1},
 	)
@@ -97,11 +109,11 @@ func TestBuildUpdate_NullablePK(t *testing.T) {
 
 func TestBuildDelete(t *testing.T) {
 	e := editor{dialect: dialect{}}
-	sqlText, args, err := e.BuildDelete("users", map[string]any{"id": 9})
+	sqlText, args, err := e.BuildDelete("app", "", "users", map[string]any{"id": 9})
 	if err != nil {
 		t.Fatalf("BuildDelete: %v", err)
 	}
-	if sqlText != "DELETE FROM `users` WHERE `id` = ?" {
+	if sqlText != "DELETE FROM `app`.`users` WHERE `id` = ?" {
 		t.Errorf("sql: got %q", sqlText)
 	}
 	if !reflect.DeepEqual(args, []any{9}) {
@@ -111,7 +123,7 @@ func TestBuildDelete(t *testing.T) {
 
 func TestBuildDelete_RefusesEmptyPK(t *testing.T) {
 	e := editor{dialect: dialect{}}
-	if _, _, err := e.BuildDelete("users", nil); err == nil {
+	if _, _, err := e.BuildDelete("", "", "users", nil); err == nil {
 		t.Fatal("expected error: keyless DELETE forbidden")
 	}
 }

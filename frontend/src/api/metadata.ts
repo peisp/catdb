@@ -33,41 +33,45 @@ export { LogicalType }
 export function listDatabases(connId: string): Promise<string[]> {
   return MetadataService.ListDatabases(connId) as unknown as Promise<string[]>
 }
-export function listTables(connId: string, db: string): Promise<TableInfo[]> {
-  return MetadataService.ListTables(connId, db) as unknown as Promise<TableInfo[]>
+export function listSchemas(connId: string, db: string): Promise<string[]> {
+  return MetadataService.ListSchemas(connId, db) as unknown as Promise<string[]>
 }
-export function listViews(connId: string, db: string): Promise<ViewInfo[]> {
-  return MetadataService.ListViews(connId, db) as unknown as Promise<ViewInfo[]>
+export function listTables(connId: string, db: string, schema = ''): Promise<TableInfo[]> {
+  return MetadataService.ListTables(connId, db, schema) as unknown as Promise<TableInfo[]>
 }
-export function listColumns(connId: string, db: string, table: string): Promise<ColumnMeta[]> {
-  return MetadataService.ListColumns(connId, db, table) as unknown as Promise<ColumnMeta[]>
+export function listViews(connId: string, db: string, schema = ''): Promise<ViewInfo[]> {
+  return MetadataService.ListViews(connId, db, schema) as unknown as Promise<ViewInfo[]>
 }
-export function listIndexes(connId: string, db: string, table: string): Promise<IndexInfo[]> {
-  return MetadataService.ListIndexes(connId, db, table) as unknown as Promise<IndexInfo[]>
+export function listColumns(connId: string, db: string, table: string, schema = ''): Promise<ColumnMeta[]> {
+  return MetadataService.ListColumns(connId, db, schema, table) as unknown as Promise<ColumnMeta[]>
 }
-export function listForeignKeys(connId: string, db: string, table: string): Promise<ForeignKeyInfo[]> {
-  return MetadataService.ListForeignKeys(connId, db, table) as unknown as Promise<ForeignKeyInfo[]>
+export function listIndexes(connId: string, db: string, table: string, schema = ''): Promise<IndexInfo[]> {
+  return MetadataService.ListIndexes(connId, db, schema, table) as unknown as Promise<IndexInfo[]>
 }
-export function listRoutines(connId: string, db: string): Promise<RoutineInfo[]> {
-  return MetadataService.ListRoutines(connId, db) as unknown as Promise<RoutineInfo[]>
+export function listForeignKeys(connId: string, db: string, table: string, schema = ''): Promise<ForeignKeyInfo[]> {
+  return MetadataService.ListForeignKeys(connId, db, schema, table) as unknown as Promise<ForeignKeyInfo[]>
 }
-export function getCreateTable(connId: string, db: string, table: string): Promise<string> {
-  return MetadataService.GetCreateTable(connId, db, table) as unknown as Promise<string>
+export function listRoutines(connId: string, db: string, schema = ''): Promise<RoutineInfo[]> {
+  return MetadataService.ListRoutines(connId, db, schema) as unknown as Promise<RoutineInfo[]>
 }
-export function getTableSummary(connId: string, db: string, table: string): Promise<TableSummary> {
-  return MetadataService.GetTableSummary(connId, db, table) as unknown as Promise<TableSummary>
+export function getCreateTable(connId: string, db: string, table: string, schema = ''): Promise<string> {
+  return MetadataService.GetCreateTable(connId, db, schema, table) as unknown as Promise<string>
 }
-export function autocompleteFor(connId: string, db: string): Promise<AutocompleteSnapshot> {
-  return MetadataService.AutocompleteFor(connId, db) as unknown as Promise<AutocompleteSnapshot>
+export function getTableSummary(connId: string, db: string, table: string, schema = ''): Promise<TableSummary> {
+  return MetadataService.GetTableSummary(connId, db, schema, table) as unknown as Promise<TableSummary>
+}
+export function autocompleteFor(connId: string, db: string, schema = ''): Promise<AutocompleteSnapshot> {
+  return MetadataService.AutocompleteFor(connId, db, schema) as unknown as Promise<AutocompleteSnapshot>
 }
 export function browseTable(
   connId: string, db: string, table: string,
   limit: number, offset: number,
   orderBy?: string, orderDir?: string,
   whereClause?: string, orderByClause?: string,
+  schema = '',
 ): Promise<BrowseResult> {
   return MetadataService.BrowseTable(
-    connId, db, table, orderBy ?? '', orderDir ?? '',
+    connId, db, schema, table, orderBy ?? '', orderDir ?? '',
     limit, offset,
     whereClause ?? '', orderByClause ?? '',
   ) as unknown as Promise<BrowseResult>

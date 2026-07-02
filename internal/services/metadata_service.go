@@ -64,60 +64,70 @@ func (s *MetadataService) ListDatabases(ctx context.Context, connID string) ([]s
 	return m.ListDatabases(ctx)
 }
 
-func (s *MetadataService) ListTables(ctx context.Context, connID, db string) ([]dbdriver.TableInfo, error) {
+// ListSchemas returns the schemas under db. Empty for databases without a
+// schema level (Capabilities.Schemas == false, e.g. MySQL).
+func (s *MetadataService) ListSchemas(ctx context.Context, connID, db string) ([]string, error) {
 	m, err := s.resolveMeta(ctx, connID)
 	if err != nil {
 		return nil, err
 	}
-	return m.ListTables(ctx, db, "")
+	return m.ListSchemas(ctx, db)
 }
 
-func (s *MetadataService) ListViews(ctx context.Context, connID, db string) ([]dbdriver.ViewInfo, error) {
+func (s *MetadataService) ListTables(ctx context.Context, connID, db, schema string) ([]dbdriver.TableInfo, error) {
 	m, err := s.resolveMeta(ctx, connID)
 	if err != nil {
 		return nil, err
 	}
-	return m.ListViews(ctx, db, "")
+	return m.ListTables(ctx, db, schema)
 }
 
-func (s *MetadataService) ListColumns(ctx context.Context, connID, db, table string) ([]dbdriver.ColumnMeta, error) {
+func (s *MetadataService) ListViews(ctx context.Context, connID, db, schema string) ([]dbdriver.ViewInfo, error) {
 	m, err := s.resolveMeta(ctx, connID)
 	if err != nil {
 		return nil, err
 	}
-	return m.ListColumns(ctx, db, "", table)
+	return m.ListViews(ctx, db, schema)
 }
 
-func (s *MetadataService) ListIndexes(ctx context.Context, connID, db, table string) ([]dbdriver.IndexInfo, error) {
+func (s *MetadataService) ListColumns(ctx context.Context, connID, db, schema, table string) ([]dbdriver.ColumnMeta, error) {
 	m, err := s.resolveMeta(ctx, connID)
 	if err != nil {
 		return nil, err
 	}
-	return m.ListIndexes(ctx, db, "", table)
+	return m.ListColumns(ctx, db, schema, table)
 }
 
-func (s *MetadataService) ListForeignKeys(ctx context.Context, connID, db, table string) ([]dbdriver.ForeignKeyInfo, error) {
+func (s *MetadataService) ListIndexes(ctx context.Context, connID, db, schema, table string) ([]dbdriver.IndexInfo, error) {
 	m, err := s.resolveMeta(ctx, connID)
 	if err != nil {
 		return nil, err
 	}
-	return m.ListForeignKeys(ctx, db, "", table)
+	return m.ListIndexes(ctx, db, schema, table)
 }
 
-func (s *MetadataService) ListRoutines(ctx context.Context, connID, db string) ([]dbdriver.RoutineInfo, error) {
+func (s *MetadataService) ListForeignKeys(ctx context.Context, connID, db, schema, table string) ([]dbdriver.ForeignKeyInfo, error) {
 	m, err := s.resolveMeta(ctx, connID)
 	if err != nil {
 		return nil, err
 	}
-	return m.ListRoutines(ctx, db, "")
+	return m.ListForeignKeys(ctx, db, schema, table)
 }
 
-func (s *MetadataService) GetCreateTable(ctx context.Context, connID, db, table string) (string, error) {
+func (s *MetadataService) ListRoutines(ctx context.Context, connID, db, schema string) ([]dbdriver.RoutineInfo, error) {
+	m, err := s.resolveMeta(ctx, connID)
+	if err != nil {
+		return nil, err
+	}
+	return m.ListRoutines(ctx, db, schema)
+}
+
+func (s *MetadataService) GetCreateTable(ctx context.Context, connID, db, schema, table string) (string, error) {
 	m, err := s.resolveMeta(ctx, connID)
 	if err != nil {
 		return "", err
 	}
-	return m.GetCreateTable(ctx, db, "", table)
+	return m.GetCreateTable(ctx, db, schema, table)
 }
 
 // TableSummary bundles columns/indexes/FKs into one round-trip — handy for
@@ -129,21 +139,21 @@ type TableSummary struct {
 	ForeignKeys []dbdriver.ForeignKeyInfo `json:"foreignKeys"`
 }
 
-func (s *MetadataService) GetTableSummary(ctx context.Context, connID, db, table string) (TableSummary, error) {
+func (s *MetadataService) GetTableSummary(ctx context.Context, connID, db, schema, table string) (TableSummary, error) {
 	var empty TableSummary
 	m, err := s.resolveMeta(ctx, connID)
 	if err != nil {
 		return empty, err
 	}
-	cols, err := m.ListColumns(ctx, db, "", table)
+	cols, err := m.ListColumns(ctx, db, schema, table)
 	if err != nil {
 		return empty, err
 	}
-	ix, err := m.ListIndexes(ctx, db, "", table)
+	ix, err := m.ListIndexes(ctx, db, schema, table)
 	if err != nil {
 		return empty, err
 	}
-	fk, err := m.ListForeignKeys(ctx, db, "", table)
+	fk, err := m.ListForeignKeys(ctx, db, schema, table)
 	if err != nil {
 		return empty, err
 	}
@@ -167,7 +177,7 @@ type AutocompleteTable struct {
 // generous-but-finite number of tables so the IPC payload is bounded; tables
 // past the cap fall back to "table name only, no columns" — better than
 // nothing for completion.
-func (s *MetadataService) AutocompleteFor(ctx context.Context, connID, db string) (AutocompleteSnapshot, error) {
+func (s *MetadataService) AutocompleteFor(ctx context.Context, connID, db, schema string) (AutocompleteSnapshot, error) {
 	const maxColumnFetch = 500
 	var snap AutocompleteSnapshot
 	snap.Database = db
@@ -176,14 +186,14 @@ func (s *MetadataService) AutocompleteFor(ctx context.Context, connID, db string
 	if err != nil {
 		return snap, err
 	}
-	tables, err := m.ListTables(ctx, db, "")
+	tables, err := m.ListTables(ctx, db, schema)
 	if err != nil {
 		return snap, err
 	}
 	for i, t := range tables {
 		entry := AutocompleteTable{Name: t.Name}
 		if i < maxColumnFetch {
-			cols, err := m.ListColumns(ctx, db, "", t.Name)
+			cols, err := m.ListColumns(ctx, db, schema, t.Name)
 			if err == nil {
 				entry.Columns = make([]string, len(cols))
 				for j, c := range cols {
@@ -219,10 +229,10 @@ type BrowseResult struct {
 // orderBy/orderDir pair.
 // Pass limit < 0 to fetch all rows (no LIMIT/OFFSET clause). limit == 0 is
 // reserved as "use default" and resolves to 200.
-func (s *MetadataService) BrowseTable(ctx context.Context, connID, db, table, orderBy, orderDir string, limit, offset int, whereClause, orderByClause string) (BrowseResult, error) {
+func (s *MetadataService) BrowseTable(ctx context.Context, connID, db, schema, table, orderBy, orderDir string, limit, offset int, whereClause, orderByClause string) (BrowseResult, error) {
 	var empty BrowseResult
-	if connID == "" || db == "" || table == "" {
-		return empty, fmt.Errorf("MetadataService: connID, db and table are required")
+	if connID == "" || table == "" || (db == "" && schema == "") {
+		return empty, fmt.Errorf("MetadataService: connID, table and db (or schema) are required")
 	}
 	unlimited := limit < 0
 	if limit == 0 {
@@ -246,7 +256,7 @@ func (s *MetadataService) BrowseTable(ctx context.Context, connID, db, table, or
 	if q == nil {
 		return empty, fmt.Errorf("MetadataService: connection has no querier")
 	}
-	base := fmt.Sprintf("SELECT * FROM %s.%s", dia.QuoteIdentifier(db), dia.QuoteIdentifier(table))
+	base := fmt.Sprintf("SELECT * FROM %s", dbdriver.QualifyTable(dia, db, schema, table))
 
 	if whereClause != "" {
 		base = fmt.Sprintf("%s WHERE %s", base, whereClause)
@@ -284,7 +294,7 @@ func (s *MetadataService) BrowseTable(ctx context.Context, connID, db, table, or
 	}
 	out := BrowseResult{Columns: rs.Columns(), Rows: rows, SQL: paginated}
 	if ed := conn.Editor(); ed != nil {
-		if pk, perr := ed.PrimaryKeys(ctx, db, "", table); perr == nil {
+		if pk, perr := ed.PrimaryKeys(ctx, db, schema, table); perr == nil {
 			out.PrimaryKey = pk
 			out.HasUniqueKey = len(pk) > 0
 		}

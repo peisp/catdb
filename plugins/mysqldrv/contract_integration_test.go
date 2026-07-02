@@ -12,6 +12,7 @@ package mysqldrv
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -52,5 +53,14 @@ func TestMySQLContract(t *testing.T) {
 		Database: "test",
 	}
 
-	contract.Run(t, ctx, driver{}, cfg)
+	contract.Run(t, ctx, driver{}, cfg, contract.Fixtures{
+		SleepSQL: "SELECT SLEEP(2)",
+		CreateTableSQL: func(qualified string) string {
+			return fmt.Sprintf(`CREATE TABLE %s (
+				id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+				name VARCHAR(64) NOT NULL,
+				created_at DATETIME NULL
+			)`, qualified)
+		},
+	})
 }

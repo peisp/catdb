@@ -8,7 +8,6 @@ import (
 
 	"catdb/internal/core/session"
 	"catdb/internal/dbdriver"
-	"catdb/internal/registry"
 )
 
 // EditService is the IPC entry point for row-level editing on tables. The
@@ -47,12 +46,12 @@ func (s *EditService) resolve(ctx context.Context, connID string) (dbdriver.Conn
 // GetPrimaryKey returns the primary-key columns (or chosen unique key) for a
 // table. An empty result means the table is editable READ-ONLY: the front-end
 // hides the row-edit affordances and shows a banner.
-func (s *EditService) GetPrimaryKey(ctx context.Context, connID, db, table string) ([]string, error) {
+func (s *EditService) GetPrimaryKey(ctx context.Context, connID, db, schema, table string) ([]string, error) {
 	_, ed, err := s.resolve(ctx, connID)
 	if err != nil {
 		return nil, err
 	}
-	return ed.PrimaryKeys(ctx, db, "", table)
+	return ed.PrimaryKeys(ctx, db, schema, table)
 }
 
 // RowChange is the front-end's request to mutate one row.
@@ -68,6 +67,7 @@ func (s *EditService) GetPrimaryKey(ctx context.Context, connID, db, table strin
 type RowChange struct {
 	Op     string         `json:"op"`
 	DB     string         `json:"db"`
+	Schema string         `json:"schema,omitempty"`
 	Table  string         `json:"table"`
 	PK     map[string]any `json:"pk,omitempty"`
 	Values map[string]any `json:"values,omitempty"`
@@ -93,23 +93,17 @@ func (s *EditService) ApplyChange(ctx context.Context, connID string, ch RowChan
 		return empty, fmt.Errorf("EditService: table is required")
 	}
 
-	dia, err := s.dialect(ctx, connID)
-	if err != nil {
-		return empty, err
-	}
-	tbl := tableQualified(dia, ch.DB, ch.Table)
-
 	var (
 		sqlText string
 		args    []any
 	)
 	switch ch.Op {
 	case "insert":
-		sqlText, args, err = ed.BuildInsert(tbl, ch.Values)
+		sqlText, args, err = ed.BuildInsert(ch.DB, ch.Schema, ch.Table, ch.Values)
 	case "update":
-		sqlText, args, err = ed.BuildUpdate(tbl, ch.PK, ch.Values)
+		sqlText, args, err = ed.BuildUpdate(ch.DB, ch.Schema, ch.Table, ch.PK, ch.Values)
 	case "delete":
-		sqlText, args, err = ed.BuildDelete(tbl, ch.PK)
+		sqlText, args, err = ed.BuildDelete(ch.DB, ch.Schema, ch.Table, ch.PK)
 	default:
 		return empty, fmt.Errorf("EditService: unknown op %q", ch.Op)
 	}
@@ -130,29 +124,6 @@ func (s *EditService) ApplyChange(ctx context.Context, connID string, ch RowChan
 		LastInsertID: res.LastInsertID,
 		SQL:          interpolateSQL(sqlText, args),
 	}, nil
-}
-
-// dialect resolves the connection's dialect for identifier quoting.
-func (s *EditService) dialect(ctx context.Context, connID string) (dbdriver.Dialect, error) {
-	name, err := s.mgr.DriverName(ctx, connID)
-	if err != nil {
-		return nil, err
-	}
-	d, err := registry.Get(name)
-	if err != nil {
-		return nil, err
-	}
-	return d.Dialect(), nil
-}
-
-// tableQualified formats db.table for the Editor's BuildXxx, using the
-// driver's identifier-quoting rules. The Editor's own quoteTable already
-// handles the dotted form; this helper just composes the string consistently.
-func tableQualified(_ dbdriver.Dialect, db, table string) string {
-	if db == "" {
-		return table
-	}
-	return db + "." + table
 }
 
 // interpolateSQL replaces "?" placeholders with display-safe formatted values.

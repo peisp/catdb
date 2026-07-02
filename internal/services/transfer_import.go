@@ -39,6 +39,7 @@ type ImportOptions struct {
 	Format    ImportFormat `json:"format"`
 	Path      string       `json:"path"`
 	DB        string       `json:"db,omitempty"`
+	Schema    string       `json:"schema,omitempty"`
 	Table     string       `json:"table,omitempty"`   // CSV only
 	HasHeader bool         `json:"hasHeader,omitempty"`
 	Columns   []string     `json:"columns,omitempty"` // CSV only when HasHeader=false
@@ -133,10 +134,6 @@ func (s *TransferService) importCSV(
 		return ImportResult{}, fmt.Errorf("TransferService: connection has no editor")
 	}
 
-	table := opts.Table
-	if opts.DB != "" {
-		table = opts.DB + "." + opts.Table
-	}
 
 	var rowsAffected int64
 	var rowsRead int64
@@ -160,7 +157,7 @@ func (s *TransferService) importCSV(
 				valMap[c] = row[i]
 			}
 		}
-		sqlText, args, err := ed.BuildInsert(table, valMap)
+		sqlText, args, err := ed.BuildInsert(opts.DB, opts.Schema, opts.Table, valMap)
 		if err != nil {
 			emitProgress(transferID, rowsAffected, true, err.Error())
 			return ImportResult{}, err

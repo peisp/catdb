@@ -215,15 +215,15 @@ func (s *TransferService) exportStreaming(ctx context.Context, connID, sqlText s
 // ExportTable is a convenience wrapper around ExportQuery for "dump this
 // whole table". When IncludeDDL is true the resulting SQL file gets a
 // CREATE TABLE prefix from the driver's metadata layer.
-func (s *TransferService) ExportTable(ctx context.Context, connID, db, table string, opts ExportOptions) (ExportResult, error) {
-	if db == "" || table == "" {
-		return ExportResult{}, fmt.Errorf("TransferService: db and table required")
+func (s *TransferService) ExportTable(ctx context.Context, connID, db, schema, table string, opts ExportOptions) (ExportResult, error) {
+	if table == "" || (db == "" && schema == "") {
+		return ExportResult{}, fmt.Errorf("TransferService: table and db (or schema) required")
 	}
 	dia, err := s.dialect(ctx, connID)
 	if err != nil {
 		return ExportResult{}, err
 	}
-	sqlText := fmt.Sprintf("SELECT * FROM %s.%s", dia.QuoteIdentifier(db), dia.QuoteIdentifier(table))
+	sqlText := fmt.Sprintf("SELECT * FROM %s", dbdriver.QualifyTable(dia, db, schema, table))
 	// Carry the table name through so the SQL writer can produce real
 	// INSERT INTO <table> statements rather than INSERT INTO query_results.
 	opts.TableName = table
@@ -242,7 +242,7 @@ func (s *TransferService) ExportTable(ctx context.Context, connID, db, table str
 		if m == nil {
 			return ExportResult{}, fmt.Errorf("TransferService: metadata adapter missing")
 		}
-		ddl, err := m.GetCreateTable(ctx, db, "", table)
+		ddl, err := m.GetCreateTable(ctx, db, schema, table)
 		if err != nil {
 			return ExportResult{}, fmt.Errorf("TransferService: get DDL: %w", err)
 		}

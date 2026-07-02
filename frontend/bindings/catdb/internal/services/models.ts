@@ -379,6 +379,7 @@ export class ImportOptions {
     "format": ImportFormat;
     "path": string;
     "db"?: string;
+    "schema"?: string;
 
     /**
      * CSV only
@@ -409,10 +410,10 @@ export class ImportOptions {
      * Creates a new ImportOptions instance from a string or object.
      */
     static createFrom($$source: any = {}): ImportOptions {
-        const $$createField5_0 = $$createType2;
+        const $$createField6_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
-            $$parsedSource["columns"] = $$createField5_0($$parsedSource["columns"]);
+            $$parsedSource["columns"] = $$createField6_0($$parsedSource["columns"]);
         }
         return new ImportOptions($$parsedSource as Partial<ImportOptions>);
     }
@@ -628,6 +629,7 @@ export class QueryRunResult {
 export class RowChange {
     "op": string;
     "db": string;
+    "schema"?: string;
     "table": string;
     "pk"?: { [_ in string]?: any };
     "values"?: { [_ in string]?: any };
@@ -651,14 +653,14 @@ export class RowChange {
      * Creates a new RowChange instance from a string or object.
      */
     static createFrom($$source: any = {}): RowChange {
-        const $$createField3_0 = $$createType17;
         const $$createField4_0 = $$createType17;
+        const $$createField5_0 = $$createType17;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("pk" in $$parsedSource) {
-            $$parsedSource["pk"] = $$createField3_0($$parsedSource["pk"]);
+            $$parsedSource["pk"] = $$createField4_0($$parsedSource["pk"]);
         }
         if ("values" in $$parsedSource) {
-            $$parsedSource["values"] = $$createField4_0($$parsedSource["values"]);
+            $$parsedSource["values"] = $$createField5_0($$parsedSource["values"]);
         }
         return new RowChange($$parsedSource as Partial<RowChange>);
     }

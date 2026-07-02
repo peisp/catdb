@@ -36,8 +36,8 @@ export function ExportQuery(connID: string, sqlText: string, opts: $models.Expor
  * whole table". When IncludeDDL is true the resulting SQL file gets a
  * CREATE TABLE prefix from the driver's metadata layer.
  */
-export function ExportTable(connID: string, db: string, table: string, opts: $models.ExportOptions): $CancellablePromise<$models.ExportResult> {
-    return $Call.ByName("catdb/internal/services.TransferService.ExportTable", connID, db, table, opts).then(($result: any) => {
+export function ExportTable(connID: string, db: string, schema: string, table: string, opts: $models.ExportOptions): $CancellablePromise<$models.ExportResult> {
+    return $Call.ByName("catdb/internal/services.TransferService.ExportTable", connID, db, schema, table, opts).then(($result: any) => {
         return $$createType0($result);
     });
 }

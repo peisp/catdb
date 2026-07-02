@@ -8,8 +8,8 @@ import type {
 export type RowChange = BoundRowChange
 export type RowChangeResult = BoundRowChangeResult
 
-export function getPrimaryKey(connId: string, db: string, table: string): Promise<string[]> {
-  return EditService.GetPrimaryKey(connId, db, table) as unknown as Promise<string[]>
+export function getPrimaryKey(connId: string, db: string, table: string, schema = ''): Promise<string[]> {
+  return EditService.GetPrimaryKey(connId, db, schema, table) as unknown as Promise<string[]>
 }
 
 export function applyChange(connId: string, change: RowChange): Promise<RowChangeResult> {

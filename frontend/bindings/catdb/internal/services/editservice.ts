@@ -32,8 +32,8 @@ export function ApplyChange(connID: string, ch: $models.RowChange): $Cancellable
  * table. An empty result means the table is editable READ-ONLY: the front-end
  * hides the row-edit affordances and shows a banner.
  */
-export function GetPrimaryKey(connID: string, db: string, table: string): $CancellablePromise<string[]> {
-    return $Call.ByName("catdb/internal/services.EditService.GetPrimaryKey", connID, db, table).then(($result: any) => {
+export function GetPrimaryKey(connID: string, db: string, schema: string, table: string): $CancellablePromise<string[]> {
+    return $Call.ByName("catdb/internal/services.EditService.GetPrimaryKey", connID, db, schema, table).then(($result: any) => {
         return $$createType1($result);
     });
 }

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"catdb/internal/dbdriver"
 )
 
 // editor implements dbdriver.Editor for MySQL.
@@ -145,7 +147,7 @@ func firstUniqueIndex(ctx context.Context, db *sql.DB, schema, table string) ([]
 // BuildInsert constructs an INSERT into `table` using ordered column names
 // from the supplied row. Map iteration is unstable so we sort the column
 // list for deterministic SQL (helps tests + logs).
-func (e editor) BuildInsert(table string, row map[string]any) (string, []any, error) {
+func (e editor) BuildInsert(db, schema, table string, row map[string]any) (string, []any, error) {
 	if table == "" {
 		return "", nil, fmt.Errorf("mysqldrv: BuildInsert table is empty")
 	}
@@ -162,7 +164,7 @@ func (e editor) BuildInsert(table string, row map[string]any) (string, []any, er
 		args = append(args, row[c])
 	}
 	sqlText := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-		quoteTable(e.dialect, table),
+		e.qualify(db, schema, table),
 		strings.Join(quoted, ", "),
 		strings.Join(placeholders, ", "),
 	)
@@ -170,7 +172,7 @@ func (e editor) BuildInsert(table string, row map[string]any) (string, []any, er
 }
 
 // BuildUpdate constructs an UPDATE keyed on pk. Both maps must be non-empty.
-func (e editor) BuildUpdate(table string, pk, changes map[string]any) (string, []any, error) {
+func (e editor) BuildUpdate(db, schema, table string, pk, changes map[string]any) (string, []any, error) {
 	if table == "" {
 		return "", nil, fmt.Errorf("mysqldrv: BuildUpdate table is empty")
 	}
@@ -191,7 +193,7 @@ func (e editor) BuildUpdate(table string, pk, changes map[string]any) (string, [
 	args = append(args, whereArgs...)
 
 	sqlText := fmt.Sprintf("UPDATE %s SET %s WHERE %s",
-		quoteTable(e.dialect, table),
+		e.qualify(db, schema, table),
 		strings.Join(setClauses, ", "),
 		strings.Join(whereClauses, " AND "),
 	)
@@ -199,7 +201,7 @@ func (e editor) BuildUpdate(table string, pk, changes map[string]any) (string, [
 }
 
 // BuildDelete constructs a DELETE keyed on pk. Refuses an empty pk.
-func (e editor) BuildDelete(table string, pk map[string]any) (string, []any, error) {
+func (e editor) BuildDelete(db, schema, table string, pk map[string]any) (string, []any, error) {
 	if table == "" {
 		return "", nil, fmt.Errorf("mysqldrv: BuildDelete table is empty")
 	}
@@ -208,7 +210,7 @@ func (e editor) BuildDelete(table string, pk map[string]any) (string, []any, err
 	}
 	whereClauses, whereArgs := pkWhere(e.dialect, pk)
 	sqlText := fmt.Sprintf("DELETE FROM %s WHERE %s",
-		quoteTable(e.dialect, table),
+		e.qualify(db, schema, table),
 		strings.Join(whereClauses, " AND "),
 	)
 	return sqlText, whereArgs, nil
@@ -241,12 +243,8 @@ func pkWhere(d dialect, pk map[string]any) ([]string, []any) {
 	return clauses, args
 }
 
-// quoteTable handles both "table" and "db.table" forms.
-func quoteTable(d dialect, table string) string {
-	if i := strings.Index(table, "."); i > 0 {
-		left := table[:i]
-		right := table[i+1:]
-		return d.QuoteIdentifier(left) + "." + d.QuoteIdentifier(right)
-	}
-	return d.QuoteIdentifier(table)
+// qualify renders the quoted table reference. MySQL collapses schema into
+// the database level (resolveDB), so the result is `db`.`table` or `table`.
+func (e editor) qualify(db, schema, table string) string {
+	return dbdriver.QualifyTable(e.dialect, resolveDB(db, schema), "", table)
 }

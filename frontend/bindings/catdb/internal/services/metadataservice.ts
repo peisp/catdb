@@ -26,8 +26,8 @@ import * as $models from "./models.js";
  * past the cap fall back to "table name only, no columns" — better than
  * nothing for completion.
  */
-export function AutocompleteFor(connID: string, db: string): $CancellablePromise<$models.AutocompleteSnapshot> {
-    return $Call.ByName("catdb/internal/services.MetadataService.AutocompleteFor", connID, db).then(($result: any) => {
+export function AutocompleteFor(connID: string, db: string, schema: string): $CancellablePromise<$models.AutocompleteSnapshot> {
+    return $Call.ByName("catdb/internal/services.MetadataService.AutocompleteFor", connID, db, schema).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -46,24 +46,24 @@ export function AutocompleteFor(connID: string, db: string): $CancellablePromise
  * Pass limit < 0 to fetch all rows (no LIMIT/OFFSET clause). limit == 0 is
  * reserved as "use default" and resolves to 200.
  */
-export function BrowseTable(connID: string, db: string, table: string, orderBy: string, orderDir: string, limit: number, offset: number, whereClause: string, orderByClause: string): $CancellablePromise<$models.BrowseResult> {
-    return $Call.ByName("catdb/internal/services.MetadataService.BrowseTable", connID, db, table, orderBy, orderDir, limit, offset, whereClause, orderByClause).then(($result: any) => {
+export function BrowseTable(connID: string, db: string, schema: string, table: string, orderBy: string, orderDir: string, limit: number, offset: number, whereClause: string, orderByClause: string): $CancellablePromise<$models.BrowseResult> {
+    return $Call.ByName("catdb/internal/services.MetadataService.BrowseTable", connID, db, schema, table, orderBy, orderDir, limit, offset, whereClause, orderByClause).then(($result: any) => {
         return $$createType1($result);
     });
 }
 
-export function GetCreateTable(connID: string, db: string, table: string): $CancellablePromise<string> {
-    return $Call.ByName("catdb/internal/services.MetadataService.GetCreateTable", connID, db, table);
+export function GetCreateTable(connID: string, db: string, schema: string, table: string): $CancellablePromise<string> {
+    return $Call.ByName("catdb/internal/services.MetadataService.GetCreateTable", connID, db, schema, table);
 }
 
-export function GetTableSummary(connID: string, db: string, table: string): $CancellablePromise<$models.TableSummary> {
-    return $Call.ByName("catdb/internal/services.MetadataService.GetTableSummary", connID, db, table).then(($result: any) => {
+export function GetTableSummary(connID: string, db: string, schema: string, table: string): $CancellablePromise<$models.TableSummary> {
+    return $Call.ByName("catdb/internal/services.MetadataService.GetTableSummary", connID, db, schema, table).then(($result: any) => {
         return $$createType2($result);
     });
 }
 
-export function ListColumns(connID: string, db: string, table: string): $CancellablePromise<dbdriver$0.ColumnMeta[]> {
-    return $Call.ByName("catdb/internal/services.MetadataService.ListColumns", connID, db, table).then(($result: any) => {
+export function ListColumns(connID: string, db: string, schema: string, table: string): $CancellablePromise<dbdriver$0.ColumnMeta[]> {
+    return $Call.ByName("catdb/internal/services.MetadataService.ListColumns", connID, db, schema, table).then(($result: any) => {
         return $$createType4($result);
     });
 }
@@ -74,32 +74,42 @@ export function ListDatabases(connID: string): $CancellablePromise<string[]> {
     });
 }
 
-export function ListForeignKeys(connID: string, db: string, table: string): $CancellablePromise<dbdriver$0.ForeignKeyInfo[]> {
-    return $Call.ByName("catdb/internal/services.MetadataService.ListForeignKeys", connID, db, table).then(($result: any) => {
+export function ListForeignKeys(connID: string, db: string, schema: string, table: string): $CancellablePromise<dbdriver$0.ForeignKeyInfo[]> {
+    return $Call.ByName("catdb/internal/services.MetadataService.ListForeignKeys", connID, db, schema, table).then(($result: any) => {
         return $$createType7($result);
     });
 }
 
-export function ListIndexes(connID: string, db: string, table: string): $CancellablePromise<dbdriver$0.IndexInfo[]> {
-    return $Call.ByName("catdb/internal/services.MetadataService.ListIndexes", connID, db, table).then(($result: any) => {
+export function ListIndexes(connID: string, db: string, schema: string, table: string): $CancellablePromise<dbdriver$0.IndexInfo[]> {
+    return $Call.ByName("catdb/internal/services.MetadataService.ListIndexes", connID, db, schema, table).then(($result: any) => {
         return $$createType9($result);
     });
 }
 
-export function ListRoutines(connID: string, db: string): $CancellablePromise<dbdriver$0.RoutineInfo[]> {
-    return $Call.ByName("catdb/internal/services.MetadataService.ListRoutines", connID, db).then(($result: any) => {
+export function ListRoutines(connID: string, db: string, schema: string): $CancellablePromise<dbdriver$0.RoutineInfo[]> {
+    return $Call.ByName("catdb/internal/services.MetadataService.ListRoutines", connID, db, schema).then(($result: any) => {
         return $$createType11($result);
     });
 }
 
-export function ListTables(connID: string, db: string): $CancellablePromise<dbdriver$0.TableInfo[]> {
-    return $Call.ByName("catdb/internal/services.MetadataService.ListTables", connID, db).then(($result: any) => {
+/**
+ * ListSchemas returns the schemas under db. Empty for databases without a
+ * schema level (Capabilities.Schemas == false, e.g. MySQL).
+ */
+export function ListSchemas(connID: string, db: string): $CancellablePromise<string[]> {
+    return $Call.ByName("catdb/internal/services.MetadataService.ListSchemas", connID, db).then(($result: any) => {
+        return $$createType5($result);
+    });
+}
+
+export function ListTables(connID: string, db: string, schema: string): $CancellablePromise<dbdriver$0.TableInfo[]> {
+    return $Call.ByName("catdb/internal/services.MetadataService.ListTables", connID, db, schema).then(($result: any) => {
         return $$createType13($result);
     });
 }
 
-export function ListViews(connID: string, db: string): $CancellablePromise<dbdriver$0.ViewInfo[]> {
-    return $Call.ByName("catdb/internal/services.MetadataService.ListViews", connID, db).then(($result: any) => {
+export function ListViews(connID: string, db: string, schema: string): $CancellablePromise<dbdriver$0.ViewInfo[]> {
+    return $Call.ByName("catdb/internal/services.MetadataService.ListViews", connID, db, schema).then(($result: any) => {
         return $$createType15($result);
     });
 }

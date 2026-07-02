@@ -2,31 +2,48 @@
 // must pass. A new driver is "done" when contract.Run completes with no
 // errors against a real instance.
 //
-// The harness is database-agnostic at the surface (Driver + ConnConfig only),
-// but the SQL it issues stays inside the SQL-92 / common-dialect subset so it
-// works across plugins without per-driver branches.
+// The harness itself is dialect-agnostic: identifiers are quoted through the
+// driver's Dialect, tables are addressed via dbdriver.QualifyTable, and the
+// few statements that cannot be written portably (CREATE TABLE with an
+// auto-increment key, a server-side sleep) are injected per driver through
+// Fixtures.
 //
 // Tests in plugins/<driver>/contract_test.go spin a real DB (testcontainers
 // or local) and call:
 //
-//	contract.Run(t, ctx, driver, cfg)
+//	contract.Run(t, ctx, driver, cfg, contract.Fixtures{...})
 package contract
 
 import (
 	"context"
 	"errors"
-	"fmt"
-	"sort"
 	"testing"
 	"time"
 
 	"catdb/internal/dbdriver"
 )
 
+// Fixtures carries the per-driver SQL the harness cannot express portably.
+type Fixtures struct {
+	// SleepSQL is a SELECT that blocks server-side for ≥2 seconds, used to
+	// exercise ctx cancellation (MySQL "SELECT SLEEP(2)", PG "SELECT pg_sleep(2)").
+	SleepSQL string
+
+	// CreateTableSQL returns DDL creating the standard contract table under
+	// the given qualified (already-quoted) name. Required shape, in order:
+	//   id         integer, PRIMARY KEY, auto-increment
+	//   name       varchar(64) NOT NULL
+	//   created_at timestamp-ish, NULLable
+	CreateTableSQL func(qualifiedName string) string
+}
+
 // Run executes the full suite against an open Driver + ConnConfig pair. The
 // connection is opened/closed internally; the caller does not need to.
-func Run(t *testing.T, ctx context.Context, d dbdriver.Driver, cfg dbdriver.ConnConfig) {
+func Run(t *testing.T, ctx context.Context, d dbdriver.Driver, cfg dbdriver.ConnConfig, fx Fixtures) {
 	t.Helper()
+	if fx.SleepSQL == "" || fx.CreateTableSQL == nil {
+		t.Fatal("contract: Fixtures.SleepSQL and Fixtures.CreateTableSQL are required")
+	}
 	conn, err := d.Open(ctx, cfg)
 	if err != nil {
 		t.Fatalf("Driver.Open: %v", err)
@@ -36,9 +53,9 @@ func Run(t *testing.T, ctx context.Context, d dbdriver.Driver, cfg dbdriver.Conn
 	t.Run("Ping", func(t *testing.T) { testPing(t, ctx, conn) })
 	t.Run("ServerInfo", func(t *testing.T) { testServerInfo(t, ctx, conn) })
 	t.Run("Query/Scalar", func(t *testing.T) { testQueryScalar(t, ctx, conn) })
-	t.Run("Query/Cancel", func(t *testing.T) { testQueryCancel(t, ctx, conn) })
-	t.Run("Metadata", func(t *testing.T) { testMetadata(t, ctx, conn) })
-	t.Run("Edit", func(t *testing.T) { testEdit(t, ctx, conn) })
+	t.Run("Query/Cancel", func(t *testing.T) { testQueryCancel(t, ctx, conn, fx) })
+	t.Run("Metadata", func(t *testing.T) { testMetadata(t, ctx, d, conn, fx) })
+	t.Run("Edit", func(t *testing.T) { testEdit(t, ctx, d, conn, fx) })
 }
 
 func testPing(t *testing.T, ctx context.Context, c dbdriver.Connection) {
@@ -82,14 +99,14 @@ func testQueryScalar(t *testing.T, ctx context.Context, c dbdriver.Connection) {
 	}
 }
 
-func testQueryCancel(t *testing.T, ctx context.Context, c dbdriver.Connection) {
+func testQueryCancel(t *testing.T, ctx context.Context, c dbdriver.Connection, fx Fixtures) {
 	// Use a context with a very tight deadline against a sleep so the cancel
 	// path is exercised reliably without relying on SIGTERM-style hangs.
 	tctx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
 	defer cancel()
-	_, err := c.Querier().Query(tctx, "SELECT SLEEP(2)")
+	_, err := c.Querier().Query(tctx, fx.SleepSQL)
 	if err == nil {
-		t.Fatal("expected ctx-related error on SLEEP(2)")
+		t.Fatalf("expected ctx-related error on %q", fx.SleepSQL)
 	}
 	if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(tctx.Err(), context.DeadlineExceeded) {
 		// The driver may wrap the error; accept any cancel-shaped failure.
@@ -97,7 +114,10 @@ func testQueryCancel(t *testing.T, ctx context.Context, c dbdriver.Connection) {
 	}
 }
 
-func testMetadata(t *testing.T, ctx context.Context, c dbdriver.Connection) {
+// makeContractTable creates the standard fixture table and registers cleanup.
+// Returns the (db, schema, qualified-name) triple the caller should use.
+func makeContractTable(t *testing.T, ctx context.Context, d dbdriver.Driver, c dbdriver.Connection, fx Fixtures, tn string) (db, schema, qualified string) {
+	t.Helper()
 	m := c.Metadata()
 	if m == nil {
 		t.Fatal("Metadata() returned nil")
@@ -109,37 +129,42 @@ func testMetadata(t *testing.T, ctx context.Context, c dbdriver.Connection) {
 	if len(dbs) == 0 {
 		t.Fatal("ListDatabases returned 0 databases — pick a DB that has at least one user schema")
 	}
+	db = pickFirst(dbs, "test", "catdb")
 
-	// Pick the first DB the harness can read; preference for any test DB.
-	db := pickDB(dbs)
+	if d.Capabilities().Schemas {
+		schemas, err := m.ListSchemas(ctx, db)
+		if err != nil {
+			t.Fatalf("ListSchemas: %v", err)
+		}
+		if len(schemas) == 0 {
+			t.Fatal("Capabilities.Schemas is true but ListSchemas returned nothing")
+		}
+		schema = pickFirst(schemas, "public")
+	}
 
-	// Create + describe a small table.
-	tn := "ct_contract"
-	mustExec(t, ctx, c, fmt.Sprintf("USE `%s`", db))
-	mustExec(t, ctx, c, fmt.Sprintf("DROP TABLE IF EXISTS `%s`", tn))
-	mustExec(t, ctx, c, fmt.Sprintf(`CREATE TABLE %s (
-		id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
-		name VARCHAR(64) NOT NULL,
-		created_at DATETIME NULL
-	)`, tn))
+	qualified = dbdriver.QualifyTable(d.Dialect(), db, schema, tn)
+	mustExec(t, ctx, c, "DROP TABLE IF EXISTS "+qualified)
+	mustExec(t, ctx, c, fx.CreateTableSQL(qualified))
 	t.Cleanup(func() {
-		_, _ = c.Querier().Exec(ctx, fmt.Sprintf("DROP TABLE IF EXISTS `%s`.`%s`", db, tn))
+		_, _ = c.Querier().Exec(ctx, "DROP TABLE IF EXISTS "+qualified)
 	})
+	return db, schema, qualified
+}
 
-	tables, err := m.ListTables(ctx, db, "")
+func testMetadata(t *testing.T, ctx context.Context, d dbdriver.Driver, c dbdriver.Connection, fx Fixtures) {
+	m := c.Metadata()
+	tn := "ct_contract"
+	db, schema, _ := makeContractTable(t, ctx, d, c, fx, tn)
+
+	tables, err := m.ListTables(ctx, db, schema)
 	if err != nil {
 		t.Fatalf("ListTables: %v", err)
 	}
 	if !containsTable(tables, tn) {
-		names := make([]string, len(tables))
-		for i, t := range tables {
-			names[i] = t.Name
-		}
-		sort.Strings(names)
-		t.Fatalf("ListTables missing %s; saw %d tables", tn, len(names))
+		t.Fatalf("ListTables missing %s; saw %d tables", tn, len(tables))
 	}
 
-	cols, err := m.ListColumns(ctx, db, "", tn)
+	cols, err := m.ListColumns(ctx, db, schema, tn)
 	if err != nil {
 		t.Fatalf("ListColumns: %v", err)
 	}
@@ -150,7 +175,7 @@ func testMetadata(t *testing.T, ctx context.Context, c dbdriver.Connection) {
 		t.Fatalf("expected id to be PK; got %+v", cols[0])
 	}
 
-	ix, err := m.ListIndexes(ctx, db, "", tn)
+	ix, err := m.ListIndexes(ctx, db, schema, tn)
 	if err != nil {
 		t.Fatalf("ListIndexes: %v", err)
 	}
@@ -158,7 +183,7 @@ func testMetadata(t *testing.T, ctx context.Context, c dbdriver.Connection) {
 		t.Fatalf("ListIndexes missing PRIMARY: %+v", ix)
 	}
 
-	ddl, err := m.GetCreateTable(ctx, db, "", tn)
+	ddl, err := m.GetCreateTable(ctx, db, schema, tn)
 	if err != nil {
 		t.Fatalf("GetCreateTable: %v", err)
 	}
@@ -167,31 +192,16 @@ func testMetadata(t *testing.T, ctx context.Context, c dbdriver.Connection) {
 	}
 }
 
-func testEdit(t *testing.T, ctx context.Context, c dbdriver.Connection) {
-	m := c.Metadata()
+func testEdit(t *testing.T, ctx context.Context, d dbdriver.Driver, c dbdriver.Connection, fx Fixtures) {
 	ed := c.Editor()
 	q := c.Querier()
-	if m == nil || ed == nil || q == nil {
+	if ed == nil || q == nil {
 		t.Fatal("Connection adapters missing")
 	}
-
-	dbs, err := m.ListDatabases(ctx)
-	if err != nil {
-		t.Fatalf("ListDatabases: %v", err)
-	}
-	db := pickDB(dbs)
 	tn := "ct_edit"
-	mustExec(t, ctx, c, fmt.Sprintf("USE `%s`", db))
-	mustExec(t, ctx, c, fmt.Sprintf("DROP TABLE IF EXISTS `%s`", tn))
-	mustExec(t, ctx, c, fmt.Sprintf(`CREATE TABLE %s (
-		id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
-		name VARCHAR(64) NOT NULL
-	)`, tn))
-	t.Cleanup(func() {
-		_, _ = c.Querier().Exec(ctx, fmt.Sprintf("DROP TABLE IF EXISTS `%s`.`%s`", db, tn))
-	})
+	db, schema, qualified := makeContractTable(t, ctx, d, c, fx, tn)
 
-	pk, err := ed.PrimaryKeys(ctx, db, "", tn)
+	pk, err := ed.PrimaryKeys(ctx, db, schema, tn)
 	if err != nil {
 		t.Fatalf("PrimaryKeys: %v", err)
 	}
@@ -200,7 +210,7 @@ func testEdit(t *testing.T, ctx context.Context, c dbdriver.Connection) {
 	}
 
 	// Insert
-	insSQL, insArgs, err := ed.BuildInsert(tn, map[string]any{"name": "Alice"})
+	insSQL, insArgs, err := ed.BuildInsert(db, schema, tn, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("BuildInsert: %v", err)
 	}
@@ -211,10 +221,13 @@ func testEdit(t *testing.T, ctx context.Context, c dbdriver.Connection) {
 	if res.RowsAffected != 1 {
 		t.Fatalf("expected RowsAffected=1, got %d", res.RowsAffected)
 	}
-	id := res.LastInsertID
+
+	// Fetch the generated id back with a literal predicate — LastInsertID is
+	// not portable across databases, placeholder syntax isn't either.
+	id := fetchScalar(t, ctx, c, "SELECT id FROM "+qualified+" WHERE name = 'Alice'")
 
 	// Update
-	upSQL, upArgs, err := ed.BuildUpdate(tn, map[string]any{"id": id}, map[string]any{"name": "Alicia"})
+	upSQL, upArgs, err := ed.BuildUpdate(db, schema, tn, map[string]any{"id": id}, map[string]any{"name": "Alicia"})
 	if err != nil {
 		t.Fatalf("BuildUpdate: %v", err)
 	}
@@ -227,7 +240,7 @@ func testEdit(t *testing.T, ctx context.Context, c dbdriver.Connection) {
 	}
 
 	// Delete
-	delSQL, delArgs, err := ed.BuildDelete(tn, map[string]any{"id": id})
+	delSQL, delArgs, err := ed.BuildDelete(db, schema, tn, map[string]any{"id": id})
 	if err != nil {
 		t.Fatalf("BuildDelete: %v", err)
 	}
@@ -249,8 +262,26 @@ func mustExec(t *testing.T, ctx context.Context, c dbdriver.Connection, sql stri
 	}
 }
 
-func pickDB(names []string) string {
-	for _, want := range []string{"test", "catdb", "public"} {
+func fetchScalar(t *testing.T, ctx context.Context, c dbdriver.Connection, sql string) any {
+	t.Helper()
+	rs, err := c.Querier().Query(ctx, sql)
+	if err != nil {
+		t.Fatalf("query %q: %v", sql, err)
+	}
+	defer rs.Close()
+	rows, _, err := rs.Next(1)
+	if err != nil {
+		t.Fatalf("next %q: %v", sql, err)
+	}
+	if len(rows) != 1 || len(rows[0]) == 0 {
+		t.Fatalf("expected 1 scalar row from %q, got %d rows", sql, len(rows))
+	}
+	return rows[0][0]
+}
+
+// pickFirst returns the first preferred name present in names, else names[0].
+func pickFirst(names []string, preferred ...string) string {
+	for _, want := range preferred {
 		for _, n := range names {
 			if n == want {
 				return n
