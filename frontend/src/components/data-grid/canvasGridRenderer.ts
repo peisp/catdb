@@ -14,6 +14,8 @@ export type CellAlign = 'left' | 'right' | 'center'
 export interface GridColumn {
   title: string
   align: CellAlign
+  /** 表头第二行（字段类型），存在时表头为两行布局 */
+  subtitle?: string
 }
 
 export interface GridTheme {
@@ -340,17 +342,27 @@ export function drawGrid(o: DrawGridOptions): void {
   // 3. 表头行（钉顶）
   ctx.fillStyle = theme.headerBg
   ctx.fillRect(0, 0, o.width, hh)
-  ctx.font = headerFont
+  const subtitleFont = `${Math.max(9, fonts.size - 2)}px ${fonts.family}`
   for (let c = firstCol; c < colCount; c++) {
     const x = colX(c)
     if (x >= o.width) break
     const w = o.colWidths[c]
     const sortHere = o.sortState?.col === c
     const reserve = o.sortable ? SORT_ZONE_WIDTH : 0
-    ctx.fillStyle = theme.text
+    const sub = o.columns[c].subtitle
+    const maxTextW = w - CELL_PAD * 2 - reserve
     ctx.textAlign = 'left'
-    const t = fitText(ctx, o.columns[c].title, w - CELL_PAD * 2 - reserve)
-    ctx.fillText(t, x + CELL_PAD, hh / 2)
+    ctx.font = headerFont
+    ctx.fillStyle = theme.text
+    if (sub) {
+      // 两行：字段名 + 类型
+      ctx.fillText(fitText(ctx, o.columns[c].title, maxTextW), x + CELL_PAD, hh * 0.32)
+      ctx.font = subtitleFont
+      ctx.fillStyle = theme.textMuted
+      ctx.fillText(fitText(ctx, sub, maxTextW), x + CELL_PAD, hh * 0.72)
+    } else {
+      ctx.fillText(fitText(ctx, o.columns[c].title, maxTextW), x + CELL_PAD, hh / 2)
+    }
     if (sortHere) {
       drawSortIndicator(ctx, x + w - SORT_ZONE_WIDTH / 2 - 2, hh / 2, o.sortState!.order, theme.textMuted)
     }

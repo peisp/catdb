@@ -662,6 +662,7 @@ function onFilterClear() {
           :fetching="loading"
           :sort-remote="true"
           :sort-state="sortState"
+          :show-types="true"
           @selection-change="onSelectionChange"
           @cell-context-menu="onCellContextMenu"
           @edit-commit="onEditCommit"

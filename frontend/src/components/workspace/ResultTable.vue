@@ -89,6 +89,7 @@ function onExportSelect(ev: Event) {
         :columns="columns"
         :rows="rows"
         :fetching="fetching"
+        :show-types="true"
         @selection-change="onSelectionChange"
         @cell-context-menu="onCellContextMenu"
         @load-more="emit('load-more')"

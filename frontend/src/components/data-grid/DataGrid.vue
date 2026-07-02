@@ -65,6 +65,8 @@ interface Props {
   dirtyRows?: Set<number>
   /** Wails 原生右键菜单名（覆盖默认的 catdb-grid-cell / catdb-grid-cell-edit 切换逻辑）。 */
   contextMenuName?: string
+  /** 表头第二行显示字段类型（nativeType）。合成列的表（如 TablesOverview）不开。 */
+  showTypes?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -80,6 +82,7 @@ const props = withDefaults(defineProps<Props>(), {
   sortRemote: false,
   sortState: null,
   contextMenuName: '',
+  showTypes: false,
 })
 
 const emit = defineEmits<{
@@ -100,8 +103,9 @@ const emit = defineEmits<{
 const themeVars = useThemeVars()
 const theme = useThemeStore()
 
-const HEADER_H = 28
 const ROWNUM_W = 50
+// 显示字段类型时表头两行布局，加高
+const headerH = computed(() => (props.showTypes ? 38 : 28))
 const FONT_SIZE = 12
 const FONT_FAMILY =
   '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif'
@@ -229,8 +233,30 @@ function measureText(text: string, font: string): number {
   return ctx.measureText(text).width
 }
 
+// 表头类型行文案：统一小写；nativeType 不带括号时（查询结果集走 wire
+// protocol，只有裸类型名）从 length/precision/scale 补上长度/精度。
+// 字符类型不补：协议报告的 length 是字节数（utf8mb4 下 varchar(255) 报
+// 1020），显示会误导；元数据路径的 COLUMN_TYPE 本身就带准确括号。
+function headerTypeText(c: ColumnMeta): string {
+  const t = c.nativeType
+  if (!t) return ''
+  const base = t.toLowerCase()
+  if (base.includes('(')) return base
+  const upper = t.toUpperCase()
+  if ((upper === 'DECIMAL' || upper === 'NUMERIC') && c.precision && c.precision > 0 && c.precision <= 65) {
+    return `${base}(${c.precision},${c.scale ?? 0})`
+  }
+  if ((upper === 'BINARY' || upper === 'VARBINARY' || upper === 'BIT') && c.length && c.length > 0) {
+    return `${base}(${c.length})`
+  }
+  return base
+}
+
 function headerMinWidth(col: ColumnMeta): number {
-  const textW = measureText(col.name, `500 ${FONT_SIZE}px ${FONT_FAMILY}`)
+  let textW = measureText(col.name, `500 ${FONT_SIZE}px ${FONT_FAMILY}`)
+  if (props.showTypes && col.nativeType) {
+    textW = Math.max(textW, measureText(headerTypeText(col), `${FONT_SIZE - 2}px ${FONT_FAMILY}`))
+  }
   const iconW = props.sortable ? SORT_ZONE_WIDTH : 0
   return Math.ceil(textW + iconW + 16 + 1)
 }
@@ -238,12 +264,12 @@ function headerMinWidth(col: ColumnMeta): number {
 // ---- 几何 ----
 const offsets = computed(() => buildOffsets(colWidths.value))
 const totalWidth = computed(() => ROWNUM_W + (offsets.value[offsets.value.length - 1] ?? 0))
-const totalHeight = computed(() => HEADER_H + props.rows.length * props.rowHeight)
+const totalHeight = computed(() => headerH.value + props.rows.length * props.rowHeight)
 
 function geoOpts() {
   return {
     rowNumberWidth: ROWNUM_W,
-    headerHeight: HEADER_H,
+    headerHeight: headerH.value,
     rowHeight: props.rowHeight,
     colOffsets: offsets.value,
   }
@@ -332,14 +358,18 @@ function draw() {
     theme: gridTheme.value,
     fonts: { family: FONT_FAMILY, size: FONT_SIZE },
     rowNumberWidth: ROWNUM_W,
-    headerHeight: HEADER_H,
+    headerHeight: headerH.value,
     rowHeight: props.rowHeight,
     colWidths: colWidths.value,
     colOffsets: offsets.value,
     scrollTop: scrollTop.value,
     scrollLeft: scrollLeft.value,
     rowCount: props.rows.length,
-    columns: props.columns.map((c) => ({ title: c.name, align: pickAlign(c) })),
+    columns: props.columns.map((c) => ({
+      title: c.name,
+      align: pickAlign(c),
+      subtitle: props.showTypes ? headerTypeText(c) : undefined,
+    })),
     cellText,
     cellIsNull: (r, c) => props.rows[r]?.[c] == null,
     isDirtyCell: (r, c) => dirtySet.has(`${r}:${c}`),
@@ -378,9 +408,9 @@ function scrollCellIntoView(row: number, col: number) {
   const cellTop = row * props.rowHeight
   const cellBottom = cellTop + props.rowHeight
   const viewTop = el.scrollTop
-  const viewBottom = viewTop + el.clientHeight - HEADER_H
+  const viewBottom = viewTop + el.clientHeight - headerH.value
   if (cellTop < viewTop) el.scrollTop = cellTop
-  else if (cellBottom > viewBottom) el.scrollTop = cellBottom - (el.clientHeight - HEADER_H)
+  else if (cellBottom > viewBottom) el.scrollTop = cellBottom - (el.clientHeight - headerH.value)
   const cellLeft = offsets.value[col] ?? 0
   const cellRight = cellLeft + (colWidths.value[col] ?? 0)
   const viewLeft = el.scrollLeft
@@ -409,6 +439,7 @@ let drag: {
   resizeStartX: number
   resizeStartW: number
   pointer: { x: number; y: number }
+  start: { x: number; y: number }
 } | null = null
 let autoScrollRaf = 0
 
@@ -434,21 +465,20 @@ function onMouseDown(e: MouseEvent) {
           mode: 'resize', moved: false, clickCell: null,
           resizeCol: target, resizeStartX: e.clientX, resizeStartW: colWidths.value[target],
           pointer: { x: e.clientX, y: e.clientY },
+          start: { x: e.clientX, y: e.clientY },
         }
         attachWindowDrag()
         return
       }
-      // 排序区（表头右侧） → 排序循环
-      if (props.sortable && hit.xInCol >= w - SORT_ZONE_WIDTH) {
-        sortCycle(hit.col)
-        return
+      // 表头：点击=排序，拖拽=选列。选区在首次真实移动时才建立（见
+      // updateDragSelection），松开时未移动则视为排序点击。
+      drag = {
+        mode: 'cols', moved: false, clickCell: { row: -1, col: hit.col },
+        resizeCol: -1, resizeStartX: 0, resizeStartW: 0,
+        pointer: { x: e.clientX, y: e.clientY },
+        start: { x: e.clientX, y: e.clientY },
       }
-      // 表头 → 整列选择（可拖拽扩列）
-      if (rows > 0) {
-        setSelection({ row: 0, col: hit.col }, { row: rows - 1, col: hit.col })
-        drag = { mode: 'cols', moved: false, clickCell: null, resizeCol: -1, resizeStartX: 0, resizeStartW: 0, pointer: { x: e.clientX, y: e.clientY } }
-        attachWindowDrag()
-      }
+      attachWindowDrag()
     }
     return
   }
@@ -456,7 +486,12 @@ function onMouseDown(e: MouseEvent) {
   if (hit.region === 'rownum') {
     if (inRowRange(hit.row) && cols > 0) {
       setSelection({ row: hit.row, col: 0 }, { row: hit.row, col: cols - 1 })
-      drag = { mode: 'rows', moved: false, clickCell: null, resizeCol: -1, resizeStartX: 0, resizeStartW: 0, pointer: { x: e.clientX, y: e.clientY } }
+      drag = {
+        mode: 'rows', moved: false, clickCell: null,
+        resizeCol: -1, resizeStartX: 0, resizeStartW: 0,
+        pointer: { x: e.clientX, y: e.clientY },
+        start: { x: e.clientX, y: e.clientY },
+      }
       attachWindowDrag()
     }
     return
@@ -479,6 +514,7 @@ function onMouseDown(e: MouseEvent) {
     clickCell: e.shiftKey ? null : { row: hit.row, col: hit.col },
     resizeCol: -1, resizeStartX: 0, resizeStartW: 0,
     pointer: { x: e.clientX, y: e.clientY },
+    start: { x: e.clientX, y: e.clientY },
   }
   attachWindowDrag()
 }
@@ -492,7 +528,7 @@ function bodyCellAtPointer(clientX: number, clientY: number): { row: number; col
   const rect = canvasRef.value!.getBoundingClientRect()
   const x = clientX - rect.left
   const y = clientY - rect.top
-  const contentY = y - HEADER_H + scrollTop.value
+  const contentY = y - headerH.value + scrollTop.value
   const row = Math.max(0, Math.min(props.rows.length - 1, Math.floor(contentY / props.rowHeight)))
   const contentX = x - ROWNUM_W + scrollLeft.value
   const off = offsets.value
@@ -514,7 +550,15 @@ function bodyCellAtPointer(clientX: number, clientY: number): { row: number; col
 }
 
 function updateDragSelection() {
-  if (!drag || !selAnchor.value) return
+  if (!drag || !props.rows.length) return
+  // 表头 cols 拖拽：首次移动超过阈值才建立选区（未移动的点击留给排序）
+  if (!selAnchor.value) {
+    if (drag.mode !== 'cols' || !drag.clickCell) return
+    const dx = Math.abs(drag.pointer.x - drag.start.x)
+    const dy = Math.abs(drag.pointer.y - drag.start.y)
+    if (dx + dy < 4) return
+    selAnchor.value = { row: 0, col: drag.clickCell.col }
+  }
   const { row, col } = bodyCellAtPointer(drag.pointer.x, drag.pointer.y)
   let head: { row: number; col: number }
   if (drag.mode === 'rows') head = { row, col: props.columns.length - 1 }
@@ -560,7 +604,7 @@ function maybeAutoScroll() {
     const py = drag.pointer.y
     let dx = 0
     let dy = 0
-    if (py < rect.top + HEADER_H) dy = -Math.min(40, (rect.top + HEADER_H - py) / 2)
+    if (py < rect.top + headerH.value) dy = -Math.min(40, (rect.top + headerH.value - py) / 2)
     else if (py > rect.bottom) dy = Math.min(40, (py - rect.bottom) / 2)
     if (px < rect.left + ROWNUM_W) dx = -Math.min(40, (rect.left + ROWNUM_W - px) / 2)
     else if (px > rect.right) dx = Math.min(40, (px - rect.right) / 2)
@@ -587,6 +631,15 @@ function onWindowDragUp() {
   // 单击（未拖动）→ 进入编辑（VTable editCellTrigger:'click' 的等价行为）
   if (d.mode === 'cells' && !d.moved && d.clickCell) {
     startEdit(d.clickCell.row, d.clickCell.col)
+    return
+  }
+  // 表头单击（未拖出选区）：排序；不可排序时退化为整列选择
+  if (d.mode === 'cols' && !d.moved && d.clickCell) {
+    if (props.sortable) {
+      sortCycle(d.clickCell.col)
+    } else if (props.rows.length) {
+      setSelection({ row: 0, col: d.clickCell.col }, { row: props.rows.length - 1, col: d.clickCell.col })
+    }
   }
 }
 
@@ -602,8 +655,9 @@ function onCanvasMouseMove(e: MouseEvent) {
   if (hit.region === 'header' && hit.col >= 0) {
     const w = colWidths.value[hit.col]
     if (hit.xInCol >= w - RESIZE_ZONE || (hit.xInCol < RESIZE_ZONE && hit.col > 0)) cursor = 'col-resize'
+    else if (props.sortable) cursor = 'pointer'
     const meta = props.columns[hit.col]
-    title = meta?.comment || meta?.nativeType || ''
+    title = meta?.comment || (meta ? headerTypeText(meta) : '')
   } else if (hit.region === 'cell' && inRowRange(hit.row) && hit.col >= 0) {
     nextHover = { row: hit.row, col: hit.col }
   }
@@ -857,7 +911,7 @@ const editorStyle = computed(() => {
   const ed = editing.value
   if (!ed) return {}
   const left = ROWNUM_W + (offsets.value[ed.col] ?? 0)
-  const top = HEADER_H + ed.row * props.rowHeight
+  const top = headerH.value + ed.row * props.rowHeight
   const width = colWidths.value[ed.col] ?? props.defaultColumnWidth
   const height = ed.kind === 'textarea' ? Math.max(props.rowHeight * 4, 96) : props.rowHeight
   return {
