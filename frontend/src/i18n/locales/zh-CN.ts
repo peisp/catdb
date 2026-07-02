@@ -393,6 +393,11 @@ export default {
       idle: '空闲',
     },
   },
+  // 工作区标签条（components/workspace/WorkspaceTabBar.vue）。
+  tabBar: {
+    newQuery: '新建查询',
+    hiddenTabs: '显示隐藏的标签',
+  },
   // 连接编辑子窗口（components/connection/ConnectionEditorWindow.vue）。
   connectionEditor: {
     titleEdit: '编辑连接',

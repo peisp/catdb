@@ -317,6 +317,24 @@ export const useQueryStore = defineStore('query', () => {
     return t
   }
 
+  /**
+   * Drag-reorder: move `draggedId` before/after `targetId` in the global tab
+   * list. Callers guarantee both tabs share a connection and neither is pinned,
+   * so the pinned-first invariant holds.
+   */
+  function moveTab(draggedId: string, targetId: string, before: boolean) {
+    if (draggedId === targetId) return
+    const from = tabs.value.findIndex((t) => t.id === draggedId)
+    if (from === -1) return
+    const [moved] = tabs.value.splice(from, 1)
+    const to = tabs.value.findIndex((t) => t.id === targetId)
+    if (to === -1) {
+      tabs.value.splice(from, 0, moved)
+      return
+    }
+    tabs.value.splice(before ? to : to + 1, 0, moved)
+  }
+
   async function closeTab(id: string) {
     const t = getTab(id)
     if (!t || t.pinned) return
@@ -539,6 +557,7 @@ export const useQueryStore = defineStore('query', () => {
     promoteNewTableTab,
     openTablesOverviewTab,
     ensureOverviewTab,
+    moveTab,
     closeTab,
     closeAllForConn,
     closeOthers,

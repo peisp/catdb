@@ -401,6 +401,11 @@ export default {
       idle: 'Idle',
     },
   },
+  // Workspace tab strip (components/workspace/WorkspaceTabBar.vue).
+  tabBar: {
+    newQuery: 'New Query',
+    hiddenTabs: 'Show Hidden Tabs',
+  },
   // Connection editor child window (components/connection/ConnectionEditorWindow.vue).
   connectionEditor: {
     titleEdit: 'Edit Connection',
