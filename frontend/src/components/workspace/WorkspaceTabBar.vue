@@ -12,7 +12,7 @@ import { setActiveTabContext } from '../../api/tabContextMenu'
 import AppIcon from '../shared/AppIcon.vue'
 import databaseIcon from '../../assets/icons/database.svg?raw'
 import table2Icon from '../../assets/icons/table-2.svg?raw'
-import squareDashedKanbanIcon from '../../assets/icons/square-dashed-kanban.svg?raw'
+import fileCodeCornerFromIcon from '../../assets/icons/file-code-corner.svg?raw'
 import tableOfContentsIcon from '../../assets/icons/table-of-contents.svg?raw'
 import xIcon from '../../assets/icons/x.svg?raw'
 import plusIcon from '../../assets/icons/plus.svg?raw'
@@ -22,7 +22,7 @@ import chevronDownIcon from '../../assets/icons/chevron-down.svg?raw'
 // object kind as the node that opened it. structure/new-table use the column
 // (table-of-contents) glyph to read as "schema", distinct from data browse.
 const TAB_ICONS: Record<TabKind, string> = {
-  query: squareDashedKanbanIcon,
+  query: fileCodeCornerFromIcon,
   table: table2Icon,
   structure: tableOfContentsIcon,
   'new-table': tableOfContentsIcon,

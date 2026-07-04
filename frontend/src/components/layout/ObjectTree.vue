@@ -32,7 +32,7 @@ import AppIcon from '../shared/AppIcon.vue'
 import databaseIcon from '../../assets/icons/database.svg?raw'
 import table2Icon from '../../assets/icons/table-2.svg?raw'
 import scanEyeIcon from '../../assets/icons/scan-eye.svg?raw'
-import squareDashedKanbanIcon from '../../assets/icons/square-dashed-kanban.svg?raw'
+import fileCodeCornerFromIcon from '../../assets/icons/file-code-corner.svg?raw'
 import tableOfContentsIcon from '../../assets/icons/table-of-contents.svg?raw'
 
 // Per-kind node icon (lucide). Group nodes share their category's icon; the
@@ -41,10 +41,10 @@ const KIND_ICONS: Partial<Record<TreeMeta['kind'], string>> = {
   database: databaseIcon,
   tableGroup: table2Icon,
   viewGroup: scanEyeIcon,
-  queryGroup: squareDashedKanbanIcon,
+  queryGroup: fileCodeCornerFromIcon,
   table: table2Icon,
   view: scanEyeIcon,
-  query: squareDashedKanbanIcon,
+  query: fileCodeCornerFromIcon,
 }
 
 function renderPrefix({ option }: { option: TreeOption }) {
