@@ -396,39 +396,40 @@ function onSplitDown(e: PointerEvent) {
         <!-- Transaction controls -->
         <template v-if="supportsTxn">
           <span class="sep" />
-          <n-button
-            size="small"
-            quaternary
-            :type="hasTxn ? 'warning' : 'default'"
-            :disabled="tab.status === 'running'"
-            @click="onToggleAutoCommit"
-            class="txn-btn"
-          >
-            {{ $t(isAutoCommit ? 'queryTab.autoCommit' : 'queryTab.manualCommit') }}
-          </n-button>
-          <n-button
-            v-if="hasTxn"
-            size="small"
-            quaternary
-            type="success"
-            :disabled="tab.status === 'running'"
-            @click="onCommit"
-          >
-            <template #icon><AppIcon :src="checkIcon" :size="14" /></template>
-          </n-button>
-          <n-button
-            v-if="hasTxn"
-            size="small"
-            quaternary
-            type="error"
-            :disabled="tab.status === 'running'"
-            @click="onRollback"
-          >
-            <template #icon><AppIcon :src="rotateCcwIcon" :size="14" /></template>
-          </n-button>
-          <n-tag v-if="hasTxn" size="small" type="warning" class="txn-badge">
-            {{ $t('queryTab.txnActive') }}
-          </n-tag>
+          <span class="txn-group">
+            <n-button
+              size="small"
+              quaternary
+              :type="hasTxn ? 'warning' : 'default'"
+              :disabled="tab.status === 'running'"
+              @click="onToggleAutoCommit"
+              class="txn-btn"
+            >
+              {{ $t(isAutoCommit ? 'queryTab.autoCommit' : 'queryTab.manualCommit') }}
+            </n-button>
+            <n-button
+              v-if="!isAutoCommit"
+              size="small"
+              quaternary
+              type="success"
+              :disabled="!hasTxn || tab.status === 'running'"
+              @click="onCommit"
+              class="txn-icon-btn"
+            >
+              <template #icon><AppIcon :src="checkIcon" :size="13" /></template>
+            </n-button>
+            <n-button
+              v-if="!isAutoCommit"
+              size="small"
+              quaternary
+              type="error"
+              :disabled="!hasTxn || tab.status === 'running'"
+              @click="onRollback"
+              class="txn-icon-btn"
+            >
+              <template #icon><AppIcon :src="rotateCcwIcon" :size="13" /></template>
+            </n-button>
+          </span>
         </template>
         <span class="sep" />
         <select
@@ -599,7 +600,7 @@ function onSplitDown(e: PointerEvent) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px;
+  padding: 2px 10px;
   background: var(--n-color);
   min-width: 0;
   border-bottom: 1px solid var(--n-border-color);
@@ -698,8 +699,10 @@ function onSplitDown(e: PointerEvent) {
 }
 
 /* ---- Transaction controls ---- */
+.txn-group { display: inline-flex; align-items: center; gap: 1px; }
 .txn-btn { font-size: 11px !important; }
-.txn-badge { font-size: 10px !important; }
+.txn-icon-btn { padding: 0 2px !important; }
+.txn-icon-btn .app-icon { display: flex; }
 
 /* ---- Result / Summary tab bar ---- */
 .result-tabs {
