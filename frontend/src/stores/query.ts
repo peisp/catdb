@@ -90,6 +90,10 @@ export interface QueryTab {
   // in-flight controller; null when idle
   controller: AbortController | null
   fetching: boolean
+
+  // transaction state
+  autoCommit: boolean
+  txnId: string | null
 }
 
 function freshTab(connId: string, opts?: { kind?: TabKind; title?: string; db?: string; table?: string; pinned?: boolean }): QueryTab {
@@ -118,6 +122,8 @@ function freshTab(connId: string, opts?: { kind?: TabKind; title?: string; db?: 
     errorMessage: '',
     controller: null,
     fetching: false,
+    autoCommit: true,
+    txnId: null,
   }
 }
 
@@ -241,6 +247,54 @@ export const useQueryStore = defineStore('query', () => {
     return true
   }
 
+  /** Toggle auto-commit mode. Switching from manual→auto commits pending txn. */
+  async function toggleAutoCommit(tabId: string) {
+    const t = getTab(tabId)
+    if (!t || t.kind !== 'query') return
+    if (t.autoCommit && t.txnId) {
+      // Switching to manual with an existing txn — keep it.
+      t.autoCommit = false
+      return
+    }
+    if (!t.autoCommit && t.txnId) {
+      // Switching back to auto: commit pending work first.
+      try {
+        await queryApi.commitTransaction(t.txnId)
+      } catch (e: any) {
+        try { await queryApi.rollbackTransaction(t.txnId) } catch { /* best-effort */ }
+      }
+      t.txnId = null
+    }
+    t.autoCommit = !t.autoCommit
+  }
+
+  /** Begin a transaction manually (used when auto-commit is off and there's no txn). */
+  async function beginTransaction(tabId: string) {
+    const t = getTab(tabId)
+    if (!t || t.kind !== 'query' || t.txnId) return
+    try {
+      t.txnId = await queryApi.beginTransaction(t.connId, t.db ?? '')
+    } catch (e: any) {
+      throw e
+    }
+  }
+
+  /** Commit the active transaction for this tab. */
+  async function commitTransaction(tabId: string) {
+    const t = getTab(tabId)
+    if (!t || !t.txnId) return
+    await queryApi.commitTransaction(t.txnId)
+    t.txnId = null
+  }
+
+  /** Roll back the active transaction for this tab. */
+  async function rollbackTransaction(tabId: string) {
+    const t = getTab(tabId)
+    if (!t || !t.txnId) return
+    await queryApi.rollbackTransaction(t.txnId)
+    t.txnId = null
+  }
+
   function openTableTab(connId: string, db: string, table: string, kind: 'table' | 'structure' = 'table'): QueryTab {
     const titlePrefix = kind === 'structure' ? '⚙' : '⊞'
     const existing = tabs.value.find(
@@ -360,6 +414,11 @@ export const useQueryStore = defineStore('query', () => {
         }
       }
     }
+    // Rollback any active transaction.
+    if (t.txnId) {
+      try { await queryApi.rollbackTransaction(t.txnId) } catch { /* best-effort */ }
+      t.txnId = null
+    }
     t.controller?.abort()
     if (t.handle) {
       try { await queryApi.closeHandle(t.handle) } catch { /* idempotent */ }
@@ -456,6 +515,9 @@ export const useQueryStore = defineStore('query', () => {
     const t = getTab(tabId)
     if (!t) return
     if (t.status === 'running') return
+
+    // Set status early so a concurrent runActive (e.g. button + menu cmd)
+    // sees 'running' and bails out before duplicating the transaction.
     if (t.handle) {
       try { await queryApi.closeHandle(t.handle) } catch { /* ignore */ }
       t.handle = null
@@ -463,10 +525,25 @@ export const useQueryStore = defineStore('query', () => {
     resetResult(t)
     t.lastRunSql = t.sql
     t.status = 'running'
+
+    // In manual transaction mode, ensure there's an active transaction.
+    if (!t.autoCommit && !t.txnId) {
+      try {
+        t.txnId = await queryApi.beginTransaction(t.connId, t.db ?? '')
+      } catch (e: any) {
+        t.status = 'error'
+        t.errorMessage = String(e)
+        return
+      }
+    }
+    // Pass active transaction ID to the backend.
+    const opts: Partial<QueryOptions> = { ...options }
+    if (t.txnId) opts.txnId = t.txnId
+
     const ctrl = new AbortController()
     t.controller = ctrl
     try {
-      const res = await queryApi.runQuery(t.connId, t.sql, options, ctrl.signal)
+      const res = await queryApi.runQuery(t.connId, t.sql, opts, ctrl.signal)
       if (ctrl.signal.aborted) {
         t.status = 'canceled'
         t.errorMessage = 'canceled by user'
@@ -594,6 +671,10 @@ export const useQueryStore = defineStore('query', () => {
     cancel,
     explain,
     loadCapabilities,
+    toggleAutoCommit,
+    beginTransaction,
+    commitTransaction,
+    rollbackTransaction,
     selectedDb,
     setSelectedDb,
     schemaFilter,

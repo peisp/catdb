@@ -42,6 +42,9 @@ type QueryService struct {
 
 	mu      sync.Mutex
 	handles map[string]*openQuery
+
+	txnMu sync.Mutex
+	txns  map[string]*openTxn
 }
 
 // NewQueryService wires the dependency.
@@ -49,6 +52,7 @@ func NewQueryService(mgr *session.Manager) *QueryService {
 	return &QueryService{
 		mgr:     mgr,
 		handles: make(map[string]*openQuery),
+		txns:    make(map[string]*openTxn),
 	}
 }
 
@@ -58,7 +62,6 @@ func (s *QueryService) ServiceName() string { return "QueryService" }
 // result set so we don't leak server cursors.
 func (s *QueryService) ServiceShutdown() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	for id, h := range s.handles {
 		_ = h.rs.Close()
 		releaseTx(h.tx, nil)
@@ -67,6 +70,14 @@ func (s *QueryService) ServiceShutdown() error {
 		}
 		delete(s.handles, id)
 	}
+	s.mu.Unlock()
+
+	s.txnMu.Lock()
+	for id, t := range s.txns {
+		_ = t.tx.Rollback()
+		delete(s.txns, id)
+	}
+	s.txnMu.Unlock()
 	return nil
 }
 
@@ -93,6 +104,14 @@ type openQuery struct {
 	maxRows int
 }
 
+// openTxn is an explicit transaction started by BeginTransaction. It wraps a
+// dbdriver.Tx and is stored by ID so subsequent RunQuery calls can be directed
+// into it.
+type openTxn struct {
+	connID string
+	tx     dbdriver.Tx
+}
+
 // QueryOptions tweaks one call's behaviour. All fields optional.
 type QueryOptions struct {
 	BatchSize     int    `json:"batchSize,omitempty"`     // first-batch size (default 500)
@@ -100,6 +119,7 @@ type QueryOptions struct {
 	MaxRows       int    `json:"maxRows,omitempty"`       // hard cap for the open handle (0 = unlimited)
 	DefaultSchema string `json:"defaultSchema,omitempty"` // when non-empty, the SQL is run with this database
 	// "selected" (e.g. MySQL `USE db`) so unqualified tables resolve to it.
+	TxnID string `json:"txnId,omitempty"` // when non-empty, the query runs inside the referenced transaction
 }
 
 // QueryRunResult is what RunQuery / Explain return to the front-end.
@@ -197,7 +217,7 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 		runCancel()
 	}
 
-	q, tx, err := s.acquireQuerier(runCtx, conn, connID, opts.DefaultSchema)
+	q, tx, err := s.acquireQuerier(runCtx, conn, connID, opts.DefaultSchema, opts.TxnID)
 	if err != nil {
 		cerr := classifyErr(err, timeoutCtx)
 		teardown()
@@ -433,7 +453,7 @@ func (s *QueryService) Explain(ctx context.Context, connID, sqlText string, opts
 	tctx, cancel := context.WithTimeout(ctx, DefaultQueryTimeout)
 	defer cancel()
 
-	q, tx, err := s.acquireQuerier(tctx, conn, connID, opts.DefaultSchema)
+	q, tx, err := s.acquireQuerier(tctx, conn, connID, opts.DefaultSchema, opts.TxnID)
 	if err != nil {
 		return empty, classifyErr(err, tctx)
 	}
@@ -472,6 +492,66 @@ func (s *QueryService) CapabilitiesFor(_ context.Context, driverName string) (db
 	return d.Capabilities(), nil
 }
 
+// BeginTransaction opens a new transaction on the connection. Returns a
+// transaction ID the front-end passes to RunQuery (via QueryOptions.TxnID),
+// CommitTransaction, or RollbackTransaction.
+func (s *QueryService) BeginTransaction(ctx context.Context, connID string, _ string) (string, error) {
+	conn, err := s.mgr.Get(connID)
+	if err != nil {
+		conn, err = s.mgr.Open(ctx, connID)
+		if err != nil {
+			return "", err
+		}
+	}
+	tx, err := conn.Begin(context.Background(), nil)
+	if err != nil {
+		return "", fmt.Errorf("QueryService: begin tx: %w", err)
+	}
+
+	id := "txn-" + uuid.NewString()
+	s.txnMu.Lock()
+	s.txns[id] = &openTxn{connID: connID, tx: tx}
+	s.txnMu.Unlock()
+
+	return id, nil
+}
+
+// CommitTransaction commits the referenced transaction and releases it.
+func (s *QueryService) CommitTransaction(_ context.Context, txnID string) error {
+	s.txnMu.Lock()
+	t, ok := s.txns[txnID]
+	if ok {
+		delete(s.txns, txnID)
+	}
+	s.txnMu.Unlock()
+	if !ok {
+		return fmt.Errorf("QueryService: unknown transaction %s", txnID)
+	}
+	return t.tx.Commit()
+}
+
+// RollbackTransaction rolls back the referenced transaction and releases it.
+func (s *QueryService) RollbackTransaction(_ context.Context, txnID string) error {
+	s.txnMu.Lock()
+	t, ok := s.txns[txnID]
+	if ok {
+		delete(s.txns, txnID)
+	}
+	s.txnMu.Unlock()
+	if !ok {
+		return fmt.Errorf("QueryService: unknown transaction %s", txnID)
+	}
+	return t.tx.Rollback()
+}
+
+// IsTransactionActive returns true when the referenced transaction exists.
+func (s *QueryService) IsTransactionActive(_ context.Context, txnID string) (bool, error) {
+	s.txnMu.Lock()
+	defer s.txnMu.Unlock()
+	_, ok := s.txns[txnID]
+	return ok, nil
+}
+
 // --- internals ---
 
 // acquireQuerier returns the Querier the caller should run their SQL through.
@@ -487,8 +567,35 @@ func (s *QueryService) CapabilitiesFor(_ context.Context, driverName string) (db
 func (s *QueryService) acquireQuerier(
 	ctx context.Context,
 	conn dbdriver.Connection,
-	connID, schema string,
+	connID, schema, txnID string,
 ) (dbdriver.Querier, dbdriver.Tx, error) {
+	// If a transaction is specified, use its Querier directly (no tx to release).
+	if txnID != "" {
+		s.txnMu.Lock()
+		t, ok := s.txns[txnID]
+		s.txnMu.Unlock()
+		if !ok {
+			return nil, nil, fmt.Errorf("QueryService: unknown transaction %s", txnID)
+		}
+		// Set the default schema on the transaction's connection when needed.
+		if schema != "" {
+			q := t.tx
+			driverName, err := s.mgr.DriverName(ctx, connID)
+			if err != nil {
+				return nil, nil, fmt.Errorf("QueryService: resolve driver: %w", err)
+			}
+			d, err := registry.Get(driverName)
+			if err != nil {
+				return nil, nil, fmt.Errorf("QueryService: resolve driver: %w", err)
+			}
+			quoted := d.Dialect().QuoteIdentifier(schema)
+			if _, err := q.Exec(ctx, "USE "+quoted); err != nil {
+				return nil, nil, err
+			}
+		}
+		return t.tx, nil, nil
+	}
+
 	if schema == "" {
 		q := conn.Querier()
 		if q == nil {
@@ -506,7 +613,7 @@ func (s *QueryService) acquireQuerier(
 		return nil, nil, fmt.Errorf("QueryService: resolve driver: %w", err)
 	}
 
-	tx, err := conn.Begin(ctx, nil)
+	tx, err := conn.Begin(context.Background(), nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("QueryService: begin tx for default schema: %w", err)
 	}

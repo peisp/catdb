@@ -55,3 +55,23 @@ export function explain(
 export function capabilitiesFor(driverName: string): Promise<Capabilities> {
   return QueryService.CapabilitiesFor(driverName)
 }
+
+/** Begin a transaction on the connection. Returns the transaction ID. */
+export function beginTransaction(connId: string, db?: string): Promise<string> {
+  return QueryService.BeginTransaction(connId, db ?? '')
+}
+
+/** Commit the active transaction. */
+export function commitTransaction(txnId: string): Promise<void> {
+  return QueryService.CommitTransaction(txnId)
+}
+
+/** Roll back the active transaction. */
+export function rollbackTransaction(txnId: string): Promise<void> {
+  return QueryService.RollbackTransaction(txnId)
+}
+
+/** Check if a transaction is still active. */
+export function isTransactionActive(txnId: string): Promise<boolean> {
+  return QueryService.IsTransactionActive(txnId)
+}

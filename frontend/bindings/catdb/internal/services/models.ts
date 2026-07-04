@@ -519,6 +519,12 @@ export class QueryOptions {
      */
     "defaultSchema"?: string;
 
+    /**
+     * "selected" (e.g. MySQL `USE db`) so unqualified tables resolve to it.
+     * when non-empty, the query runs inside the referenced transaction
+     */
+    "txnId"?: string;
+
     /** Creates a new QueryOptions instance. */
     constructor($$source: Partial<QueryOptions> = {}) {
 

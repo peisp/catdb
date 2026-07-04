@@ -18,13 +18,15 @@ import { computed, onMounted, ref, watch } from 'vue'
 import {
   NAlert,
   NButton,
-  NCheckbox,
   NSpace,
   NTag,
   useMessage,
 } from 'naive-ui'
 import SqlEditor from './SqlEditor.vue'
 import ResultTable from './ResultTable.vue'
+import AppIcon from '../shared/AppIcon.vue'
+import checkIcon from '../../assets/icons/check.svg?raw'
+import rotateCcwIcon from '../../assets/icons/rotate-ccw.svg?raw'
 import { startExport } from '../../composables/useExport'
 import { format } from 'sql-formatter'
 import { useQueryStore } from '../../stores/query'
@@ -265,6 +267,35 @@ const statusBadge = computed(() => {
   }
 })
 
+const isAutoCommit = computed(() => tab.value.autoCommit)
+const hasTxn = computed(() => !!tab.value.txnId)
+const supportsTxn = computed(() => caps.value?.transactions ?? false)
+
+// Toggle between "result" and "summary" output view.
+const showResultView = ref(true)
+
+async function onToggleAutoCommit() {
+  await store.toggleAutoCommit(props.tabId)
+}
+
+async function onCommit() {
+  try {
+    await store.commitTransaction(props.tabId)
+    message.success(t('queryTab.commit'))
+  } catch (e: any) {
+    message.error(t('queryTab.txnError', { msg: String(e) }))
+  }
+}
+
+async function onRollback() {
+  try {
+    await store.rollbackTransaction(props.tabId)
+    message.info(t('queryTab.rollback'))
+  } catch (e: any) {
+    message.error(t('queryTab.txnError', { msg: String(e) }))
+  }
+}
+
 // While the streaming cursor is still draining, rowsTotal is only what we've
 // loaded so far — show it as "N+" so it doesn't read as the true total
 // (DataGrip-style). Exact count once drained.
@@ -362,6 +393,43 @@ function onSplitDown(e: PointerEvent) {
         <n-button v-if="caps?.explainPlan" size="small" :disabled="tab.status === 'running'" @click="explain">
           EXPLAIN
         </n-button>
+        <!-- Transaction controls -->
+        <template v-if="supportsTxn">
+          <span class="sep" />
+          <n-button
+            size="small"
+            quaternary
+            :type="hasTxn ? 'warning' : 'default'"
+            :disabled="tab.status === 'running'"
+            @click="onToggleAutoCommit"
+            class="txn-btn"
+          >
+            {{ $t(isAutoCommit ? 'queryTab.autoCommit' : 'queryTab.manualCommit') }}
+          </n-button>
+          <n-button
+            v-if="hasTxn"
+            size="small"
+            quaternary
+            type="success"
+            :disabled="tab.status === 'running'"
+            @click="onCommit"
+          >
+            <template #icon><AppIcon :src="checkIcon" :size="14" /></template>
+          </n-button>
+          <n-button
+            v-if="hasTxn"
+            size="small"
+            quaternary
+            type="error"
+            :disabled="tab.status === 'running'"
+            @click="onRollback"
+          >
+            <template #icon><AppIcon :src="rotateCcwIcon" :size="14" /></template>
+          </n-button>
+          <n-tag v-if="hasTxn" size="small" type="warning" class="txn-badge">
+            {{ $t('queryTab.txnActive') }}
+          </n-tag>
+        </template>
         <span class="sep" />
         <select
           v-model="currentDb"
@@ -417,6 +485,25 @@ function onSplitDown(e: PointerEvent) {
         />
 
         <div class="result-slot">
+          <!-- Result / Summary toggle bar (shown when there are results) -->
+          <div v-if="tab.status === 'done' && (tab.isResultSet || tab.execAffected !== null)" class="result-tabs">
+            <button
+              class="result-tab"
+              :class="{ active: showResultView }"
+              @click="showResultView = true"
+            >
+              {{ $t('queryTab.resultTab') }}
+            </button>
+            <button
+              class="result-tab"
+              :class="{ active: !showResultView }"
+              @click="showResultView = false"
+            >
+              {{ $t('queryTab.summaryTab') }}
+            </button>
+          </div>
+
+          <!-- Error alerts always visible -->
           <n-alert
             v-if="errorKind === 'canceled'"
             type="warning"
@@ -443,23 +530,52 @@ function onSplitDown(e: PointerEvent) {
             <span class="mono">{{ tab.errorMessage }}</span>
           </n-alert>
 
-          <ResultTable
-            v-if="tab.isResultSet"
-            :columns="tab.columns"
-            :rows="tab.rows"
-            :done="tab.done"
-            :fetching="tab.fetching"
-            :rows-total="tab.rowsTotal"
-            :sql="tab.lastRunSql"
-            :conn-id="tab.connId"
-            :edit-table="tab.editTable ?? null"
-            class="result-table"
-            @load-more="onLoadMore"
-            @export="onResultExport"
-          />
-          <div v-else-if="!errorKind && tab.status === 'done'" class="exec-result">
-            <div class="ok">{{ $t('queryTab.rowsAffected', { n: tab.execAffected }) }}</div>
-            <div v-if="tab.execLastInsertId" class="mute mono">last insert id: {{ tab.execLastInsertId }}</div>
+          <!-- Result view -->
+          <template v-if="showResultView && !errorKind">
+            <ResultTable
+              v-if="tab.isResultSet"
+              :columns="tab.columns"
+              :rows="tab.rows"
+              :done="tab.done"
+              :fetching="tab.fetching"
+              :rows-total="tab.rowsTotal"
+              :sql="tab.lastRunSql"
+              :conn-id="tab.connId"
+              :edit-table="tab.editTable ?? null"
+              class="result-table"
+              @load-more="onLoadMore"
+              @export="onResultExport"
+            />
+            <div v-else-if="tab.status === 'done'" class="exec-result">
+              <div class="ok">{{ $t('queryTab.rowsAffected', { n: tab.execAffected }) }}</div>
+              <div v-if="tab.execLastInsertId" class="mute mono">last insert id: {{ tab.execLastInsertId }}</div>
+            </div>
+          </template>
+
+          <!-- Execution summary view -->
+          <div v-if="!showResultView && !errorKind && tab.status === 'done'" class="summary-view">
+            <div class="summary-header">{{ $t('queryTab.execSummary') }}</div>
+            <div class="summary-grid">
+              <div class="summary-item">
+                <span class="summary-label">{{ $t('queryTab.execTime') }}</span>
+                <span class="summary-value mono">{{ tab.elapsedMs }} ms</span>
+              </div>
+              <div v-if="tab.isResultSet" class="summary-item">
+                <span class="summary-label">{{ $t('queryTab.execRows') }}</span>
+                <span class="summary-value mono">{{ tab.rowsTotal }}</span>
+              </div>
+              <div v-if="!tab.isResultSet && tab.execAffected !== null" class="summary-item">
+                <span class="summary-label">{{ $t('queryTab.execAffected') }}</span>
+                <span class="summary-value mono">{{ tab.execAffected }}</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">{{ $t('queryTab.execStatements') }}</span>
+                <span class="summary-value mono">1</span>
+              </div>
+            </div>
+            <div class="summary-sql">
+              <pre class="mono">{{ tab.lastRunSql }}</pre>
+            </div>
           </div>
         </div>
       </template>
@@ -579,5 +695,89 @@ function onSplitDown(e: PointerEvent) {
 .splitter:hover,
 .splitter.active {
   background: var(--n-primary-color, #18a058);
+}
+
+/* ---- Transaction controls ---- */
+.txn-btn { font-size: 11px !important; }
+.txn-badge { font-size: 10px !important; }
+
+/* ---- Result / Summary tab bar ---- */
+.result-tabs {
+  display: flex;
+  gap: 0;
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--n-divider-color);
+  background: var(--n-color);
+}
+.result-tab {
+  font-size: 12px;
+  padding: 4px 14px;
+  border: none;
+  background: transparent;
+  color: var(--n-text-color);
+  opacity: 0.5;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: opacity 120ms, border-color 120ms;
+  font-family: inherit;
+}
+.result-tab:hover { opacity: 0.8; }
+.result-tab.active {
+  opacity: 1;
+  border-bottom-color: var(--n-primary-color, #18a058);
+}
+
+/* ---- Execution summary ---- */
+.summary-view {
+  padding: 16px 20px;
+  flex: 1 1 0;
+  overflow-y: auto;
+}
+.summary-header {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: var(--n-color);
+  border: 1px solid var(--n-border-color);
+  border-radius: 6px;
+}
+.summary-label {
+  font-size: 11px;
+  opacity: 0.6;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.summary-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--n-text-color);
+}
+.summary-sql {
+  margin-top: 4px;
+}
+.summary-sql pre {
+  font-size: 12px;
+  background: var(--n-color);
+  border: 1px solid var(--n-border-color);
+  border-radius: 4px;
+  padding: 10px 12px;
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+  color: var(--n-text-color);
 }
 </style>

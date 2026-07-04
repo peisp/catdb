@@ -21,6 +21,15 @@ import * as dbdriver$0 from "../dbdriver/models.js";
 import * as $models from "./models.js";
 
 /**
+ * BeginTransaction opens a new transaction on the connection. Returns a
+ * transaction ID the front-end passes to RunQuery (via QueryOptions.TxnID),
+ * CommitTransaction, or RollbackTransaction.
+ */
+export function BeginTransaction(connID: string, $1: string): $CancellablePromise<string> {
+    return $Call.ByName("catdb/internal/services.QueryService.BeginTransaction", connID, $1);
+}
+
+/**
  * CapabilitiesFor returns the registered driver's Capabilities for the given
  * connID, so the front-end can render UI gates without going through the
  * active connection.
@@ -36,6 +45,13 @@ export function CapabilitiesFor(driverName: string): $CancellablePromise<dbdrive
  */
 export function Close(handle: string): $CancellablePromise<void> {
     return $Call.ByName("catdb/internal/services.QueryService.Close", handle);
+}
+
+/**
+ * CommitTransaction commits the referenced transaction and releases it.
+ */
+export function CommitTransaction(txnID: string): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.QueryService.CommitTransaction", txnID);
 }
 
 /**
@@ -59,6 +75,20 @@ export function FetchMore(handle: string, batch: number): $CancellablePromise<$m
     return $Call.ByName("catdb/internal/services.QueryService.FetchMore", handle, batch).then(($result: any) => {
         return $$createType2($result);
     });
+}
+
+/**
+ * IsTransactionActive returns true when the referenced transaction exists.
+ */
+export function IsTransactionActive(txnID: string): $CancellablePromise<boolean> {
+    return $Call.ByName("catdb/internal/services.QueryService.IsTransactionActive", txnID);
+}
+
+/**
+ * RollbackTransaction rolls back the referenced transaction and releases it.
+ */
+export function RollbackTransaction(txnID: string): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.QueryService.RollbackTransaction", txnID);
 }
 
 /**
