@@ -33,6 +33,7 @@ export interface GridTheme {
   dirtyText: string
   rowNumText: string
   sortActiveColor: string
+  zebraFill: string
 }
 
 export interface GridFonts {
@@ -258,7 +259,7 @@ export function drawGrid(o: DrawGridOptions): void {
       const dirty = o.isDirtyCell(r, c)
       const selected = !!sel && r >= sel.r0 && r <= sel.r1 && c >= sel.c0 && c <= sel.c1
 
-      // 底色（优先级：删除 > 选区 > hover）
+      // 底色（优先级：删除 > 选区 > hover > 斑马纹）
       if (deleted) {
         ctx.fillStyle = theme.deletedFill
         ctx.fillRect(x, y, w, rh)
@@ -267,6 +268,9 @@ export function drawGrid(o: DrawGridOptions): void {
         ctx.fillRect(x, y, w, rh)
       } else if (o.hover && o.hover.row === r && o.hover.col === c) {
         ctx.fillStyle = theme.hoverFill
+        ctx.fillRect(x, y, w, rh)
+      } else if (r % 2 === 1) {
+        ctx.fillStyle = theme.zebraFill
         ctx.fillRect(x, y, w, rh)
       }
 

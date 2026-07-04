@@ -342,6 +342,7 @@ const gridTheme = computed<GridTheme>(() => {
     dirtyText: '#999',
     rowNumText: vars.textColor3,
     sortActiveColor: vars.primaryColor,
+    zebraFill: dark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.05)',
   }
 })
 
