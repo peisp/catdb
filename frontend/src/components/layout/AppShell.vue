@@ -16,6 +16,7 @@ import QueryWorkspace from '../workspace/QueryWorkspace.vue'
 import StatusBar from './StatusBar.vue'
 import UpdateDialog from '../update/UpdateDialog.vue'
 import PromptOverlay from '../common/PromptOverlay.vue'
+import AppToolbar from './AppToolbar.vue'
 import type { ConnectionProfile } from '../../api/connections'
 import { useConnectionsStore } from '../../stores/connections'
 import { useQueryStore } from '../../stores/query'
@@ -34,24 +35,10 @@ const activeConn = ref<ConnectionProfile | null>(null)
 const sidebarVisible = ref(true)
 
 // macOS draws traffic lights at the top-left; offset the floating toggle
-// to the right of them. Windows (frameless) gets custom caption buttons
-// at the top-right.
+// to the right of them. Windows (frameless) caption buttons live in the
+// toolbar now (AppToolbar.vue).
 const isMac = navigator.platform.includes('Mac')
 const isWin = !isMac
-
-// Maximise state tracking for the restore/maximise toggle icon.
-const isMaximised = ref(false)
-async function onWindowCtrl(cmd: 'min' | 'max' | 'close') {
-  if (cmd === 'min') { await Window.Minimise(); return }
-  if (cmd === 'close') { await Window.Close(); return }
-  // maximise / restore
-  await Window.ToggleMaximise()
-  isMaximised.value = await Window.IsMaximised()
-}
-// Mirror double-click on drag region toggles maximise
-function toggleMaximise() {
-  void onWindowCtrl('max')
-}
 
 // --- menu / close-guard hookup ---
 
@@ -170,11 +157,10 @@ function onOpenTablesOverview(payload: { db: string }) {
 <template>
   <div class="root">
     <div class="shell">
-      <!-- Invisible drag strip pinned to the top of the window. Lets the user
-           drag the window (Wails consumes --wails-draggable: drag) and
-           double-click to toggle maximise. The floating-controls layer sits
-           above it (z-index) so the toggle button stays clickable. -->
-      <div class="top-drag-region" @dblclick.self="toggleMaximise"></div>
+      <!-- Sidebar drag strip: invisible, covers the sidebar top so the
+           user can drag the window from the sidebar area. Only present
+           when the sidebar is visible. -->
+      <div v-if="sidebarVisible" class="sidebar-drag"></div>
 
       <!-- Floating controls overlay: sidebar toggle. Absolutely positioned
            so the sidebar can extend all the way to the top of the window
@@ -200,50 +186,27 @@ function onOpenTablesOverview(payload: { db: string }) {
 
       <!-- Right-side floating control: "+" opens the connection editor with
            no preselected driver. The form's left rail handles type picking. -->
-      <div class="floating-controls-right" :class="{ win: isWin }">
-        <button
-          type="button"
-          class="sidebar-toggle glass new-conn"
-          :title="$t('appShell.newConnection')"
-          @click="openNewConnection"
-        >
-          <span class="glass-specular" aria-hidden="true" />
-          <span class="glass-icon" aria-hidden="true">
-            <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-              <path
-                d="M8 3.2v9.6M3.2 8h9.6"
-                stroke="currentColor"
-                stroke-width="1.6"
-                stroke-linecap="round"
-                fill="none"
-              />
-            </svg>
-          </span>
-        </button>
-      </div>
-
-      <!-- Windows frameless caption buttons (minimise / maximise / close).
-           Absolutely positioned at top-right, outside the drag region so
-           each button is individually clickable (--wails-draggable: no-drag). -->
-      <div v-if="isWin" class="window-controls">
-        <button type="button" class="win-btn win-btn-min" :title="$t('appShell.minimize')" @click="onWindowCtrl('min')">
-          <svg viewBox="0 0 10 10" aria-hidden="true"><rect x="0" y="4.5" width="10" height="1" fill="currentColor" /></svg>
-        </button>
-        <button type="button" class="win-btn win-btn-max" :title="isMaximised ? $t('appShell.restore') : $t('appShell.maximize')" @click="onWindowCtrl('max')">
-          <svg v-if="isMaximised" viewBox="0 0 10 10" aria-hidden="true">
-            <rect x="1.5" y="3.5" width="6" height="6" rx="0.5" fill="none" stroke="currentColor" stroke-width="0.8" />
-            <path d="M3.5 3.5V2A0.5 0.5 0 0 1 4 1.5h4A0.5 0.5 0 0 1 8.5 2v4a0.5 0.5 0 0 1-.5.5H7.5" fill="none" stroke="currentColor" stroke-width="0.8" />
-          </svg>
-          <svg v-else viewBox="0 0 10 10" aria-hidden="true">
-            <rect x="1" y="1" width="8" height="8" rx="0.5" fill="none" stroke="currentColor" stroke-width="0.8" />
-          </svg>
-        </button>
-        <button type="button" class="win-btn win-btn-close" :title="$t('common.close')" @click="onWindowCtrl('close')">
-          <svg viewBox="0 0 10 10" aria-hidden="true">
-            <path d="M1 1l8 8M9 1l-8 8" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" />
-          </svg>
-        </button>
-      </div>
+<!--      <div class="floating-controls-right" :class="{ win: isWin }">-->
+<!--        <button-->
+<!--          type="button"-->
+<!--          class="sidebar-toggle glass new-conn"-->
+<!--          :title="$t('appShell.newConnection')"-->
+<!--          @click="openNewConnection"-->
+<!--        >-->
+<!--          <span class="glass-specular" aria-hidden="true" />-->
+<!--          <span class="glass-icon" aria-hidden="true">-->
+<!--            <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">-->
+<!--              <path-->
+<!--                d="M8 3.2v9.6M3.2 8h9.6"-->
+<!--                stroke="currentColor"-->
+<!--                stroke-width="1.6"-->
+<!--                stroke-linecap="round"-->
+<!--                fill="none"-->
+<!--              />-->
+<!--            </svg>-->
+<!--          </span>-->
+<!--        </button>-->
+<!--      </div>-->
 
       <AppSidebar
         :active-conn="activeConn"
@@ -256,6 +219,7 @@ function onOpenTablesOverview(payload: { db: string }) {
         @collapse="sidebarVisible = false"
       />
       <div class="main">
+        <AppToolbar :active-conn="activeConn" :sidebar-visible="sidebarVisible" />
         <main class="content">
           <QueryWorkspace
             v-if="activeConn"
@@ -302,13 +266,15 @@ function onOpenTablesOverview(payload: { db: string }) {
   flex-direction: row;
 }
 
-/* Invisible drag strip across the top of the shell. Sidebar and main
-   extend behind it — this just intercepts drag + dblclick. */
-.top-drag-region {
+/* Tiny drag strip at the top-left corner for dragging the window when
+   clicking the empty space near the sidebar toggle. The toolbar handles
+   dragging for the right pane; this just covers the area around the
+   sidebar toggle button so the user doesn't hit a dead zone. */
+.sidebar-drag {
   position: absolute;
   top: 0;
   left: 0;
-  right: 0;
+  width: 150px;
   height: 50px;
   z-index: 5;
   --wails-draggable: drag;
@@ -336,6 +302,7 @@ function onOpenTablesOverview(payload: { db: string }) {
 /* Right-side floating control mirror. macOS pins to right:12px; Windows
    pushes left of the three caption buttons (3 × 46px = 138px) so the
    "+" doesn't sit on top of close/maximise. */
+/*
 .floating-controls-right {
   position: absolute;
   top: 10px;
@@ -349,6 +316,7 @@ function onOpenTablesOverview(payload: { db: string }) {
 .floating-controls-right.win {
   right: 150px;
 }
+ */
 
 
 .main {
@@ -360,7 +328,6 @@ function onOpenTablesOverview(payload: { db: string }) {
   flex-direction: column;
   /* UIColor.systemBackground — light = rgb(255,255,255), dark = rgb(0,0,0) */
   background: rgb(255, 255, 255, 0.1);
-  padding-top: 50px; /* keep tabs/content clear of floating controls */
 }
 @media (prefers-color-scheme: dark) {
   .main { background: rgb(0, 0, 0, 0.5); }
@@ -524,58 +491,5 @@ function onOpenTablesOverview(payload: { db: string }) {
   height: 22px;
   border-top: 1px solid var(--n-border-color);
   background: var(--n-color, transparent);
-}
-
-/* --- Windows frameless caption buttons ---
-   Positioned at top-right, sized to match Windows 11 caption button
-   convention (46×32 hit target). Each button has a subtle hover
-   background; the close button turns red on hover. */
-.window-controls {
-  position: absolute;
-  top: 0;
-  right: 0;
-  z-index: 20;
-  display: flex;
-  flex-direction: row;
-  align-items: stretch;
-  height: 50px; /* match drag-region height */
-  -webkit-app-region: no-drag;
-}
-
-.win-btn {
-  --wails-draggable: no-drag;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 46px;
-  padding: 0;
-  margin: 0;
-  border: none;
-  border-radius: 0;
-  font: inherit;
-  color: inherit;
-  cursor: default;
-  background: transparent;
-  transition: background 80ms ease;
-}
-.win-btn svg {
-  width: 14px;
-  height: 14px;
-  opacity: 0.75;
-}
-.win-btn:hover { background: rgba(127, 127, 127, 0.15); }
-.win-btn:active { background: rgba(127, 127, 127, 0.25); }
-
-.win-btn-close:hover { background: rgba(196, 43, 28, 0.9); }
-.win-btn-close:hover svg { opacity: 1; }
-.win-btn-close:active { background: rgba(180, 30, 20, 0.95); }
-.win-btn-close:active svg { opacity: 1; }
-
-@media (prefers-color-scheme: dark) {
-  .win-btn:hover { background: rgba(255, 255, 255, 0.1); }
-  .win-btn:active { background: rgba(255, 255, 255, 0.16); }
-  .win-btn-close:hover { background: rgba(196, 43, 28, 0.9); }
-  .win-btn-close:hover svg { opacity: 1; }
-  .win-btn-close:active { background: rgba(180, 30, 20, 0.95); }
 }
 </style>
