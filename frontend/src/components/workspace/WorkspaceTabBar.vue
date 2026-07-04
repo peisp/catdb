@@ -420,7 +420,7 @@ function openCtx(t: QueryTabInfo) {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
+  width: 32px;
   flex: 0 0 auto;
   padding: 0;
   border: none;
@@ -434,8 +434,8 @@ function openCtx(t: QueryTabInfo) {
 }
 
 .tab-fill {
-  flex: 1 1 24px;
-  min-width: 24px;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 /* Hover-only overlay scrollbar — the native bar would claim layout height. */
