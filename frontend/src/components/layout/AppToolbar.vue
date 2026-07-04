@@ -35,7 +35,7 @@ function openNewQuery() {
 </script>
 
 <template>
-  <div class="toolbar" :class="{ 'sidebar-closed': !sidebarVisible }" @dblclick.self="toggleMaximise">
+  <div class="toolbar" :class="{ 'sidebar-closed': !sidebarVisible, win: isWin }" @dblclick.self="toggleMaximise">
     <button type="button" class="toolbar-btn" @click="openNewConnection">
       <AppIcon :src="unplugIcon" :size="14" />
       {{ $t('appShell.newConnection') }}
@@ -99,6 +99,7 @@ function openNewQuery() {
 .toolbar-btn:disabled { opacity: 0.35; pointer-events: none; }
 .toolbar { transition: margin-left 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
 .toolbar.sidebar-closed { margin-left: 150px; }
+.toolbar.win.sidebar-closed { margin-left: 50px; }
 
 /* Spacer pushes the window controls to the right side of the toolbar. */
 .toolbar-spacer { flex: 1 1 0; min-width: 0; }

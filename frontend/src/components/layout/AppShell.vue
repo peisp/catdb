@@ -166,7 +166,7 @@ function onOpenTablesOverview(payload: { db: string }) {
            so the sidebar can extend all the way to the top of the window
            (demo pattern). On macOS, offset right of the system traffic
            lights; elsewhere, anchored flush at top-left. -->
-      <div class="floating-controls" :class="{ mac: isMac }">
+      <div class="floating-controls" :class="{ mac: isMac, 'sidebar-closed': isWin && !sidebarVisible }">
         <button
           type="button"
           class="sidebar-toggle glass"
@@ -292,12 +292,16 @@ function onOpenTablesOverview(payload: { db: string }) {
   align-items: center;
   gap: 8px;
   --wails-draggable: drag;
+  transition: left 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 /* clear of system traffic lights */
 /*
 .floating-controls.mac {
   top: 10px;
 }*/
+/* On Windows, when sidebar is closed, move the toggle away from the
+   left edge so it doesn't sit flush against the window frame. */
+.floating-controls.sidebar-closed { left: 10px; }
 
 /* Right-side floating control mirror. macOS pins to right:12px; Windows
    pushes left of the three caption buttons (3 × 46px = 138px) so the
