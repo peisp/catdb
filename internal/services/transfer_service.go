@@ -76,20 +76,12 @@ func NewTransferService(mgr *session.Manager) *TransferService {
 
 func (s *TransferService) ServiceName() string { return "TransferService" }
 
-// progressEvent is the Emit payload.
-type progressEvent struct {
-	TransferID string `json:"transferId"`
-	Rows       int64  `json:"rows"`
-	Done       bool   `json:"done"`
-	Error      string `json:"error,omitempty"`
-}
-
 func emitProgress(transferID string, rows int64, done bool, errMsg string) {
-	wailsbridge.Emit("transfer:progress", progressEvent{
-		TransferID: transferID,
-		Rows:       rows,
-		Done:       done,
-		Error:      errMsg,
+	wailsbridge.Emit("transfer:progress", map[string]any{
+		"transferId": transferID,
+		"rows":       rows,
+		"done":       done,
+		"error":      errMsg,
 	})
 }
 
@@ -453,10 +445,10 @@ func sqlLiteral(v any) string {
 // --- XLSX writer (streaming) ---------------------------------------------
 
 type xlsxWriter struct {
-	f       *excelize.File
-	stream  *excelize.StreamWriter
-	path    string
-	rowIdx  int
+	f      *excelize.File
+	stream *excelize.StreamWriter
+	path   string
+	rowIdx int
 }
 
 func newXLSXWriter(path string, cols []dbdriver.ColumnMeta) (*xlsxWriter, error) {
@@ -504,6 +496,225 @@ func (x *xlsxWriter) Close() error {
 		return err
 	}
 	return x.f.Close()
+}
+
+// --- cross-database data transfer -----------------------------------------
+
+// DataTransferRequest is what the front-end sends to StartTransfer.
+type DataTransferRequest struct {
+	SourceConnID string   `json:"sourceConnId"`
+	SourceDB     string   `json:"sourceDb"`
+	SourceSchema string   `json:"sourceSchema,omitempty"`
+	TargetConnID string   `json:"targetConnId"`
+	TargetDB     string   `json:"targetDb"`
+	TargetSchema string   `json:"targetSchema,omitempty"`
+	Tables       []string `json:"tables"`
+	CreateTable  bool     `json:"createTable"`
+	TransferMode string   `json:"transferMode"` // "append" or "overwrite"
+	BatchSize    int      `json:"batchSize"`
+}
+
+// DataTransferResult is returned once all tables have been processed (or on
+// first fatal error — partial results are still returned so the UI can show
+// what made it through).
+type DataTransferResult struct {
+	TransferID   string                          `json:"transferId"`
+	TableResults map[string]*TableTransferResult `json:"tableResults"`
+}
+
+// TableTransferResult reports the outcome for one table.
+type TableTransferResult struct {
+	Rows  int64  `json:"rows"`
+	Error string `json:"error,omitempty"`
+}
+
+// StartTransfer copies data from source-connection tables to target-connection
+// tables. The method is synchronous — callers cancel via ctx; progress events
+// fire on transfer:progress.
+func (s *TransferService) StartTransfer(ctx context.Context, req DataTransferRequest) (DataTransferResult, error) {
+	var empty DataTransferResult
+	transferID := "t-" + uuid.NewString()
+	result := DataTransferResult{
+		TransferID:   transferID,
+		TableResults: make(map[string]*TableTransferResult),
+	}
+
+	if req.BatchSize <= 0 {
+		req.BatchSize = 500
+	}
+
+	// Resolve source connection.
+	srcConn, err := s.mgr.Get(req.SourceConnID)
+	if err != nil {
+		srcConn, err = s.mgr.Open(ctx, req.SourceConnID)
+		if err != nil {
+			return empty, fmt.Errorf("TransferService: source: %w", err)
+		}
+	}
+	srcQ := srcConn.Querier()
+	if srcQ == nil {
+		return empty, fmt.Errorf("TransferService: source has no querier")
+	}
+
+	// Resolve target connection.
+	tgtConn, err := s.mgr.Get(req.TargetConnID)
+	if err != nil {
+		tgtConn, err = s.mgr.Open(ctx, req.TargetConnID)
+		if err != nil {
+			return empty, fmt.Errorf("TransferService: target: %w", err)
+		}
+	}
+	tgtQ := tgtConn.Querier()
+	if tgtQ == nil {
+		return empty, fmt.Errorf("TransferService: target has no querier")
+	}
+
+	// Drivers / dialects for identifier quoting.
+	srcD, tgtD, err := s.dialects(ctx, req.SourceConnID, req.TargetConnID)
+	if err != nil {
+		return empty, err
+	}
+
+	for _, tableName := range req.Tables {
+		if err := ctx.Err(); err != nil {
+			emitProgress(transferID, 0, true, err.Error())
+			return result, err
+		}
+
+		tr := &TableTransferResult{}
+		result.TableResults[tableName] = tr
+
+		// --- create target table if needed ----------------------------------
+		if req.CreateTable {
+			// Set target database context so unqualified DDL works.
+			if _, err := tgtQ.Exec(ctx, "USE "+tgtD.QuoteIdentifier(req.TargetDB)); err != nil {
+				tr.Error = fmt.Sprintf("use database: %v", err)
+				continue
+			}
+			ddl, err := srcConn.Metadata().GetCreateTable(ctx, req.SourceDB, req.SourceSchema, tableName)
+			if err != nil {
+				tr.Error = fmt.Sprintf("get DDL: %v", err)
+				continue
+			}
+			// ponytail: works MySQL→MySQL; cross-DB DDL translation needs
+			// the target driver's GenerateCreateTable + column-type mapping.
+			createSQL := strings.Replace(ddl, "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
+			if _, err := tgtQ.Exec(ctx, createSQL); err != nil {
+				tr.Error = fmt.Sprintf("create table: %v", err)
+				continue
+			}
+		}
+
+		// --- overwrite mode: truncate target table --------------------------
+		if req.TransferMode == "overwrite" {
+			tgtQual := dbdriver.QualifyTable(tgtD, req.TargetDB, req.TargetSchema, tableName)
+			if _, err := tgtQ.Exec(ctx, "TRUNCATE TABLE "+tgtQual); err != nil {
+				// TRUNCATE may fail with FK refs; fall back to DELETE.
+				if _, err := tgtQ.Exec(ctx, "DELETE FROM "+tgtQual); err != nil {
+					tr.Error = fmt.Sprintf("truncate: %v", err)
+					continue
+				}
+			}
+		}
+
+		// --- query source --------------------------------------------------
+		srcQual := dbdriver.QualifyTable(srcD, req.SourceDB, req.SourceSchema, tableName)
+		rs, err := srcQ.Query(ctx, "SELECT * FROM "+srcQual)
+		if err != nil {
+			tr.Error = fmt.Sprintf("query source: %v", err)
+			continue
+		}
+
+		cols := rs.Columns()
+		colNames := make([]string, len(cols))
+		for i, c := range cols {
+			colNames[i] = c.Name
+		}
+		tgtQual := dbdriver.QualifyTable(tgtD, req.TargetDB, req.TargetSchema, tableName)
+
+		var rowsTotal int64
+	loop:
+		for {
+			batch, done, err := rs.Next(req.BatchSize)
+			if err != nil {
+				tr.Error = fmt.Sprintf("read batch: %v", err)
+				break
+			}
+			if len(batch) > 0 {
+				if err := s.transferBatch(ctx, tgtQ, tgtQual, colNames, batch, tgtD); err != nil {
+					tr.Error = err.Error()
+					break
+				}
+				rowsTotal += int64(len(batch))
+				emitProgress(transferID, rowsTotal, false, "")
+			}
+			if done {
+				break loop
+			}
+		}
+		_ = rs.Close()
+		tr.Rows = rowsTotal
+	}
+
+	emitProgress(transferID, 0, true, "")
+	return result, nil
+}
+
+// transferBatch builds and executes one multi-row INSERT for the given rows.
+func (s *TransferService) transferBatch(ctx context.Context, q dbdriver.Querier, qualifiedTable string, colNames []string, rows [][]any, d dbdriver.Dialect) error {
+	var b strings.Builder
+	b.Grow(4096)
+	b.WriteString("INSERT INTO ")
+	b.WriteString(qualifiedTable)
+	b.WriteString(" (")
+	for i, name := range colNames {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(d.QuoteIdentifier(name))
+	}
+	b.WriteString(") VALUES ")
+	for ri, row := range rows {
+		if ri > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString("(")
+		for i, v := range row {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(sqlLiteral(v))
+		}
+		b.WriteString(")")
+	}
+	if _, err := q.Exec(ctx, b.String()); err != nil {
+		return fmt.Errorf("insert batch: %w", err)
+	}
+	return nil
+}
+
+// dialects resolves both driver instances to get their Dialect.
+func (s *TransferService) dialects(ctx context.Context, srcID, tgtID string) (src, tgt dbdriver.Dialect, err error) {
+	name, err := s.mgr.DriverName(ctx, srcID)
+	if err != nil {
+		return nil, nil, err
+	}
+	d, err := registry.Get(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	src = d.Dialect()
+
+	name, err = s.mgr.DriverName(ctx, tgtID)
+	if err != nil {
+		return nil, nil, err
+	}
+	d, err = registry.Get(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	tgt = d.Dialect()
+	return
 }
 
 // --- helpers --------------------------------------------------------------

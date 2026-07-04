@@ -32,6 +32,9 @@ export function broadcastConnectionSaved(connId: string): Promise<void> {
 export function openDatabaseEditor(connId: string, dbName = ''): Promise<void> {
   return SystemService.OpenDatabaseEditor(connId, dbName) as unknown as Promise<void>
 }
+export function openTransferDialog(): Promise<void> {
+  return SystemService.OpenTransferDialog() as unknown as Promise<void>
+}
 export function broadcastDatabaseSaved(connId: string, dbName: string): Promise<void> {
   return SystemService.BroadcastDatabaseSaved(connId, dbName) as unknown as Promise<void>
 }

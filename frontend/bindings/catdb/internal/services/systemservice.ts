@@ -80,6 +80,14 @@ export function OpenExternalURL(target: string): $CancellablePromise<void> {
 }
 
 /**
+ * OpenTransferDialog opens the Data Transfer dialog as its own native
+ * child window, keyed by name "transfer-editor".
+ */
+export function OpenTransferDialog(): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.SystemService.OpenTransferDialog");
+}
+
+/**
  * PickOpenFile shows the native Open dialog and returns the chosen path, or
  * "" if the user cancelled.
  */

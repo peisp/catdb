@@ -12,6 +12,7 @@ import { themeOverrides, darkThemeOverrides } from './styles/theme'
 import AppShell from './components/layout/AppShell.vue'
 import ConnectionEditorWindow from './components/connection/ConnectionEditorWindow.vue'
 import DatabaseEditorWindow from './components/database/DatabaseEditorWindow.vue'
+import TransferEditorWindow from './components/transfer/TransferEditorWindow.vue'
 import ConfirmOverlay from './components/common/ConfirmOverlay.vue'
 
 const theme = useThemeStore()
@@ -29,6 +30,7 @@ function currentRoute(): string {
   const h = window.location.hash || ''
   if (h.startsWith('#/connection-editor')) return 'connection-editor'
   if (h.startsWith('#/database-editor')) return 'database-editor'
+  if (h.startsWith('#/transfer-editor')) return 'transfer-editor'
   return 'shell'
 }
 
@@ -63,6 +65,7 @@ onMounted(() => {
     <n-message-provider>
       <ConnectionEditorWindow v-if="route === 'connection-editor'" />
       <DatabaseEditorWindow v-else-if="route === 'database-editor'" />
+      <TransferEditorWindow v-else-if="route === 'transfer-editor'" />
       <AppShell v-else />
       <!-- Windows-only in-app confirm modal; mounted at root so it covers every window. -->
       <ConfirmOverlay />

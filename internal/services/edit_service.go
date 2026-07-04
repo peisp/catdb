@@ -78,7 +78,7 @@ type RowChange struct {
 type RowChangeResult struct {
 	RowsAffected int64  `json:"rowsAffected"`
 	LastInsertID int64  `json:"lastInsertId,omitempty"`
-	SQL          string `json:"sql"`  // the rendered SQL, for the editor's "history" panel
+	SQL          string `json:"sql"` // the rendered SQL, for the editor's "history" panel
 }
 
 // ApplyChange executes a single RowChange via the driver's Editor. Returns

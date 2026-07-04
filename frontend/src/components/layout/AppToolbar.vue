@@ -7,6 +7,7 @@ import { system as systemApi } from '../../api'
 import AppIcon from '../shared/AppIcon.vue'
 import unplugIcon from '../../assets/icons/unplug.svg?raw'
 import fileCodeCornerIcon from '../../assets/icons/file-code-corner.svg?raw'
+import arrowLeftRightIcon from '../../assets/icons/arrow-left-right.svg?raw'
 
 const queryStore = useQueryStore()
 
@@ -32,6 +33,9 @@ function openNewQuery() {
   const n = queryStore.tabsForConn(props.activeConn.id).filter((t: any) => t.kind === 'query').length + 1
   queryStore.addTab(props.activeConn.id, { kind: 'query', title: `Query ${n}` })
 }
+function openTransferDialog() {
+  void systemApi.openTransferDialog()
+}
 </script>
 
 <template>
@@ -43,6 +47,10 @@ function openNewQuery() {
     <button type="button" class="toolbar-btn" :disabled="!activeConn" @click="openNewQuery">
       <AppIcon :src="fileCodeCornerIcon" :size="14" />
       {{ $t('tabBar.newQuery') }}
+    </button>
+    <button type="button" class="toolbar-btn" @click="openTransferDialog">
+      <AppIcon :src="arrowLeftRightIcon" :size="14" />
+      {{ $t('transfer.dataTransfer') }}
     </button>
     <span class="toolbar-spacer"></span>
     <!-- Windows frameless caption buttons (minimise / maximise / close). -->

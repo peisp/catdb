@@ -40,7 +40,7 @@ type ImportOptions struct {
 	Path      string       `json:"path"`
 	DB        string       `json:"db,omitempty"`
 	Schema    string       `json:"schema,omitempty"`
-	Table     string       `json:"table,omitempty"`   // CSV only
+	Table     string       `json:"table,omitempty"` // CSV only
 	HasHeader bool         `json:"hasHeader,omitempty"`
 	Columns   []string     `json:"columns,omitempty"` // CSV only when HasHeader=false
 	Delimiter string       `json:"delimiter,omitempty"`
@@ -133,7 +133,6 @@ func (s *TransferService) importCSV(
 	if ed == nil {
 		return ImportResult{}, fmt.Errorf("TransferService: connection has no editor")
 	}
-
 
 	var rowsAffected int64
 	var rowsRead int64

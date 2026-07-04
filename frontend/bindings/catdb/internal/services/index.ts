@@ -27,6 +27,8 @@ export {
     AutocompleteTable,
     BrowseResult,
     ConnectionDraft,
+    DataTransferRequest,
+    DataTransferResult,
     DriverInfo,
     ExportOptions,
     ExportResult,
@@ -41,6 +43,7 @@ export {
     RowChangeResult,
     TableRef,
     TableSummary,
+    TableTransferResult,
     TransferFormat,
     UpdateCheckResult
 } from "./models.js";

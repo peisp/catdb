@@ -192,6 +192,102 @@ export class ConnectionDraft {
 }
 
 /**
+ * DataTransferRequest is what the front-end sends to StartTransfer.
+ */
+export class DataTransferRequest {
+    "sourceConnId": string;
+    "sourceDb": string;
+    "sourceSchema"?: string;
+    "targetConnId": string;
+    "targetDb": string;
+    "targetSchema"?: string;
+    "tables": string[];
+    "createTable": boolean;
+
+    /**
+     * "append" or "overwrite"
+     */
+    "transferMode": string;
+    "batchSize": number;
+
+    /** Creates a new DataTransferRequest instance. */
+    constructor($$source: Partial<DataTransferRequest> = {}) {
+        if (!("sourceConnId" in $$source)) {
+            this["sourceConnId"] = "";
+        }
+        if (!("sourceDb" in $$source)) {
+            this["sourceDb"] = "";
+        }
+        if (!("targetConnId" in $$source)) {
+            this["targetConnId"] = "";
+        }
+        if (!("targetDb" in $$source)) {
+            this["targetDb"] = "";
+        }
+        if (!("tables" in $$source)) {
+            this["tables"] = [];
+        }
+        if (!("createTable" in $$source)) {
+            this["createTable"] = false;
+        }
+        if (!("transferMode" in $$source)) {
+            this["transferMode"] = "";
+        }
+        if (!("batchSize" in $$source)) {
+            this["batchSize"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DataTransferRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DataTransferRequest {
+        const $$createField6_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tables" in $$parsedSource) {
+            $$parsedSource["tables"] = $$createField6_0($$parsedSource["tables"]);
+        }
+        return new DataTransferRequest($$parsedSource as Partial<DataTransferRequest>);
+    }
+}
+
+/**
+ * DataTransferResult is returned once all tables have been processed (or on
+ * first fatal error — partial results are still returned so the UI can show
+ * what made it through).
+ */
+export class DataTransferResult {
+    "transferId": string;
+    "tableResults": { [_ in string]?: TableTransferResult | null };
+
+    /** Creates a new DataTransferResult instance. */
+    constructor($$source: Partial<DataTransferResult> = {}) {
+        if (!("transferId" in $$source)) {
+            this["transferId"] = "";
+        }
+        if (!("tableResults" in $$source)) {
+            this["tableResults"] = {};
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DataTransferResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DataTransferResult {
+        const $$createField1_0 = $$createType14;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tableResults" in $$parsedSource) {
+            $$parsedSource["tableResults"] = $$createField1_0($$parsedSource["tableResults"]);
+        }
+        return new DataTransferResult($$parsedSource as Partial<DataTransferResult>);
+    }
+}
+
+/**
  * DriverInfo describes one registered driver to the front-end.
  */
 export class DriverInfo {
@@ -222,8 +318,8 @@ export class DriverInfo {
      * Creates a new DriverInfo instance from a string or object.
      */
     static createFrom($$source: any = {}): DriverInfo {
-        const $$createField2_0 = $$createType12;
-        const $$createField3_0 = $$createType14;
+        const $$createField2_0 = $$createType15;
+        const $$createField3_0 = $$createType17;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("capabilities" in $$parsedSource) {
             $$parsedSource["capabilities"] = $$createField2_0($$parsedSource["capabilities"]);
@@ -611,8 +707,8 @@ export class QueryRunResult {
     static createFrom($$source: any = {}): QueryRunResult {
         const $$createField1_0 = $$createType4;
         const $$createField2_0 = $$createType6;
-        const $$createField8_0 = $$createType16;
-        const $$createField9_0 = $$createType18;
+        const $$createField8_0 = $$createType19;
+        const $$createField9_0 = $$createType21;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
             $$parsedSource["columns"] = $$createField1_0($$parsedSource["columns"]);
@@ -669,8 +765,8 @@ export class RowChange {
      * Creates a new RowChange instance from a string or object.
      */
     static createFrom($$source: any = {}): RowChange {
-        const $$createField4_0 = $$createType19;
-        const $$createField5_0 = $$createType19;
+        const $$createField4_0 = $$createType22;
+        const $$createField5_0 = $$createType22;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("pk" in $$parsedSource) {
             $$parsedSource["pk"] = $$createField4_0($$parsedSource["pk"]);
@@ -776,8 +872,8 @@ export class TableSummary {
      */
     static createFrom($$source: any = {}): TableSummary {
         const $$createField0_0 = $$createType4;
-        const $$createField1_0 = $$createType21;
-        const $$createField2_0 = $$createType23;
+        const $$createField1_0 = $$createType24;
+        const $$createField2_0 = $$createType26;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
             $$parsedSource["columns"] = $$createField0_0($$parsedSource["columns"]);
@@ -789,6 +885,31 @@ export class TableSummary {
             $$parsedSource["foreignKeys"] = $$createField2_0($$parsedSource["foreignKeys"]);
         }
         return new TableSummary($$parsedSource as Partial<TableSummary>);
+    }
+}
+
+/**
+ * TableTransferResult reports the outcome for one table.
+ */
+export class TableTransferResult {
+    "rows": number;
+    "error"?: string;
+
+    /** Creates a new TableTransferResult instance. */
+    constructor($$source: Partial<TableTransferResult> = {}) {
+        if (!("rows" in $$source)) {
+            this["rows"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TableTransferResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TableTransferResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new TableTransferResult($$parsedSource as Partial<TableTransferResult>);
     }
 }
 
@@ -912,15 +1033,18 @@ const $$createType8 = dbdriver$0.SSLConfig.createFrom;
 const $$createType9 = $Create.Nullable($$createType8);
 const $$createType10 = dbdriver$0.SSHConfig.createFrom;
 const $$createType11 = $Create.Nullable($$createType10);
-const $$createType12 = dbdriver$0.Capabilities.createFrom;
-const $$createType13 = dbdriver$0.ConnParamField.createFrom;
-const $$createType14 = $Create.Array($$createType13);
-const $$createType15 = dbdriver$0.ExecResult.createFrom;
-const $$createType16 = $Create.Nullable($$createType15);
-const $$createType17 = TableRef.createFrom;
-const $$createType18 = $Create.Nullable($$createType17);
-const $$createType19 = $Create.Map($Create.Any, $Create.Any);
-const $$createType20 = dbdriver$0.IndexInfo.createFrom;
-const $$createType21 = $Create.Array($$createType20);
-const $$createType22 = dbdriver$0.ForeignKeyInfo.createFrom;
-const $$createType23 = $Create.Array($$createType22);
+const $$createType12 = TableTransferResult.createFrom;
+const $$createType13 = $Create.Nullable($$createType12);
+const $$createType14 = $Create.Map($Create.Any, $$createType13);
+const $$createType15 = dbdriver$0.Capabilities.createFrom;
+const $$createType16 = dbdriver$0.ConnParamField.createFrom;
+const $$createType17 = $Create.Array($$createType16);
+const $$createType18 = dbdriver$0.ExecResult.createFrom;
+const $$createType19 = $Create.Nullable($$createType18);
+const $$createType20 = TableRef.createFrom;
+const $$createType21 = $Create.Nullable($$createType20);
+const $$createType22 = $Create.Map($Create.Any, $Create.Any);
+const $$createType23 = dbdriver$0.IndexInfo.createFrom;
+const $$createType24 = $Create.Array($$createType23);
+const $$createType25 = dbdriver$0.ForeignKeyInfo.createFrom;
+const $$createType26 = $Create.Array($$createType25);

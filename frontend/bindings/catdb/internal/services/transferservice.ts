@@ -52,6 +52,18 @@ export function ImportFile(connID: string, opts: $models.ImportOptions): $Cancel
     });
 }
 
+/**
+ * StartTransfer copies data from source-connection tables to target-connection
+ * tables. The method is synchronous — callers cancel via ctx; progress events
+ * fire on transfer:progress.
+ */
+export function StartTransfer(req: $models.DataTransferRequest): $CancellablePromise<$models.DataTransferResult> {
+    return $Call.ByName("catdb/internal/services.TransferService.StartTransfer", req).then(($result: any) => {
+        return $$createType2($result);
+    });
+}
+
 // Private type creation functions
 const $$createType0 = $models.ExportResult.createFrom;
 const $$createType1 = $models.ImportResult.createFrom;
+const $$createType2 = $models.DataTransferResult.createFrom;
