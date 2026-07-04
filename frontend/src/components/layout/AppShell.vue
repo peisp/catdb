@@ -218,7 +218,7 @@ function onOpenTablesOverview(payload: { db: string }) {
         @open-tables-overview="onOpenTablesOverview"
         @collapse="sidebarVisible = false"
       />
-      <div class="main">
+      <div class="main" :class="{ win: isWin }">
         <AppToolbar :active-conn="activeConn" :sidebar-visible="sidebarVisible" />
         <main class="content">
           <QueryWorkspace
@@ -335,6 +335,10 @@ function onOpenTablesOverview(payload: { db: string }) {
 }
 @media (prefers-color-scheme: dark) {
   .main { background: rgb(0, 0, 0, 0.5); }
+}
+.main.win { background: #fff; }
+@media (prefers-color-scheme: dark) {
+  .main.win { background: #1e1e1e; }
 }
 
 /* --- Round liquid-glass sidebar toggle ---

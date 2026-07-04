@@ -100,7 +100,10 @@ function openNewQuery() {
 .toolbar { transition: margin-left 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
 .toolbar.sidebar-closed { margin-left: 150px; }
 .toolbar.win.sidebar-closed { margin-left: 50px; }
-
+.toolbar.win { background: #fff; }
+@media (prefers-color-scheme: dark) {
+  .toolbar.win { background: #1e1e1e; }
+}
 /* Spacer pushes the window controls to the right side of the toolbar. */
 .toolbar-spacer { flex: 1 1 0; min-width: 0; }
 
