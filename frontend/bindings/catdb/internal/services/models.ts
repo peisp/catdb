@@ -566,6 +566,12 @@ export class QueryRunResult {
     "isResultSet": boolean;
     "execResult"?: dbdriver$0.ExecResult | null;
 
+    /**
+     * EditTable is non-nil when the result targets a single identifiable table.
+     * The front-end uses this to enable inline editing on the result grid.
+     */
+    "editTable"?: TableRef | null;
+
     /** Creates a new QueryRunResult instance. */
     constructor($$source: Partial<QueryRunResult> = {}) {
         if (!("columns" in $$source)) {
@@ -600,6 +606,7 @@ export class QueryRunResult {
         const $$createField1_0 = $$createType4;
         const $$createField2_0 = $$createType6;
         const $$createField8_0 = $$createType16;
+        const $$createField9_0 = $$createType18;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
             $$parsedSource["columns"] = $$createField1_0($$parsedSource["columns"]);
@@ -609,6 +616,9 @@ export class QueryRunResult {
         }
         if ("execResult" in $$parsedSource) {
             $$parsedSource["execResult"] = $$createField8_0($$parsedSource["execResult"]);
+        }
+        if ("editTable" in $$parsedSource) {
+            $$parsedSource["editTable"] = $$createField9_0($$parsedSource["editTable"]);
         }
         return new QueryRunResult($$parsedSource as Partial<QueryRunResult>);
     }
@@ -653,8 +663,8 @@ export class RowChange {
      * Creates a new RowChange instance from a string or object.
      */
     static createFrom($$source: any = {}): RowChange {
-        const $$createField4_0 = $$createType17;
-        const $$createField5_0 = $$createType17;
+        const $$createField4_0 = $$createType19;
+        const $$createField5_0 = $$createType19;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("pk" in $$parsedSource) {
             $$parsedSource["pk"] = $$createField4_0($$parsedSource["pk"]);
@@ -701,6 +711,36 @@ export class RowChangeResult {
 }
 
 /**
+ * TableRef identifies a single table that the result rows map to, enabling
+ * inline editing on query results. nil means the query is too complex for
+ * safe inline editing (multi-table, aggregate, etc.).
+ */
+export class TableRef {
+    "db": string;
+    "table": string;
+
+    /** Creates a new TableRef instance. */
+    constructor($$source: Partial<TableRef> = {}) {
+        if (!("db" in $$source)) {
+            this["db"] = "";
+        }
+        if (!("table" in $$source)) {
+            this["table"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TableRef instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TableRef {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new TableRef($$parsedSource as Partial<TableRef>);
+    }
+}
+
+/**
  * TableSummary bundles columns/indexes/FKs into one round-trip — handy for
  * the structure viewer so it can render the whole panel without sequencing
  * three calls from the front-end.
@@ -730,8 +770,8 @@ export class TableSummary {
      */
     static createFrom($$source: any = {}): TableSummary {
         const $$createField0_0 = $$createType4;
-        const $$createField1_0 = $$createType19;
-        const $$createField2_0 = $$createType21;
+        const $$createField1_0 = $$createType21;
+        const $$createField2_0 = $$createType23;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
             $$parsedSource["columns"] = $$createField0_0($$parsedSource["columns"]);
@@ -871,8 +911,10 @@ const $$createType13 = dbdriver$0.ConnParamField.createFrom;
 const $$createType14 = $Create.Array($$createType13);
 const $$createType15 = dbdriver$0.ExecResult.createFrom;
 const $$createType16 = $Create.Nullable($$createType15);
-const $$createType17 = $Create.Map($Create.Any, $Create.Any);
-const $$createType18 = dbdriver$0.IndexInfo.createFrom;
-const $$createType19 = $Create.Array($$createType18);
-const $$createType20 = dbdriver$0.ForeignKeyInfo.createFrom;
+const $$createType17 = TableRef.createFrom;
+const $$createType18 = $Create.Nullable($$createType17);
+const $$createType19 = $Create.Map($Create.Any, $Create.Any);
+const $$createType20 = dbdriver$0.IndexInfo.createFrom;
 const $$createType21 = $Create.Array($$createType20);
+const $$createType22 = dbdriver$0.ForeignKeyInfo.createFrom;
+const $$createType23 = $Create.Array($$createType22);

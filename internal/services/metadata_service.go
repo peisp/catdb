@@ -294,6 +294,16 @@ func (s *MetadataService) BrowseTable(ctx context.Context, connID, db, schema, t
 		return empty, err
 	}
 	out := BrowseResult{Columns: rs.Columns(), Rows: rows, SQL: paginated}
+
+	// Enrich column metadata with full COLUMN_TYPE from information_schema
+	// when available (MySQL). The scanner only gives bare DatabaseTypeName()
+	// which lacks precision/parameters.
+	if len(out.Columns) > 0 {
+		if cols, err := enrichColumnTypes(ctx, q, db, schema, table, out.Columns); err == nil {
+			out.Columns = cols
+		}
+	}
+
 	if ed := conn.Editor(); ed != nil {
 		if pk, perr := ed.PrimaryKeys(ctx, db, schema, table); perr == nil {
 			out.PrimaryKey = pk
@@ -301,6 +311,59 @@ func (s *MetadataService) BrowseTable(ctx context.Context, connID, db, schema, t
 		}
 	}
 	return out, nil
+}
+
+// enrichColumnTypes queries information_schema.COLUMNS for full COLUMN_TYPE
+// strings and merges them into the ColumnMeta slice. This gives table browsing
+// proper type precision (e.g. "varchar(255)" instead of "VARCHAR").
+//
+// ponytail: MySQL-specific query. Non-MySQL databases fail gracefully and
+// return the original columns unchanged.
+func enrichColumnTypes(ctx context.Context, q dbdriver.Querier, db, schema, table string, cols []dbdriver.ColumnMeta) ([]dbdriver.ColumnMeta, error) {
+	schemaName := schema
+	if schemaName == "" {
+		schemaName = db
+	}
+	if schemaName == "" {
+		return cols, nil
+	}
+	rs, err := q.Query(ctx,
+		"SELECT COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?",
+		schemaName, table)
+	if err != nil {
+		return cols, nil // non-MySQL DB, skip enrichment
+	}
+	defer rs.Close()
+	typeMap := make(map[string]string, len(cols))
+	for {
+		batch, done, err := rs.Next(200)
+		if err != nil {
+			return cols, nil
+		}
+		for _, row := range batch {
+			if len(row) >= 2 {
+				if name, ok := row[0].(string); ok {
+					if ct, ok := row[1].(string); ok {
+						typeMap[strings.ToLower(name)] = ct
+					}
+				}
+			}
+		}
+		if done {
+			break
+		}
+	}
+	changed := false
+	for i := range cols {
+		if ct, ok := typeMap[strings.ToLower(cols[i].Name)]; ok {
+			cols[i].NativeType = ct
+			changed = true
+		}
+	}
+	if !changed {
+		return cols, nil
+	}
+	return cols, nil
 }
 
 // CountTableRows runs `SELECT COUNT(*) FROM db.table [WHERE …]` so the data

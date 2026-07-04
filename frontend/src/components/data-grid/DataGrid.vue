@@ -243,11 +243,21 @@ function headerTypeText(c: ColumnMeta): string {
   const base = t.toLowerCase()
   if (base.includes('(')) return base
   const upper = t.toUpperCase()
+
+  // DECIMAL/NUMERIC: precision,scale
   if ((upper === 'DECIMAL' || upper === 'NUMERIC') && c.precision && c.precision > 0 && c.precision <= 65) {
     return `${base}(${c.precision},${c.scale ?? 0})`
   }
+  // BINARY/VARBINARY/BIT: byte length (metadata path only, go-sql-driver
+  // doesn't implement ColumnTypeLength for query results).
   if ((upper === 'BINARY' || upper === 'VARBINARY' || upper === 'BIT') && c.length && c.length > 0) {
     return `${base}(${c.length})`
+  }
+  // DATETIME / TIMESTAMP / TIME: fractional seconds precision comes through
+  // DecimalSize() → precision field (go-sql-driver ColumnTypeLength is
+  // commented out, so length is always 0 for query results).
+  if ((upper === 'DATETIME' || upper === 'TIMESTAMP' || upper === 'TIME') && c.precision != null && c.precision >= 0 && c.precision <= 6) {
+    return c.precision > 0 ? `${base}(${c.precision})` : base
   }
   return base
 }
@@ -331,6 +341,7 @@ const gridTheme = computed<GridTheme>(() => {
     deletedText: '#999',
     dirtyText: '#999',
     rowNumText: vars.textColor3,
+    sortActiveColor: vars.primaryColor,
   }
 })
 
@@ -450,6 +461,8 @@ type DragMode = 'cells' | 'rows' | 'cols' | 'resize'
 let drag: {
   mode: DragMode
   moved: boolean
+  /** header sort-click flag: true when mousedown was in the sort zone */
+  sortClick?: boolean
   clickCell: { row: number; col: number } | null
   resizeCol: number
   resizeStartX: number
@@ -486,10 +499,12 @@ function onMouseDown(e: MouseEvent) {
         attachWindowDrag()
         return
       }
-      // 表头：点击=排序，拖拽=选列。选区在首次真实移动时才建立（见
-      // updateDragSelection），松开时未移动则视为排序点击。
+      // 表头：排序按钮区域 → 点击排序；列名区域 → 点击选整列。
+      // 拖拽区域（排序按钮 / 列名）在首次真实移动时建立选区（见
+      // updateDragSelection），松开时未移动则按 sortClick 分发。
+      const inSortZone = hit.xInCol >= w - SORT_ZONE_WIDTH
       drag = {
-        mode: 'cols', moved: false, clickCell: { row: -1, col: hit.col },
+        mode: 'cols', moved: false, sortClick: inSortZone, clickCell: { row: -1, col: hit.col },
         resizeCol: -1, resizeStartX: 0, resizeStartW: 0,
         pointer: { x: e.clientX, y: e.clientY },
         start: { x: e.clientX, y: e.clientY },
@@ -648,9 +663,9 @@ function onWindowDragUp() {
     startEdit(d.clickCell.row, d.clickCell.col)
     return
   }
-  // 表头单击（未拖出选区）：排序；不可排序时退化为整列选择
+  // 表头单击（未拖出选区）：排序按钮区域 → 排序；列名区域 → 选整列
   if (d.mode === 'cols' && !d.moved && d.clickCell) {
-    if (props.sortable) {
+    if (d.sortClick && props.sortable) {
       sortCycle(d.clickCell.col)
     } else if (props.rows.length) {
       setSelection({ row: 0, col: d.clickCell.col }, { row: props.rows.length - 1, col: d.clickCell.col })
@@ -670,7 +685,7 @@ function onCanvasMouseMove(e: MouseEvent) {
   if (hit.region === 'header' && hit.col >= 0) {
     const w = colWidths.value[hit.col]
     if (hit.xInCol >= w - RESIZE_ZONE || (hit.xInCol < RESIZE_ZONE && hit.col > 0)) cursor = 'col-resize'
-    else if (props.sortable) cursor = 'pointer'
+    else if (props.sortable && hit.xInCol >= w - SORT_ZONE_WIDTH) cursor = 'pointer'
     const meta = props.columns[hit.col]
     title = meta?.comment || (meta ? headerTypeText(meta) : '')
   } else if (hit.region === 'cell' && inRowRange(hit.row) && hit.col >= 0) {

@@ -451,6 +451,8 @@ function onSplitDown(e: PointerEvent) {
             :fetching="tab.fetching"
             :rows-total="tab.rowsTotal"
             :sql="tab.lastRunSql"
+            :conn-id="tab.connId"
+            :edit-table="tab.editTable ?? null"
             class="result-table"
             @load-more="onLoadMore"
             @export="onResultExport"
@@ -484,6 +486,8 @@ function onSplitDown(e: PointerEvent) {
   padding: 6px 10px;
   background: var(--n-color);
   min-width: 0;
+  border-bottom: 1px solid var(--n-border-color);
+  height: 35px;
 }
 .sep { display: inline-block; width: 1px; height: 12px; background: currentColor; opacity: 0.15; }
 .mute { opacity: 0.6; font-size: 12px; }

@@ -32,6 +32,7 @@ export interface GridTheme {
   deletedText: string
   dirtyText: string
   rowNumText: string
+  sortActiveColor: string
 }
 
 export interface GridFonts {
@@ -74,7 +75,7 @@ export interface DrawGridOptions {
   sortState: { col: number; order: 'asc' | 'desc' } | null
 }
 
-export const SORT_ZONE_WIDTH = 20
+export const SORT_ZONE_WIDTH = 28
 export const RESIZE_ZONE = 4
 const CELL_PAD = 8
 
@@ -174,9 +175,27 @@ function drawSortIndicator(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
-  order: 'asc' | 'desc',
+  order: 'asc' | 'desc' | 'none',
   color: string,
+  mutedColor?: string,
 ) {
+  if (order === 'none') {
+    // 灰色双向三角，同激活态大小，上下错开不重叠
+    ctx.fillStyle = mutedColor || color
+    ctx.beginPath()
+    ctx.moveTo(cx - 4, cy - 0.5)
+    ctx.lineTo(cx + 4, cy - 0.5)
+    ctx.lineTo(cx, cy - 5)
+    ctx.closePath()
+    ctx.fill()
+    ctx.beginPath()
+    ctx.moveTo(cx - 4, cy + 0.5)
+    ctx.lineTo(cx + 4, cy + 0.5)
+    ctx.lineTo(cx, cy + 5)
+    ctx.closePath()
+    ctx.fill()
+    return
+  }
   ctx.fillStyle = color
   ctx.beginPath()
   if (order === 'asc') {
@@ -369,8 +388,11 @@ export function drawGrid(o: DrawGridOptions): void {
     } else {
       ctx.fillText(fitText(ctx, o.columns[c].title, maxTextW), x + CELL_PAD, hh / 2)
     }
-    if (sortHere) {
-      drawSortIndicator(ctx, x + w - SORT_ZONE_WIDTH / 2 - 2, hh / 2, o.sortState!.order, theme.textMuted)
+    if (o.sortable) {
+      const order = sortHere ? o.sortState!.order : 'none'
+      const c = sortHere ? theme.textMuted : theme.divider
+      const ac = sortHere ? theme.sortActiveColor : theme.textMuted
+      drawSortIndicator(ctx, x + w - SORT_ZONE_WIDTH / 2 - 2, hh / 2, order, ac, c)
     }
     ctx.strokeStyle = theme.border
     ctx.beginPath()

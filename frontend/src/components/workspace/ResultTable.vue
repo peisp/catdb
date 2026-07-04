@@ -4,10 +4,13 @@
 // 渲染（虚拟化、列宽、选区高亮、键盘导航）全部下沉到 DataGrid；
 // 右键菜单走 Wails 原生（CLAUDE.md 规则 11），状态通过 setActiveGridContext 同步。
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useMessage } from 'naive-ui'
 import DataGrid from '../data-grid/DataGrid.vue'
 import ResultFooter from './ResultFooter.vue'
 import { useTableSelection, type SelectionRange } from '../../composables/useTableSelection'
 import { setActiveGridContext } from '../../api/gridContextMenu'
+import { on as onEvent } from '../../api/events'
+import * as editApi from '../../api/edit'
 import type { QueryColumn } from '../../stores/query'
 import { t } from '../../i18n'
 
@@ -24,6 +27,11 @@ const props = defineProps<{
   tableName?: string
   /** Primary-key column names for UPDATE generation. */
   pkColumns?: string[]
+  /** Connection id, required for inline editing. */
+  connId: string
+  /** When non-null, the result maps to a single table and inline editing
+   *  may be available (subject to PK detection). */
+  editTable?: { db: string; table: string } | null
 }>()
 const emit = defineEmits<{
   (e: 'load-more'): void
@@ -49,11 +57,42 @@ const pagedRows = computed<any[][]>(() => {
 const hasPrev = computed(() => !isAllRows.value && page.value > 1)
 const hasNext = computed(() => !isAllRows.value && page.value * pageSize.value < props.rows.length)
 // 新一次执行会换掉 columns 数组引用 → 回到第 1 页
-watch(() => props.columns, () => { page.value = 1 })
+watch(() => props.columns, () => {
+  page.value = 1
+  pendingChanges.value = new Map()
+  deletedRows.value = new Set()
+})
 watch(pageSize, () => { page.value = 1 })
 
 const sel = useTableSelection()
 const rootRef = ref<HTMLElement | null>(null)
+const message = useMessage()
+
+// ---- inline editing state (used when editTable is set) ----
+interface PendingChange {
+  row: number; col: number; oldValue: any; newValue: any; columnName: string
+}
+const pendingChanges = ref<Map<string, PendingChange>>(new Map())
+const deletedRows = ref<Set<number>>(new Set())
+const pkColumns = ref<string[]>([])
+const saving = ref(false)
+const dirtyCells = computed(() => new Set(pendingChanges.value.keys()))
+const dirtyRows = computed(() => {
+  const s = new Set<number>()
+  for (const key of pendingChanges.value.keys()) {
+    s.add(parseInt(key.split(':')[0], 10))
+  }
+  return s
+})
+const hasPending = computed(() => pendingChanges.value.size > 0)
+const editable = computed(() => {
+  if (!props.editTable || saving.value) return false
+  if (pkColumns.value.length === 0) return false
+  // All PK columns must be present in the result (case-insensitive,
+  // matching MySQL's case-insensitive column names).
+  const names = new Set(props.columns.map((c) => c.name.toLowerCase()))
+  return pkColumns.value.every((k) => names.has(k.toLowerCase()))
+})
 
 function colNames(): string[] { return props.columns.map((c) => c.name) }
 
@@ -65,16 +104,17 @@ function onCellContextMenu(p: { row: number; col: number }) {
   if (!sel.hasSelection() || !sel.isSelected(p.row, p.col)) {
     sel.selectCell(p.row, p.col)
   }
-  // Push the live state to the native-menu singleton so whichever item the
-  // user clicks (in Wails' native menu) operates against this grid's current
-  // selection. Done synchronously inside the contextmenu DOM event so the
-  // singleton is current by the time Go fires its callback.
+  const et = props.editTable
+  const fullName = et ? `\`${et.db}\`.\`${et.table}\`` : props.tableName
   setActiveGridContext({
     rows: pagedRows.value,
     columnNames: colNames(),
     selection: sel.selection.value,
-    tableName: props.tableName,
-    pkColumns: props.pkColumns ?? [],
+    tableName: fullName,
+    pkColumns: pkColumns.value,
+    connId: et ? props.connId : undefined,
+    db: et?.db,
+    table: et?.table,
   })
 }
 
@@ -96,20 +136,173 @@ function onDocKeyDown(e: KeyboardEvent) {
   }
 }
 
-onMounted(() => document.addEventListener('keydown', onDocKeyDown))
-onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeyDown))
+// ---- inline editing helpers ----
+
+function actualRow(pagedRow: number): number {
+  return isAllRows.value ? pagedRow : pagedRow + (page.value - 1) * pageSize.value
+}
+
+function coerceForType(raw: any, col: any): any {
+  if (raw == null) return null
+  const lt = col.logicalType
+  if (lt === 'int' || lt === 'bigint' || lt === 'float' || lt === 'decimal') {
+    if (raw === '') return null
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : raw
+  }
+  if (lt === 'bool') {
+    if (typeof raw === 'boolean') return raw
+    return String(raw).toLowerCase() === 'true' || raw === 1 || raw === '1'
+  }
+  return raw
+}
+
+async function onEditCommit(p: { row: number; col: number; oldValue: any; newValue: any; column: any }) {
+  const r = actualRow(p.row)
+  const newValue = coerceForType(p.newValue, p.column)
+  if (newValue === p.oldValue || (p.oldValue == null && newValue === '')) return
+  const map = pendingChanges.value
+  const key = `${r}:${p.col}`
+  map.set(key, { row: r, col: p.col, oldValue: p.oldValue, newValue, columnName: p.column.name })
+  pendingChanges.value = new Map(map)
+}
+
+function pkValuesOf(rowIdx: number): Record<string, any> {
+  const map: Record<string, any> = {}
+  const row = props.rows[rowIdx]
+  if (!row) return map
+  for (const k of pkColumns.value) {
+    const i = colIndex(k)
+    if (i < 0) continue
+    const pending = pendingChanges.value.get(`${rowIdx}:${i}`)
+    map[k] = pending ? pending.oldValue : row[i]
+  }
+  return map
+}
+
+function colIndex(name: string): number {
+  const lower = name.toLowerCase()
+  return props.columns.findIndex((c) => c.name.toLowerCase() === lower)
+}
+
+async function saveEditChanges() {
+  const changes = Array.from(pendingChanges.value.values())
+  if (!changes.length) return
+  const et = props.editTable
+  if (!et) return
+  saving.value = true
+  let saved = 0
+  let lastSQL = ''
+  const byRow = new Map<number, PendingChange[]>()
+  for (const ch of changes) {
+    const arr = byRow.get(ch.row) ?? []
+    arr.push(ch)
+    byRow.set(ch.row, arr)
+  }
+  for (const [rowIdx, rowChanges] of byRow) {
+    const values: Record<string, any> = {}
+    for (const ch of rowChanges) values[ch.columnName] = ch.newValue
+    try {
+      const res = await editApi.applyChange(props.connId, {
+        op: 'update',
+        db: et.db,
+        table: et.table,
+        pk: pkValuesOf(rowIdx),
+        values,
+      })
+      if (res.rowsAffected > 0) {
+        saved++
+        lastSQL = res.sql
+      }
+    } catch (err) {
+      message.error(t('common.saveFailed', { error: String(err) }))
+      pendingChanges.value = new Map()
+      saving.value = false
+      return
+    }
+  }
+  if (saved > 0) message.success(t('tableBrowser.savedChanges', { n: saved }))
+  pendingChanges.value = new Map()
+  saving.value = false
+}
+
+function discardEditChanges() {
+  for (const ch of pendingChanges.value.values()) {
+    if (props.rows[ch.row]) props.rows[ch.row][ch.col] = ch.oldValue
+  }
+  pendingChanges.value = new Map()
+  deletedRows.value = new Set()
+}
+
+// ---- subscriptions ----
+
+let unsubSetNullQueue: (() => void) | undefined
+
+onMounted(() => {
+  document.addEventListener('keydown', onDocKeyDown)
+  unsubSetNullQueue = onEvent<Array<{ row: number; col: number; oldValue: any; columnName: string }>>(
+    'ctx:grid-set-null-queue',
+    (changes) => {
+      if (!changes.length) return
+      const map = pendingChanges.value
+      for (const ch of changes) {
+        const r = actualRow(ch.row)
+        const key = `${r}:${ch.col}`
+        map.set(key, { row: r, col: ch.col, oldValue: ch.oldValue, newValue: null, columnName: ch.columnName })
+        if (props.rows[r]) props.rows[r][ch.col] = null
+      }
+      pendingChanges.value = new Map(map)
+    },
+  )
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onDocKeyDown)
+  unsubSetNullQueue?.()
+})
+
+// Watch editTable changes → fetch PKs for inline editing.
+watch(() => props.editTable, async (et) => {
+  pendingChanges.value = new Map()
+  deletedRows.value = new Set()
+  if (!et) {
+    pkColumns.value = []
+    return
+  }
+  try {
+    const pks = await editApi.getPrimaryKey(props.connId, et.db, et.table)
+    pkColumns.value = pks
+  } catch {
+    pkColumns.value = []
+  }
+}, { immediate: true })
 </script>
 
 <template>
   <div ref="rootRef" class="result">
+    <div v-if="editable && hasPending" class="edit-actions">
+      <button class="edit-btn save-btn" :disabled="saving" @click="saveEditChanges">
+        {{ saving ? $t('common.saving') : $t('common.save') }}
+      </button>
+      <button class="edit-btn disc-btn" :disabled="saving" @click="discardEditChanges">
+        {{ $t('common.discard') }}
+      </button>
+      <span class="mute" style="margin-left:8px;font-size:11px">{{ pendingChanges.size }} {{ $t('common.cellsChanged') }}</span>
+    </div>
     <div class="grid-wrap">
       <DataGrid
         :columns="columns"
         :rows="pagedRows"
+        :editable="editable"
+        :pk-columns="pkColumns"
+        :dirty-cells="dirtyCells"
+        :dirty-rows="dirtyRows"
+        :deleted-rows="deletedRows"
         :fetching="fetching"
         :show-types="true"
         @selection-change="onSelectionChange"
         @cell-context-menu="onCellContextMenu"
+        @edit-commit="onEditCommit"
         @load-more="emit('load-more')"
       />
     </div>
@@ -152,4 +345,28 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeyDown))
   padding: 6px;
 }
 .mute { opacity: 0.55; font-size: 10px; }
+
+/* ---- inline edit toolbar ---- */
+.edit-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  gap: 6px;
+  border-bottom: 1px solid var(--n-divider-color);
+}
+.edit-btn {
+  font-size: 11px;
+  padding: 2px 10px;
+  border: 1px solid var(--n-border-color);
+  border-radius: 3px;
+  background: var(--n-color);
+  color: var(--n-text-color);
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 20px;
+}
+.edit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.save-btn { background: var(--n-primary-color, #18a058); color: #fff; border-color: transparent; }
+.save-btn:disabled { background: var(--n-primary-color-disabled, #82c7a2); }
 </style>

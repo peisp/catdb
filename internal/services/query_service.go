@@ -17,6 +17,14 @@ import (
 	"catdb/internal/registry"
 )
 
+// TableRef identifies a single table that the result rows map to, enabling
+// inline editing on query results. nil means the query is too complex for
+// safe inline editing (multi-table, aggregate, etc.).
+type TableRef struct {
+	DB    string `json:"db"`
+	Table string `json:"table"`
+}
+
 // DefaultQueryTimeout caps any single RunQuery / Exec call. Streaming a
 // huge SELECT still finishes within this — the back-end fetches in batches
 // of bounded size, not all at once.
@@ -112,6 +120,9 @@ type QueryRunResult struct {
 	// Exec-style statement and the caller should look at ExecResult instead.
 	IsResultSet bool                 `json:"isResultSet"`
 	ExecResult  *dbdriver.ExecResult `json:"execResult,omitempty"`
+	// EditTable is non-nil when the result targets a single identifiable table.
+	// The front-end uses this to enable inline editing on the result grid.
+	EditTable *TableRef `json:"editTable,omitempty"`
 }
 
 // QueryBatchResult is what FetchMore returns.
@@ -260,6 +271,7 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 		ElapsedMs:   time.Since(start).Milliseconds(),
 		IsResultSet: true,
 	}
+	out.EditTable = extractTableRef(final, opts.DefaultSchema)
 
 	if maxRows > 0 && !done && len(rows) >= maxRows {
 		out.Truncated = true
@@ -560,6 +572,138 @@ func looksLikeRowsQuery(s string) bool {
 		}
 	}
 	return false
+}
+
+// extractTableRef heuristically extracts the single-table reference from a
+// SELECT statement for inline editing, or nil if the query is too complex.
+//
+// ponytail: keyword scanner — false negatives just mean "no edit toolbar",
+// which is safe. False positives are blocked by the conservative reject list.
+func extractTableRef(sql, defaultSchema string) *TableRef {
+	s := strings.TrimSpace(sql)
+	if s == "" {
+		return nil
+	}
+	upper := strings.ToUpper(s)
+
+	// Reject multi-table / aggregate patterns.
+	for _, kw := range []string{" JOIN ", " GROUP BY ", " HAVING ", " UNION ", " INTERSECT ", " EXCEPT ", " WITH "} {
+		if strings.Contains(upper, kw) {
+			return nil
+		}
+	}
+
+	// Must start with SELECT (possibly parenthesized).
+	trimmed := strings.TrimLeft(upper, " \t\n\r(")
+	if !strings.HasPrefix(trimmed, "SELECT") {
+		return nil
+	}
+
+	// Walk the SQL string tracking quote state to find FROM.
+	fromPos := -1
+	var inQ, inDQ, inBT bool
+	for i := 0; i <= len(s)-4; i++ {
+		switch s[i] {
+		case '\'':
+			if !inDQ && !inBT {
+				inQ = !inQ
+			}
+		case '"':
+			if !inQ && !inBT {
+				inDQ = !inDQ
+			}
+		case '`':
+			if !inQ && !inDQ {
+				inBT = !inBT
+			}
+		}
+		if inQ || inDQ || inBT {
+			continue
+		}
+		if strings.HasPrefix(upper[i:], "FROM") && (i == 0 || !isIdentChar(s[i-1])) {
+			ch := s[i+4]
+			if ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' {
+				fromPos = i + 4
+				break
+			}
+		}
+	}
+	if fromPos < 0 {
+		return nil
+	}
+
+	j := skipWS(s, fromPos)
+	if j >= len(s) {
+		return nil
+	}
+
+	parts := readQualIdent(s, j)
+	if len(parts) == 0 {
+		return nil
+	}
+
+	table := parts[len(parts)-1]
+	db := defaultSchema
+	if len(parts) >= 2 {
+		db = parts[0]
+	}
+	if db == "" {
+		return nil
+	}
+	return &TableRef{DB: db, Table: table}
+}
+
+func isIdentChar(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '_' || b == '$'
+}
+
+func skipWS(s string, i int) int {
+	for i < len(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r') {
+		i++
+	}
+	return i
+}
+
+// readQualIdent reads a qualified SQL identifier at position i in s, handling
+// backtick quoting and db.table dot notation. Returns up to 2 parts.
+func readQualIdent(s string, i int) []string {
+	var parts []string
+	for len(parts) < 2 && i < len(s) {
+		i = skipWS(s, i)
+		if i >= len(s) {
+			break
+		}
+		var ident string
+		if s[i] == '`' {
+			i++
+			for i < len(s) && s[i] != '`' {
+				ident += string(s[i])
+				i++
+			}
+			if i < len(s) {
+				i++ // skip closing backtick
+			}
+		} else {
+			start := i
+			for i < len(s) && isIdentChar(s[i]) {
+				i++
+			}
+			if i == start {
+				break
+			}
+			ident = s[start:i]
+		}
+		parts = append(parts, ident)
+
+		// Check for dot separator (skip surrounding whitespace).
+		i = skipWS(s, i)
+		if i < len(s) && s[i] == '.' {
+			i++
+			continue
+		}
+		break
+	}
+	return parts
 }
 
 func classifyErr(err error, ctx context.Context) error {

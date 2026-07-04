@@ -19,8 +19,9 @@ import DataGrid from '../data-grid/DataGrid.vue'
 import { startExport } from '../../composables/useExport'
 import FilterBar from './FilterBar.vue'
 import ResultFooter from './ResultFooter.vue'
-import ResizeHandle from '../shared/ResizeHandle.vue'
 import { t } from '../../i18n'
+import DdlPanel from '../shared/DdlPanel.vue'
+import ResizeHandle from "../shared/ResizeHandle.vue";
 
 const props = defineProps<{
   connId: string
@@ -591,6 +592,28 @@ function onFilterClear() {
   filterOrderBy.value = ''
   page.value = 1  // 回到第1页
 }
+
+// ---- DDL 侧栏 ----
+const ddlPanelOpen = ref(false)
+const ddl = ref('')
+const ddlLoading = ref(false)
+
+function toggleDdlPanel() {
+  ddlPanelOpen.value = !ddlPanelOpen.value
+  if (ddlPanelOpen.value) void loadDdl()
+}
+
+async function loadDdl() {
+  ddlLoading.value = true
+  try {
+    ddl.value = await metaApi.getCreateTable(props.connId, props.db, props.table)
+  } catch (e: any) {
+    ddl.value = ''
+    message.error(t('tablesOverview.ddlFailed', { error: String(e) }))
+  } finally {
+    ddlLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -599,24 +622,30 @@ function onFilterClear() {
       <span class="title mono">{{ db }}.{{ table }}</span>
       <n-tag v-if="readOnly" size="small" type="warning">{{ $t('tableBrowser.readOnlyTag') }}</n-tag>
       <n-tag v-else size="small" type="info">PK: {{ pk.join(', ') }}</n-tag>
-      <span class="grow" />
+      <span class="grow"/>
       <template v-if="addingRow">
         <n-button size="tiny" type="primary" :disabled="loading" @click="saveNewRow">{{ $t('common.save') }}</n-button>
         <n-button size="tiny" :disabled="loading" @click="cancelAddRow">{{ $t('common.cancel') }}</n-button>
       </template>
       <n-button v-else size="tiny" :disabled="loading || readOnly" @click="startAddRow">+</n-button>
       <n-button
-        v-if="!addingRow"
-        size="tiny"
-        :disabled="loading || readOnly || !hasSelection"
-        @click="deleteSelectedRows"
-      >-</n-button>
+          v-if="!addingRow"
+          size="tiny"
+          :disabled="loading || readOnly || !hasSelection"
+          @click="deleteSelectedRows"
+      >-
+      </n-button>
       <template v-if="hasUnsavedChanges && !addingRow">
         <n-button size="tiny" type="primary" :disabled="loading" @click="saveChanges">{{ $t('common.save') }}</n-button>
         <n-button size="tiny" :disabled="loading" @click="discardChanges">{{ $t('common.cancel') }}</n-button>
       </template>
       <n-button size="tiny" @click="load" :disabled="loading">{{ $t('common.refresh') }}</n-button>
-      <n-button size="tiny" :title="$t('tableBrowser.columnsPanel')" @click="toggleColumnsDrawer">{{ $t('tableBrowser.columnsPanel') }}</n-button>
+      <n-button size="tiny" :title="$t('tableBrowser.columnsPanel')" @click="toggleColumnsDrawer">
+        {{ $t('tableBrowser.columnsPanel') }}
+      </n-button>
+      <n-button size="tiny" :type="ddlPanelOpen ? 'primary' : 'default'" @click="toggleDdlPanel">
+        {{ $t('tablesOverview.action.ddl') }}
+      </n-button>
       <select class="export-select" @change="onExportSelect">
         <option value="" disabled selected>{{ $t('common.exportPlaceholder') }}</option>
         <option value="csv">CSV</option>
@@ -626,104 +655,131 @@ function onFilterClear() {
       </select>
     </div>
 
-    <FilterBar
-      :conn-id="connId"
-      :db="db"
-      :table="table"
-      :columns="columns"
-      @apply="onFilterApply"
-      @clear="onFilterClear"
-    />
-
     <n-alert v-if="readOnly" type="warning" :show-icon="false" class="banner">
       {{ $t('tableBrowser.readOnlyBanner') }}
     </n-alert>
 
     <div class="data-area">
-      <n-spin :show="loading" class="data-spin">
-        <DataGrid
-          ref="gridRef"
+      <FilterBar
+          :conn-id="connId"
+          :db="db"
+          :table="table"
           :columns="columns"
-          :rows="allRows"
-          :editable="!readOnly"
-          :pk-columns="pk"
-          :dirty-cells="dirtyCells"
-          :deleted-rows="deletedRows"
-          :dirty-rows="dirtyRows"
-          :fetching="loading"
-          :sort-remote="true"
-          :sort-state="sortState"
-          :show-types="true"
-          @selection-change="onSelectionChange"
-          @cell-context-menu="onCellContextMenu"
-          @edit-commit="onEditCommit"
-          @sort-change="onSortChange"
+          @apply="onFilterApply"
+          @clear="onFilterClear"
+      />
+      <div class="data-body">
+        <DataGrid
+            ref="gridRef"
+            :columns="columns"
+            :rows="allRows"
+            :editable="!readOnly"
+            :pk-columns="pk"
+            :dirty-cells="dirtyCells"
+            :deleted-rows="deletedRows"
+            :dirty-rows="dirtyRows"
+            :fetching="loading"
+            :sort-remote="true"
+            :sort-state="sortState"
+            :show-types="true"
+            @selection-change="onSelectionChange"
+            @cell-context-menu="onCellContextMenu"
+            @edit-commit="onEditCommit"
+            @sort-change="onSortChange"
         />
-      </n-spin>
 
-      <aside
-        v-if="columnsDrawerOpen"
-        class="cols-panel"
-        :style="{ width: panelWidth + 'px', flexBasis: panelWidth + 'px' }"
-      >
-        <ResizeHandle
-          orientation="vertical"
-          class="cols-resize"
-          :active="resizing"
-          @pointerdown="onResizePointerDown"
-          @pointermove="onResizePointerMove"
-          @pointerup="onResizePointerUp"
-          @pointercancel="onResizePointerUp"
-        />
-        <div class="cols-head">
-          <span class="cols-title">{{ $t('tableBrowser.columnsTitle') }}</span>
-          <button class="cols-close" :title="$t('common.close')" @click="columnsDrawerOpen = false">×</button>
-        </div>
-        <div class="cols-filter">
-          <n-input
-            v-model:value="columnFilter"
-            size="small"
-            clearable
-            :placeholder="$t('tableBrowser.columnsFilter')"
+        <aside
+            v-if="columnsDrawerOpen"
+            class="cols-panel"
+            :style="{ width: panelWidth + 'px', flexBasis: panelWidth + 'px' }"
+        >
+          <ResizeHandle
+              orientation="vertical"
+              class="cols-resize"
+              :active="resizing"
+              @pointerdown="onResizePointerDown"
+              @pointermove="onResizePointerMove"
+              @pointerup="onResizePointerUp"
+              @pointercancel="onResizePointerUp"
           />
-        </div>
-        <div class="cols-list">
-          <button
-            v-for="item in filteredColumns"
-            :key="item.index"
-            class="col-item"
-            @click="jumpToColumn(item.index)"
-          >
-            <span class="col-name mono">{{ item.col.name }}</span>
-            <span v-if="item.comment" class="col-comment">{{ item.comment }}</span>
-          </button>
-          <div v-if="!filteredColumns.length" class="cols-empty mute">{{ $t('tableBrowser.columnsEmpty') }}</div>
-        </div>
-      </aside>
+          <div class="cols-head">
+            <span class="cols-title">{{ $t('tableBrowser.columnsTitle') }}</span>
+            <button class="cols-close" :title="$t('common.close')" @click="columnsDrawerOpen = false">×</button>
+          </div>
+          <div class="cols-filter">
+            <n-input
+                v-model:value="columnFilter"
+                size="small"
+                clearable
+                :placeholder="$t('tableBrowser.columnsFilter')"
+            />
+          </div>
+          <div class="cols-list">
+            <button
+                v-for="item in filteredColumns"
+                :key="item.index"
+                class="col-item"
+                @click="jumpToColumn(item.index)"
+            >
+              <span class="col-name mono">{{ item.col.name }}</span>
+              <span v-if="item.comment" class="col-comment">{{ item.comment }}</span>
+            </button>
+            <div v-if="!filteredColumns.length" class="cols-empty mute">{{ $t('tableBrowser.columnsEmpty') }}</div>
+          </div>
+        </aside>
+
+        <DdlPanel
+            variant="panel"
+            :ddl="ddl"
+            :loading="ddlLoading"
+            :table="table"
+            :active="ddlPanelOpen"
+            @close="ddlPanelOpen = false"
+        />
+      </div>
     </div>
 
     <ResultFooter
-      v-model:page="page"
-      v-model:page-size="pageSize"
-      :page-size-options="pageSizeOptions"
-      :has-prev="hasPrev"
-      :has-next="hasNext"
-      :pager-disabled="isAllRows"
-      :total="isAllRows ? rows.length : totalRows"
-      :can-load-total="!isAllRows"
-      :count-loading="countLoading"
-      :sql="browse?.sql || ''"
-      :dml-sql="dmlSql"
-      :dml-label="dmlLabel"
-      @load-total="loadTotal"
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :page-size-options="pageSizeOptions"
+        :has-prev="hasPrev"
+        :has-next="hasNext"
+        :pager-disabled="isAllRows"
+        :total="isAllRows ? rows.length : totalRows"
+        :can-load-total="!isAllRows"
+        :count-loading="countLoading"
+        :sql="browse?.sql || ''"
+        :dml-sql="dmlSql"
+        :dml-label="dmlLabel"
+        @load-total="loadTotal"
     />
   </div>
 </template>
 
 <style scoped>
 .tb { display: flex; flex-direction: column; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
-.data-area { flex: 1 1 auto; display: flex; flex-direction: row; min-width: 0; min-height: 0; overflow: hidden; }
+
+.data-area {
+  margin: 6px;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--app-content-bg);
+}
+.data-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: row;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
 .toolbar {
+  height: 35px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -756,13 +812,6 @@ function onFilterClear() {
   cursor: not-allowed;
 }
 .banner { margin: 6px 8px; flex: 0 0 auto; }
-.data-spin { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; padding: 6px; }
-.data-spin :deep(.n-spin-container),
-.data-spin :deep(.n-spin-content) {
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-}
 
 .mute { opacity: 0.55; font-size: 10px; }
 
@@ -839,4 +888,5 @@ function onFilterClear() {
   max-width: 100%;
 }
 .cols-empty { padding: 12px; text-align: center; }
+
 </style>

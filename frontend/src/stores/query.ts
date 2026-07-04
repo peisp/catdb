@@ -58,6 +58,10 @@ export interface QueryTab {
   // For 'table' / 'structure' kinds, the object reference.
   db?: string
   table?: string
+  // For 'query' kind: the table inferred from the SELECT result, enabling
+  // inline editing on the result grid. Set by applyRun; undefined until
+  // a run returns an identifiable single-table result.
+  editTable?: { db: string; table: string }
 
   // For 'query' kind: the saved_query id this tab is bound to, if it was
   // opened from / saved into the object tree's 「查询」 group. Undefined for
@@ -109,6 +113,7 @@ function freshTab(connId: string, opts?: { kind?: TabKind; title?: string; db?: 
     elapsedMs: 0,
     execAffected: null,
     execLastInsertId: null,
+    editTable: undefined,
     status: 'idle',
     errorMessage: '',
     controller: null,
@@ -433,6 +438,7 @@ export const useQueryStore = defineStore('query', () => {
       t.execLastInsertId = res.execResult.lastInsertId ?? 0
     }
     t.status = 'done'
+    t.editTable = res.editTable ?? undefined
   }
 
   function applyBatch(t: QueryTab, b: QueryBatchResult) {

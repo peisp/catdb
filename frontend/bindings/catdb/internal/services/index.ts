@@ -39,6 +39,7 @@ export {
     QueryRunResult,
     RowChange,
     RowChangeResult,
+    TableRef,
     TableSummary,
     TransferFormat,
     UpdateCheckResult
