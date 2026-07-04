@@ -1,5 +1,7 @@
 .task
 bin
+build/darwin/icons.icns
+build/windows/icon.ico
 frontend/dist
 frontend/node_modules
 frontend/.bindings-tmp-*
