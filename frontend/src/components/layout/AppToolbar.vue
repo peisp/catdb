@@ -44,13 +44,13 @@ function openTransferDialog() {
       <AppIcon :src="unplugIcon" :size="14" />
       {{ $t('appShell.newConnection') }}
     </button>
-    <button type="button" class="toolbar-btn" :disabled="!activeConn" @click="openNewQuery">
-      <AppIcon :src="fileCodeCornerIcon" :size="14" />
-      {{ $t('tabBar.newQuery') }}
-    </button>
     <button type="button" class="toolbar-btn" @click="openTransferDialog">
       <AppIcon :src="arrowLeftRightIcon" :size="14" />
       {{ $t('transfer.dataTransfer') }}
+    </button>
+    <button type="button" class="toolbar-btn" :disabled="!activeConn" @click="openNewQuery">
+      <AppIcon :src="fileCodeCornerIcon" :size="14" />
+      {{ $t('tabBar.newQuery') }}
     </button>
     <span class="toolbar-spacer"></span>
     <!-- Windows frameless caption buttons (minimise / maximise / close). -->
