@@ -32,7 +32,7 @@ import { format } from 'sql-formatter'
 import { useQueryStore } from '../../stores/query'
 import { useMetadataStore } from '../../stores/metadata'
 import type { Capabilities } from '../../api/query'
-import type { SQLNamespace } from '@codemirror/lang-sql'
+import type { CompletionCatalog, SchemaTable } from '../../editor/sqlCompletion'
 import { t } from '../../i18n'
 
 const props = defineProps<{
@@ -55,38 +55,46 @@ const tab = computed(() => store.getTab(props.tabId)!)
 const caps = ref<Capabilities | null>(null)
 
 const currentDb = ref<string | null>(null)
-/**
- * Nested SQLNamespace: the current DB gets a full {table: [cols]} body so
- * SELECT-from / qualified `table.col` lookups can complete. Other DBs are
- * listed as empty namespaces so `dbname.` triggers a database hint even if
- * we haven't fetched its tables yet. Falling back to a flat shape is fine —
- * lang-sql accepts either form.
- */
-const schemaMap = computed<SQLNamespace>(() => {
-  const connId = tab.value?.connId
-  if (!connId) return {} as SQLNamespace
-  const dbs = metaStore.databases[connId] ?? []
-  // Build as a loose record then cast — SQLNamespace's recursive shape
-  // doesn't structurally infer from a plain object literal, but the
-  // runtime shape we produce matches it exactly.
-  const out: Record<string, unknown> = {}
-  for (const db of dbs) {
-    const snap = metaStore.snapshotFor(connId, db)
-    if (snap && snap.tables) {
-      const inner: Record<string, string[]> = {}
-      for (const t of snap.tables) {
-        inner[t.name] = t.columns ?? []
-      }
-      out[db] = inner
-    } else {
-      // No snapshot yet — surface the DB name so the user still gets it as
-      // a completion candidate; tables/columns will fill in once the
-      // snapshot loads (the watch on currentDb prefetches the active one).
-      out[db] = {}
+/** SchemaTable[] view of one cached snapshot, or null if not loaded yet. */
+function snapshotTables(connId: string, db: string): SchemaTable[] | null {
+  const snap = metaStore.snapshotFor(connId, db)
+  if (!snap?.tables) return null
+  return snap.tables.map((t) => ({
+    name: t.name,
+    kind: t.kind,
+    columns: (t.columns ?? []).map((c) => ({
+      name: c.name,
+      type: c.type,
+      pk: c.pk,
+      notNull: c.notNull,
+      comment: c.comment,
+    })),
+  }))
+}
+
+// Live metadata view for the editor's completion engine. Closures read the
+// store at completion time; `ensureTables` lets `otherdb.` load on demand.
+const catalog: CompletionCatalog = {
+  databases: () => {
+    const connId = tab.value?.connId
+    return connId ? (metaStore.databases[connId] ?? []) : []
+  },
+  currentDb: () => currentDb.value ?? undefined,
+  tablesFor: (db) => {
+    const connId = tab.value?.connId
+    return connId ? snapshotTables(connId, db) : null
+  },
+  ensureTables: async (db) => {
+    const connId = tab.value?.connId
+    if (!connId) return null
+    try {
+      await metaStore.ensureSnapshot(connId, db)
+    } catch {
+      return null
     }
-  }
-  return out as SQLNamespace
-})
+    return snapshotTables(connId, db)
+  },
+}
 
 const dbOptions = computed(() => {
   const connId = tab.value?.connId
@@ -472,8 +480,7 @@ function onSplitDown(e: PointerEvent) {
           :model-value="tab.sql"
           :on-run="run"
           :on-save="saveQuery"
-          :schema="schemaMap"
-          :default-schema="currentDb ?? undefined"
+          :catalog="catalog"
           @update:model-value="onSqlUpdate"
         />
       </div>

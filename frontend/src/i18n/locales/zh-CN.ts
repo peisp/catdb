@@ -380,6 +380,9 @@ export default {
   },
   // 查询编辑器 tab 工具栏 + 状态（components/workspace/QueryTab.vue）。
   queryTab: {
+    aliasFor: '{table} 的别名',
+    completionColumns: '{n} 列',
+    completionJoinCond: '联接条件',
     run: '运行',
     runSelection: '运行选中',
     format: '格式化',

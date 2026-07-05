@@ -21,10 +21,10 @@ import * as dbdriver$0 from "../dbdriver/models.js";
 import * as $models from "./models.js";
 
 /**
- * AutocompleteFor returns the table+column map for one database. Capped to a
- * generous-but-finite number of tables so the IPC payload is bounded; tables
- * past the cap fall back to "table name only, no columns" — better than
- * nothing for completion.
+ * AutocompleteFor returns the table+column map for one database (tables first,
+ * then views). Column fetching is capped to a generous-but-finite number of
+ * relations so the IPC payload is bounded; relations past the cap fall back to
+ * "name only, no columns" — better than nothing for completion.
  */
 export function AutocompleteFor(connID: string, db: string, schema: string): $CancellablePromise<$models.AutocompleteSnapshot> {
     return $Call.ByName("catdb/internal/services.MetadataService.AutocompleteFor", connID, db, schema).then(($result: any) => {

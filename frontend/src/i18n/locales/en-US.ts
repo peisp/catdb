@@ -388,6 +388,9 @@ export default {
   },
   // Query editor tab toolbar + status (components/workspace/QueryTab.vue).
   queryTab: {
+    aliasFor: 'alias for {table}',
+    completionColumns: '{n} columns',
+    completionJoinCond: 'join condition',
     run: 'Run',
     runSelection: 'Run Selection',
     format: 'Format',

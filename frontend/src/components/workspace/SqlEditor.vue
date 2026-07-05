@@ -2,14 +2,11 @@
 // SqlEditor — thin CodeMirror 6 wrapper. Each instance is independent so
 // tab state never bleeds between editors (MVP.md M2).
 //
-// Completion stack:
-//   * @codemirror/lang-sql's keyword source (driven by MySQL dialect).
-//   * @codemirror/lang-sql's schema source (driven by the `schema` prop —
-//     a SQLNamespace describing the catalog: databases / tables / columns).
-//   * Our `mysqlExtraCompletions` source (built-in functions + snippets).
-//
-// The `autocompletion()` extension is what actually paints the popup; without
-// it the language-data sources sit registered but invisible.
+// Completion: the dbx-style engine in editor/sqlCompletion.ts FULLY owns the
+// popup via `autocompletion({ override })` — lang-sql only provides syntax
+// highlighting/parsing. The engine reads the `catalog` prop lazily, so no
+// reconfigure is needed when metadata loads. `sqlSignatureHelp` adds the
+// parameter-hint tooltip inside function calls.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { EditorState, Compartment } from '@codemirror/state'
 import {
@@ -21,7 +18,7 @@ import {
   keymap,
   lineNumbers,
 } from '@codemirror/view'
-import { sql, MySQL, type SQLConfig, type SQLNamespace } from '@codemirror/lang-sql'
+import { sql, MySQL } from '@codemirror/lang-sql'
 import {
   bracketMatching,
   defaultHighlightStyle,
@@ -46,7 +43,12 @@ import {
 } from '@codemirror/commands'
 import { useThemeStore } from '../../stores/theme'
 import { editorSurface } from '../../styles/theme'
-import { mysqlExtraCompletions } from '../../editor/mysqlCompletions'
+import {
+  createSqlCompletionSource,
+  sqlSignatureHelp,
+  type CompletionCatalog,
+} from '../../editor/sqlCompletion'
+import { t } from '../../i18n'
 import { emit as wailsEmit } from '../../api/events'
 
 const props = defineProps<{
@@ -55,14 +57,9 @@ const props = defineProps<{
   onRun?: () => void
   /** When the user hits Cmd/Ctrl+S the parent saves the query. */
   onSave?: () => void
-  /** Catalog description for schema completion. May be either:
-   *    - flat: { tableName: ['col1', 'col2'] }                — single DB
-   *    - nested: { dbName: { tableName: ['col1', ...] } }     — multi-DB
-   *  Both shapes are valid SQLNamespace inputs to @codemirror/lang-sql. */
-  schema?: SQLNamespace
-  /** Default schema name (e.g. current database). Tables under it become
-   *  completable at the top level. */
-  defaultSchema?: string
+  /** Live metadata view for completion (databases / tables / columns). The
+   *  engine reads it lazily at completion time — no reconfigure needed. */
+  catalog?: CompletionCatalog
 }>()
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
@@ -70,10 +67,31 @@ const emit = defineEmits<{
 
 const theme = useThemeStore()
 
+const EMPTY_CATALOG: CompletionCatalog = {
+  databases: () => [],
+  currentDb: () => undefined,
+  tablesFor: () => null,
+  ensureTables: () => Promise.resolve(null),
+}
+
+// Built once; the catalog closures read the latest metadata at completion time.
+const sqlSource = createSqlCompletionSource(
+  {
+    databases: () => (props.catalog ?? EMPTY_CATALOG).databases(),
+    currentDb: () => (props.catalog ?? EMPTY_CATALOG).currentDb(),
+    tablesFor: (db) => (props.catalog ?? EMPTY_CATALOG).tablesFor(db),
+    ensureTables: (db) => (props.catalog ?? EMPTY_CATALOG).ensureTables(db),
+  },
+  {
+    aliasFor: (table) => t('queryTab.aliasFor', { table }),
+    nColumns: (n) => t('queryTab.completionColumns', { n }),
+    joinCondition: () => t('queryTab.completionJoinCond'),
+  },
+)
+
 const host = ref<HTMLDivElement | null>(null)
 const view = ref<EditorView | null>(null)
 const themeCompartment = new Compartment()
-const sqlCompartment = new Compartment()
 
 // Editor chrome (syntax theme + surface background) lives in a compartment so
 // it can be swapped on light/dark switch. The background overrides oneDark's
@@ -86,19 +104,70 @@ function editorChrome(dark: boolean) {
   ]
 }
 
+// Keyword completion + syntax only. Schema completion is NOT delegated to
+// `sql()` provides syntax highlighting/parsing only — its own completion
+// sources never run because `autocompletion({ override })` bypasses all
+// language-data sources.
 function buildSqlExt() {
-  const cfg: SQLConfig = {
-    dialect: MySQL,
-    upperCaseKeywords: true,
-  }
-  if (props.schema && Object.keys(props.schema).length) {
-    cfg.schema = props.schema
-  }
-  if (props.defaultSchema) {
-    cfg.defaultSchema = props.defaultSchema
-  }
-  return sql(cfg)
+  return sql({ dialect: MySQL, upperCaseKeywords: true })
 }
+
+// Crisp inline-SVG completion icons. CodeMirror's default glyphs for these
+// types are literal squares (`property`→□, `namespace`→▢) or math-italic
+// letters (`type`→𝑡, `variable`→𝑥) that render as tofu in most system/mono
+// fonts. These are drawn as masks tinted with the row's text color, so they
+// always render and follow the theme (incl. white on the selected row).
+const COMPLETION_ICONS: Record<string, string> = {
+  // table
+  type: "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.3'><rect x='2.6' y='3.6' width='10.8' height='8.8' rx='1'/><path d='M2.6 6.7h10.8M6.4 6.7v5.7'/></svg>",
+  // view
+  interface: "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.3'><rect x='2.6' y='3.6' width='10.8' height='8.8' rx='1'/><path d='M2.6 6.5h10.8M2.6 9.4h10.8'/></svg>",
+  // column
+  property: "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.3'><rect x='5.7' y='2.7' width='4.6' height='10.6' rx='1'/></svg>",
+  // database
+  namespace: "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.3'><ellipse cx='8' cy='4' rx='4.7' ry='1.7'/><path d='M3.3 4v8c0 .95 2.1 1.7 4.7 1.7s4.7-.75 4.7-1.7V4'/></svg>",
+  // function
+  function: "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round'><path d='M6.2 3.6C4.3 5.2 4.3 10.8 6.2 12.4'/><path d='M9.8 3.6c1.9 1.6 1.9 7.2 0 8.8'/><circle cx='8' cy='8' r='1.15' fill='black' stroke='none'/></svg>",
+  // alias
+  variable: "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.3' stroke-linejoin='round'><path d='M7.6 2.7H13.3V8.4L7.9 13.8 2.2 8.1z'/><circle cx='10.6' cy='5.4' r='1' fill='black' stroke='none'/></svg>",
+  // keyword
+  keyword: "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='3.5' y='3.5' width='9' height='9' rx='2.3' fill='black'/></svg>",
+  // text
+  text: "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round'><path d='M4.2 4.6h7.6M8 4.6v6.8'/></svg>",
+}
+
+function completionIconRules(): Record<string, Record<string, string>> {
+  const rules: Record<string, Record<string, string>> = {
+    '.cm-tooltip-autocomplete .cm-completionIcon': {
+      width: '1.2em',
+      paddingRight: '0.45em',
+      opacity: '0.7',
+    },
+    '.cm-tooltip-autocomplete .cm-completionIcon::after': {
+      content: '""',
+      display: 'inline-block',
+      width: '1em',
+      height: '1em',
+      verticalAlign: '-0.14em',
+      backgroundColor: 'currentColor',
+      '-webkit-mask-repeat': 'no-repeat',
+      'mask-repeat': 'no-repeat',
+      '-webkit-mask-position': 'center',
+      'mask-position': 'center',
+      '-webkit-mask-size': 'contain',
+      'mask-size': 'contain',
+    },
+  }
+  for (const [type, svg] of Object.entries(COMPLETION_ICONS)) {
+    const uri = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`
+    rules[`.cm-tooltip-autocomplete .cm-completionIcon-${type}::after`] = {
+      '-webkit-mask-image': uri,
+      'mask-image': uri,
+    }
+  }
+  return rules
+}
+const COMPLETION_ICON_RULES = completionIconRules()
 
 function makeState(initial: string) {
   return EditorState.create({
@@ -115,21 +184,17 @@ function makeState(initial: string) {
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
       bracketMatching(),
       closeBrackets(),
-      // The autocompletion UI itself — without this the lang-sql completion
-      // sources are registered but never rendered.
+      // The completion popup, fully driven by our engine. `override` replaces
+      // every language-data source (lang-sql contributes highlighting only).
+      // activateOnTyping fires the source on EVERY typed character — including
+      // `.` (qualified completion) and space (auto-open after FROM/ON/SET) —
+      // and the source itself decides when to stay quiet.
       autocompletion({
-        // Built-in keyword/schema sources fire on every word boundary; the
-        // popup auto-shows after the first identifier char. Triggering on
-        // `.` is essential for `table.column` completion.
+        override: [sqlSource],
         activateOnTyping: true,
         closeOnBlur: true,
         defaultKeymap: true,
         maxRenderedOptions: 50,
-        // Our extra source is layered alongside the language-data sources
-        // via language data, but registering it explicitly here means it
-        // is also active even if the language's data lookup fails (e.g.
-        // when the cursor is in a non-SQL node like a comment edge).
-        override: undefined,
       }),
       highlightActiveLine(),
       keymap.of([
@@ -141,14 +206,9 @@ function makeState(initial: string) {
         ...foldKeymap,
         indentWithTab,
       ]),
-      sqlCompartment.of([
-        buildSqlExt(),
-        // Attach the function/snippet source to the SQL language so it only
-        // contributes when the cursor is inside SQL (not, say, in a string
-        // literal). language.data.of is the same hook lang-sql uses for
-        // its own keyword + schema sources.
-        MySQL.language.data.of({ autocomplete: mysqlExtraCompletions }),
-      ]),
+      buildSqlExt(),
+      // Parameter hint tooltip while typing inside a known function call.
+      sqlSignatureHelp,
       themeCompartment.of(editorChrome(theme.mode === 'dark')),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
@@ -176,6 +236,17 @@ function makeState(initial: string) {
             backgroundColor: 'var(--n-primary-color, #2080f0)',
             color: '#fff',
           },
+          '.cm-sql-signature': {
+            fontFamily:
+              'ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace',
+            fontSize: '12px',
+            padding: '2px 8px',
+            borderRadius: '4px',
+          },
+          '.cm-sql-signature .cm-sql-signature-active': {
+            fontWeight: 700,
+            color: 'var(--n-primary-color, #2080f0)',
+          },
           '.cm-completionLabel': { fontWeight: 500 },
           '.cm-completionDetail': {
             fontStyle: 'normal',
@@ -183,6 +254,7 @@ function makeState(initial: string) {
             marginLeft: '6px',
             fontSize: '11px',
           },
+          ...COMPLETION_ICON_RULES,
         },
         { dark: theme.mode === 'dark' },
       ),
@@ -248,19 +320,8 @@ watch(
   },
 )
 
-watch(
-  () => [props.schema, props.defaultSchema],
-  () => {
-    if (!view.value) return
-    view.value.dispatch({
-      effects: sqlCompartment.reconfigure([
-        buildSqlExt(),
-        MySQL.language.data.of({ autocomplete: mysqlExtraCompletions }),
-      ]),
-    })
-  },
-  { deep: true },
-)
+// No catalog watch needed: the completion engine reads the catalog closures at
+// completion time, so newly-loaded metadata is picked up without reconfiguring.
 
 defineExpose({
   focus() { view.value?.focus() },

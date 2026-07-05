@@ -10,6 +10,39 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as dbdriver$0 from "../dbdriver/models.js";
 
 /**
+ * AutocompleteColumn carries the per-column detail the editor shows in the
+ * completion popup: native type (e.g. "VARCHAR(255)"), primary-key membership,
+ * NOT NULL, and the column comment.
+ */
+export class AutocompleteColumn {
+    "name": string;
+    "type": string;
+    "pk"?: boolean;
+    "notNull"?: boolean;
+    "comment"?: string;
+
+    /** Creates a new AutocompleteColumn instance. */
+    constructor($$source: Partial<AutocompleteColumn> = {}) {
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("type" in $$source)) {
+            this["type"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AutocompleteColumn instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AutocompleteColumn {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AutocompleteColumn($$parsedSource as Partial<AutocompleteColumn>);
+    }
+}
+
+/**
  * AutocompleteSnapshot is the cache the front-end hands to CodeMirror's
  * schemaCompletionSource. We ship it as one big map per refresh — small in
  * practice and cleaner than incremental updates.
@@ -45,12 +78,21 @@ export class AutocompleteSnapshot {
 
 export class AutocompleteTable {
     "name": string;
-    "columns": string[];
+
+    /**
+     * Kind is "table" or "view" — lets the editor render a distinct icon and
+     * treat views as query-able relations in completion.
+     */
+    "kind": string;
+    "columns": AutocompleteColumn[];
 
     /** Creates a new AutocompleteTable instance. */
     constructor($$source: Partial<AutocompleteTable> = {}) {
         if (!("name" in $$source)) {
             this["name"] = "";
+        }
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
         }
         if (!("columns" in $$source)) {
             this["columns"] = [];
@@ -63,10 +105,10 @@ export class AutocompleteTable {
      * Creates a new AutocompleteTable instance from a string or object.
      */
     static createFrom($$source: any = {}): AutocompleteTable {
-        const $$createField1_0 = $$createType2;
+        const $$createField2_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
-            $$parsedSource["columns"] = $$createField1_0($$parsedSource["columns"]);
+            $$parsedSource["columns"] = $$createField2_0($$parsedSource["columns"]);
         }
         return new AutocompleteTable($$parsedSource as Partial<AutocompleteTable>);
     }
@@ -112,9 +154,9 @@ export class BrowseResult {
      * Creates a new BrowseResult instance from a string or object.
      */
     static createFrom($$source: any = {}): BrowseResult {
-        const $$createField0_0 = $$createType4;
-        const $$createField1_0 = $$createType6;
-        const $$createField2_0 = $$createType2;
+        const $$createField0_0 = $$createType5;
+        const $$createField1_0 = $$createType7;
+        const $$createField2_0 = $$createType8;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
             $$parsedSource["columns"] = $$createField0_0($$parsedSource["columns"]);
@@ -174,9 +216,9 @@ export class ConnectionDraft {
      * Creates a new ConnectionDraft instance from a string or object.
      */
     static createFrom($$source: any = {}): ConnectionDraft {
-        const $$createField8_0 = $$createType7;
-        const $$createField9_0 = $$createType9;
-        const $$createField10_0 = $$createType11;
+        const $$createField8_0 = $$createType9;
+        const $$createField9_0 = $$createType11;
+        const $$createField10_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("params" in $$parsedSource) {
             $$parsedSource["params"] = $$createField8_0($$parsedSource["params"]);
@@ -244,7 +286,7 @@ export class DataTransferRequest {
      * Creates a new DataTransferRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): DataTransferRequest {
-        const $$createField6_0 = $$createType2;
+        const $$createField6_0 = $$createType8;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tables" in $$parsedSource) {
             $$parsedSource["tables"] = $$createField6_0($$parsedSource["tables"]);
@@ -278,7 +320,7 @@ export class DataTransferResult {
      * Creates a new DataTransferResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DataTransferResult {
-        const $$createField1_0 = $$createType14;
+        const $$createField1_0 = $$createType16;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tableResults" in $$parsedSource) {
             $$parsedSource["tableResults"] = $$createField1_0($$parsedSource["tableResults"]);
@@ -318,8 +360,8 @@ export class DriverInfo {
      * Creates a new DriverInfo instance from a string or object.
      */
     static createFrom($$source: any = {}): DriverInfo {
-        const $$createField2_0 = $$createType15;
-        const $$createField3_0 = $$createType17;
+        const $$createField2_0 = $$createType17;
+        const $$createField3_0 = $$createType19;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("capabilities" in $$parsedSource) {
             $$parsedSource["capabilities"] = $$createField2_0($$parsedSource["capabilities"]);
@@ -506,7 +548,7 @@ export class ImportOptions {
      * Creates a new ImportOptions instance from a string or object.
      */
     static createFrom($$source: any = {}): ImportOptions {
-        const $$createField6_0 = $$createType2;
+        const $$createField6_0 = $$createType8;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
             $$parsedSource["columns"] = $$createField6_0($$parsedSource["columns"]);
@@ -582,7 +624,7 @@ export class QueryBatchResult {
      * Creates a new QueryBatchResult instance from a string or object.
      */
     static createFrom($$source: any = {}): QueryBatchResult {
-        const $$createField0_0 = $$createType6;
+        const $$createField0_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("rows" in $$parsedSource) {
             $$parsedSource["rows"] = $$createField0_0($$parsedSource["rows"]);
@@ -705,10 +747,10 @@ export class QueryRunResult {
      * Creates a new QueryRunResult instance from a string or object.
      */
     static createFrom($$source: any = {}): QueryRunResult {
-        const $$createField1_0 = $$createType4;
-        const $$createField2_0 = $$createType6;
-        const $$createField8_0 = $$createType19;
-        const $$createField9_0 = $$createType21;
+        const $$createField1_0 = $$createType5;
+        const $$createField2_0 = $$createType7;
+        const $$createField8_0 = $$createType21;
+        const $$createField9_0 = $$createType23;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
             $$parsedSource["columns"] = $$createField1_0($$parsedSource["columns"]);
@@ -765,8 +807,8 @@ export class RowChange {
      * Creates a new RowChange instance from a string or object.
      */
     static createFrom($$source: any = {}): RowChange {
-        const $$createField4_0 = $$createType22;
-        const $$createField5_0 = $$createType22;
+        const $$createField4_0 = $$createType24;
+        const $$createField5_0 = $$createType24;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("pk" in $$parsedSource) {
             $$parsedSource["pk"] = $$createField4_0($$parsedSource["pk"]);
@@ -871,9 +913,9 @@ export class TableSummary {
      * Creates a new TableSummary instance from a string or object.
      */
     static createFrom($$source: any = {}): TableSummary {
-        const $$createField0_0 = $$createType4;
-        const $$createField1_0 = $$createType24;
-        const $$createField2_0 = $$createType26;
+        const $$createField0_0 = $$createType5;
+        const $$createField1_0 = $$createType26;
+        const $$createField2_0 = $$createType28;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
             $$parsedSource["columns"] = $$createField0_0($$parsedSource["columns"]);
@@ -1023,28 +1065,30 @@ export class UpdateCheckResult {
 // Private type creation functions
 const $$createType0 = AutocompleteTable.createFrom;
 const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = $Create.Array($Create.Any);
-const $$createType3 = dbdriver$0.ColumnMeta.createFrom;
-const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = $Create.Array($Create.Any);
-const $$createType6 = $Create.Array($$createType5);
-const $$createType7 = $Create.Map($Create.Any, $Create.Any);
-const $$createType8 = dbdriver$0.SSLConfig.createFrom;
-const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = dbdriver$0.SSHConfig.createFrom;
+const $$createType2 = AutocompleteColumn.createFrom;
+const $$createType3 = $Create.Array($$createType2);
+const $$createType4 = dbdriver$0.ColumnMeta.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = $Create.Array($Create.Any);
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = $Create.Array($Create.Any);
+const $$createType9 = $Create.Map($Create.Any, $Create.Any);
+const $$createType10 = dbdriver$0.SSLConfig.createFrom;
 const $$createType11 = $Create.Nullable($$createType10);
-const $$createType12 = TableTransferResult.createFrom;
+const $$createType12 = dbdriver$0.SSHConfig.createFrom;
 const $$createType13 = $Create.Nullable($$createType12);
-const $$createType14 = $Create.Map($Create.Any, $$createType13);
-const $$createType15 = dbdriver$0.Capabilities.createFrom;
-const $$createType16 = dbdriver$0.ConnParamField.createFrom;
-const $$createType17 = $Create.Array($$createType16);
-const $$createType18 = dbdriver$0.ExecResult.createFrom;
-const $$createType19 = $Create.Nullable($$createType18);
-const $$createType20 = TableRef.createFrom;
+const $$createType14 = TableTransferResult.createFrom;
+const $$createType15 = $Create.Nullable($$createType14);
+const $$createType16 = $Create.Map($Create.Any, $$createType15);
+const $$createType17 = dbdriver$0.Capabilities.createFrom;
+const $$createType18 = dbdriver$0.ConnParamField.createFrom;
+const $$createType19 = $Create.Array($$createType18);
+const $$createType20 = dbdriver$0.ExecResult.createFrom;
 const $$createType21 = $Create.Nullable($$createType20);
-const $$createType22 = $Create.Map($Create.Any, $Create.Any);
-const $$createType23 = dbdriver$0.IndexInfo.createFrom;
-const $$createType24 = $Create.Array($$createType23);
-const $$createType25 = dbdriver$0.ForeignKeyInfo.createFrom;
+const $$createType22 = TableRef.createFrom;
+const $$createType23 = $Create.Nullable($$createType22);
+const $$createType24 = $Create.Map($Create.Any, $Create.Any);
+const $$createType25 = dbdriver$0.IndexInfo.createFrom;
 const $$createType26 = $Create.Array($$createType25);
+const $$createType27 = dbdriver$0.ForeignKeyInfo.createFrom;
+const $$createType28 = $Create.Array($$createType27);

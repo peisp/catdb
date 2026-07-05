@@ -23,6 +23,7 @@ export {
 };
 
 export {
+    AutocompleteColumn,
     AutocompleteSnapshot,
     AutocompleteTable,
     BrowseResult,

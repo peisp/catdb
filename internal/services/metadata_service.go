@@ -170,14 +170,28 @@ type AutocompleteSnapshot struct {
 }
 
 type AutocompleteTable struct {
-	Name    string   `json:"name"`
-	Columns []string `json:"columns"`
+	Name string `json:"name"`
+	// Kind is "table" or "view" — lets the editor render a distinct icon and
+	// treat views as query-able relations in completion.
+	Kind    string               `json:"kind"`
+	Columns []AutocompleteColumn `json:"columns"`
 }
 
-// AutocompleteFor returns the table+column map for one database. Capped to a
-// generous-but-finite number of tables so the IPC payload is bounded; tables
-// past the cap fall back to "table name only, no columns" — better than
-// nothing for completion.
+// AutocompleteColumn carries the per-column detail the editor shows in the
+// completion popup: native type (e.g. "VARCHAR(255)"), primary-key membership,
+// NOT NULL, and the column comment.
+type AutocompleteColumn struct {
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	PK      bool   `json:"pk,omitempty"`
+	NotNull bool   `json:"notNull,omitempty"`
+	Comment string `json:"comment,omitempty"`
+}
+
+// AutocompleteFor returns the table+column map for one database (tables first,
+// then views). Column fetching is capped to a generous-but-finite number of
+// relations so the IPC payload is bounded; relations past the cap fall back to
+// "name only, no columns" — better than nothing for completion.
 func (s *MetadataService) AutocompleteFor(ctx context.Context, connID, db, schema string) (AutocompleteSnapshot, error) {
 	const maxColumnFetch = 500
 	var snap AutocompleteSnapshot
@@ -187,22 +201,41 @@ func (s *MetadataService) AutocompleteFor(ctx context.Context, connID, db, schem
 	if err != nil {
 		return snap, err
 	}
+
+	fetched := 0
+	addRelation := func(name, kind string) {
+		entry := AutocompleteTable{Name: name, Kind: kind}
+		if fetched < maxColumnFetch {
+			if cols, err := m.ListColumns(ctx, db, schema, name); err == nil {
+				entry.Columns = make([]AutocompleteColumn, len(cols))
+				for j, c := range cols {
+					entry.Columns[j] = AutocompleteColumn{
+						Name:    c.Name,
+						Type:    c.NativeType,
+						PK:      c.IsPrimaryKey,
+						NotNull: !c.Nullable,
+						Comment: c.Comment,
+					}
+				}
+			}
+			fetched++
+		}
+		snap.Tables = append(snap.Tables, entry)
+	}
+
 	tables, err := m.ListTables(ctx, db, schema)
 	if err != nil {
 		return snap, err
 	}
-	for i, t := range tables {
-		entry := AutocompleteTable{Name: t.Name}
-		if i < maxColumnFetch {
-			cols, err := m.ListColumns(ctx, db, schema, t.Name)
-			if err == nil {
-				entry.Columns = make([]string, len(cols))
-				for j, c := range cols {
-					entry.Columns[j] = c.Name
-				}
-			}
+	for _, t := range tables {
+		addRelation(t.Name, "table")
+	}
+	// Views are query-able like tables; include them so `SELECT … FROM <view>`
+	// completes. Best-effort — a driver without views just returns nothing.
+	if views, err := m.ListViews(ctx, db, schema); err == nil {
+		for _, v := range views {
+			addRelation(v.Name, "view")
 		}
-		snap.Tables = append(snap.Tables, entry)
 	}
 	return snap, nil
 }
