@@ -547,7 +547,7 @@ function selectOptions(opts: string[]) {
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: 12px 18px 10px;
+  padding-top: 6px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -563,8 +563,7 @@ function selectOptions(opts: string[]) {
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--n-border-color, rgba(127,127,127,0.15));
-  background: rgba(127, 127, 127, 0.04);
-  padding: 12px 8px 10px;
+  padding: 16px 6px 16px 16px;
   gap: 4px;
 }
 .rail-label {
@@ -639,6 +638,7 @@ function selectOptions(opts: string[]) {
   align-items: center;
   gap: 14px;
   min-width: 0;
+  padding: 0 16px;
 }
 .header-item { margin-bottom: 0 !important; min-width: 0; }
 .header-item-grow { flex: 1 1 auto; }
@@ -676,7 +676,7 @@ function selectOptions(opts: string[]) {
    that matches the sidebar toggle in AppShell.vue. The rail gets a
    translucent gradient + backdrop blur + specular edge; the active pill is
    a brighter, more opaque glass layer. */
-.tabs-wrap { display: flex; flex-direction: column; min-width: 0; }
+.tabs-wrap { display: flex; flex-direction: column; min-width: 0; padding: 0 16px}
 .group-tabs :deep(.n-tabs) {
   min-width: 0;
   overflow: hidden;

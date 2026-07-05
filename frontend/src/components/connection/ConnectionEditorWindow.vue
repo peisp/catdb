@@ -173,8 +173,7 @@ function toggleMaximise() {
    controls overlay this strip on macOS via TitleBarHiddenInset. */
 .titlebar {
   position: relative;
-  flex: 0 0 36px;
-  height: 36px;
+  flex: 0 0 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -184,11 +183,7 @@ function toggleMaximise() {
   opacity: 0.85;
   --wails-draggable: drag;
 }
-.titlebar .title {
-  /* Leave clear space on the macOS traffic-light side. */
-  padding-left: 60px;
-  padding-right: 12px;
-}
+
 .titlebar.win .title {
   /* On Windows the caption buttons sit at the right side of the titlebar.
      Use symmetric left/right padding so justify-content: center keeps the
@@ -251,6 +246,7 @@ function toggleMaximise() {
   min-height: 0;
   overflow: hidden;
   display: flex;
+  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.15));
 }
 .body > * { flex: 1 1 0; min-width: 0; min-height: 0; }
 .loading,
