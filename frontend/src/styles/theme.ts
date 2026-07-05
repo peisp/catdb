@@ -37,6 +37,10 @@ export const themeOverrides: GlobalThemeOverrides = {
   Button: {
     paddingMedium: '0 10px',
     paddingSmall: '0 8px',
+    border: '1px solid #c0c0c0',
+    borderHover: '1px solid #b0b0b0',
+    borderPressed: '1px solid #a0a0a0',
+    borderFocus: '1px solid #b0b0b0',
   },
   Input: {
     heightMedium: '28px',
