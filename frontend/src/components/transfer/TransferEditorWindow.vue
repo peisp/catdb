@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// TransferEditorWindow — the root view of the standalone Data Sync
+// TransferEditorWindow — the root view of the standalone Data Transfer
 // child window. Loaded when location.hash starts with #/transfer-editor.
 import { computed, onMounted, ref, watch } from 'vue'
 import { Window } from '@wailsio/runtime'
@@ -234,17 +234,17 @@ async function startTransfer() {
       .map(([t, tr]) => `${t}: ${tr!.error}`)
     if (tableErrors.length > 0) {
       transferError.value = tableErrors.join('\n')
-      message.warning(`Sync completed with ${tableErrors.length} table error(s)`)
+      message.warning(`Transfer completed with ${tableErrors.length} table error(s)`)
     } else {
-      message.success('Sync completed')
+      message.success('Transfer completed')
     }
   } catch (err: any) {
     if (err?.name === 'AbortError' || err?.message?.includes('aborted') || err?.message?.includes('canceled')) {
       transferError.value = 'Cancelled'
-      message.info('Sync cancelled')
+      message.info('Transfer cancelled')
     } else {
       transferError.value = err?.message || String(err)
-      message.error(`Sync failed:${transferError.value}`)
+      message.error(`Transfer failed: ${transferError.value}`)
     }
   } finally {
     endTime.value = new Date().toLocaleString()
