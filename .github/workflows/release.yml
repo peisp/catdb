@@ -153,6 +153,9 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Generate icons (icon.ico is gitignored)
+        run: task common:generate:icons
+
       - name: Generate .syso (icon + manifest + version info)
         working-directory: build
         run: wails3 generate syso -arch amd64 -icon windows/icon.ico -manifest windows/wails.exe.manifest -info windows/info.json -out ../wails_windows_amd64.syso
