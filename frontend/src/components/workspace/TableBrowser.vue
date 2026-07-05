@@ -520,7 +520,10 @@ async function loadColumnComments() {
 
 function toggleColumnsDrawer() {
   columnsDrawerOpen.value = !columnsDrawerOpen.value
-  if (columnsDrawerOpen.value && !commentMap.value.size) loadColumnComments()
+  if (columnsDrawerOpen.value) {
+    ddlPanelOpen.value = false  // 字段面板与 DDL 侧栏互斥，最多开一个
+    if (!commentMap.value.size) loadColumnComments()
+  }
 }
 
 // ---- 字段面板宽度（左边缘可拖动） ----
@@ -600,7 +603,10 @@ const ddlLoading = ref(false)
 
 function toggleDdlPanel() {
   ddlPanelOpen.value = !ddlPanelOpen.value
-  if (ddlPanelOpen.value) void loadDdl()
+  if (ddlPanelOpen.value) {
+    columnsDrawerOpen.value = false  // 字段面板与 DDL 侧栏互斥，最多开一个
+    void loadDdl()
+  }
 }
 
 async function loadDdl() {
