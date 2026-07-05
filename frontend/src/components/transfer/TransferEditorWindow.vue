@@ -4,7 +4,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { Window } from '@wailsio/runtime'
 import {
-  NSelect, NButton, NCheckbox,
+  NButton, NCheckbox,
   NRadioGroup, NRadio, NInputNumber, NProgress,
   NSpin, useMessage,
 } from 'naive-ui'
@@ -303,26 +303,17 @@ function onClose() {
                 <h3 class="section-label source-label">{{ $t('transfer.source') }}</h3>
                 <div class="field">
                   <label class="field-label">{{ $t('transfer.sourceConnection') }}</label>
-                  <n-select
-                    v-model:value="srcConnId"
-                    :options="connOptions"
-                    :placeholder="$t('transfer.selectConnection')"
-                    :disabled="isRunning"
-                    filterable
-                    size="small"
-                  />
+                  <select v-model="srcConnId" class="native-select" :disabled="isRunning">
+                    <option value="" disabled>{{ $t('transfer.selectConnection') }}</option>
+                    <option v-for="c in connOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
+                  </select>
                 </div>
                 <div class="field">
                   <label class="field-label">{{ $t('transfer.sourceDatabase') }}</label>
-                  <n-select
-                    v-model:value="srcDb"
-                    :options="srcDbOptions"
-                    :placeholder="$t('transfer.selectDatabase')"
-                    :disabled="isRunning || !srcConnId"
-                    :loading="loadingTables"
-                    filterable
-                    size="small"
-                  />
+                  <select v-model="srcDb" class="native-select" :disabled="isRunning || !srcConnId">
+                    <option value="" disabled>{{ $t('transfer.selectDatabase') }}</option>
+                    <option v-for="d in srcDbOptions" :key="d.value" :value="d.value">{{ d.label }}</option>
+                  </select>
                 </div>
               </div>
 
@@ -339,25 +330,17 @@ function onClose() {
                 <h3 class="section-label target-label">{{ $t('transfer.target') }}</h3>
                 <div class="field">
                   <label class="field-label">{{ $t('transfer.targetConnection') }}</label>
-                  <n-select
-                    v-model:value="tgtConnId"
-                    :options="connOptions"
-                    :placeholder="$t('transfer.selectConnection')"
-                    :disabled="isRunning"
-                    filterable
-                    size="small"
-                  />
+                  <select v-model="tgtConnId" class="native-select" :disabled="isRunning">
+                    <option value="" disabled>{{ $t('transfer.selectConnection') }}</option>
+                    <option v-for="c in connOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
+                  </select>
                 </div>
                 <div class="field">
                   <label class="field-label">{{ $t('transfer.targetDatabase') }}</label>
-                  <n-select
-                    v-model:value="tgtDb"
-                    :options="tgtDbOptions"
-                    :placeholder="$t('transfer.selectDatabase')"
-                    :disabled="isRunning || !tgtConnId"
-                    filterable
-                    size="small"
-                  />
+                  <select v-model="tgtDb" class="native-select" :disabled="isRunning || !tgtConnId">
+                    <option value="" disabled>{{ $t('transfer.selectDatabase') }}</option>
+                    <option v-for="d in tgtDbOptions" :key="d.value" :value="d.value">{{ d.label }}</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -491,8 +474,7 @@ function onClose() {
 /* --- Titlebar -------------------------------------------------------------- */
 .titlebar {
   position: relative;
-  flex: 0 0 36px;
-  height: 36px;
+  flex: 0 0 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -502,10 +484,7 @@ function onClose() {
   opacity: 0.85;
   --wails-draggable: drag;
 }
-.titlebar .title {
-  padding-left: 60px;
-  padding-right: 12px;
-}
+
 .titlebar.win .title {
   padding-left: 150px;
   padding-right: 150px;
@@ -563,6 +542,8 @@ function onClose() {
   min-height: 0;
   overflow: hidden;
   display: flex;
+  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.15));
+
 }
 .body > * { flex: 1 1 0; min-width: 0; min-height: 0; }
 
@@ -599,7 +580,7 @@ function onClose() {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 20px 12px;
+  padding: 8px 18px;
   border-top: 1px solid var(--n-border-color, #e8e8e8);
 }
 .footer-time {
@@ -640,6 +621,34 @@ function onClose() {
   font-size: 12px;
   margin-bottom: 3px;
   opacity: 0.72;
+}
+
+/* Native <select> — expose the OS-drawn dropdown chrome instead of a Web
+   overlay (UI_SPEC.md "向原生靠拢"). Keep the system caret. */
+.native-select {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  background: var(--n-color, transparent);
+  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.3));
+  border-radius: 3px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.native-select:hover:not(:disabled) {
+  border-color: var(--n-border-color-hover, rgba(127, 127, 127, 0.5));
+}
+.native-select:focus {
+  border-color: var(--n-border-color-focus, #18a058);
+  box-shadow: 0 0 0 2px rgba(24, 160, 88, 0.18);
+}
+.native-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .warning-row {
   background: #fff2f0;
