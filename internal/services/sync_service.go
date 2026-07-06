@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"catdb/internal/core/schemadiff"
@@ -178,10 +179,28 @@ func compareSchemasConns(ctx context.Context, srcConn, tgtConn dbdriver.Connecti
 	tgtBulk := prefetchSchemaBulk(ctx, tgtMeta, req.TargetDB, req.TargetSchema)
 
 	out := SchemaCompareResult{SyncID: fmt.Sprintf("sc-%d", time.Now().UnixNano())}
+
+	// Source-only tables need one SHOW CREATE TABLE each and MySQL has no
+	// bulk form — fetch them concurrently (the query is latency-bound, not
+	// server-bound). Their diffs land in a map the sorted loop below drains.
+	var createOnly []string
+	for name := range srcByName {
+		if _, ok := tgtByName[name]; !ok {
+			createOnly = append(createOnly, name)
+		}
+	}
+	sort.Strings(createOnly)
+	createDiffs := prefetchCreateDDLs(ctx, srcMeta, dia, sameDriver, req, createOnly, out.SyncID)
+
 	names := sortedKeys(srcByName, tgtByName)
 	for _, name := range names {
 		if err := ctx.Err(); err != nil {
 			return empty, err
+		}
+		if d, ok := createDiffs[name]; ok {
+			// Progress for these was already emitted by the prefetch workers.
+			out.Objects = append(out.Objects, d)
+			continue
 		}
 		emitSchemaCompareProgress(out.SyncID, "object-start", name, "table", nil)
 		_, inSrc := srcByName[name]
@@ -238,6 +257,56 @@ func compareSchemasConns(ctx context.Context, srcConn, tgtConn dbdriver.Connecti
 	out.Objects = append(out.Objects, viewDiffs...)
 	emitSchemaCompareProgress(out.SyncID, "done", "", "", nil)
 	return out, nil
+}
+
+// prefetchCreateDDLs resolves the CREATE diff for every source-only table
+// with bounded concurrency: SHOW CREATE TABLE is a cheap, latency-bound
+// round-trip, so 8 in flight cut a 1000-table cold-target compare by ~8×
+// while keeping the source's native DDL fidelity. Per-table failures land in
+// the object's Error field; a cancelled ctx just leaves tables unfetched (the
+// caller aborts on ctx anyway).
+func prefetchCreateDDLs(ctx context.Context, srcMeta dbdriver.Metadata, dia dbdriver.Dialect, sameDriver bool, req SchemaCompareRequest, names []string, syncID string) map[string]SchemaObjectDiff {
+	out := make(map[string]SchemaObjectDiff, len(names))
+	if len(names) == 0 {
+		return out
+	}
+	const workers = 8
+	var (
+		mu  sync.Mutex
+		wg  sync.WaitGroup
+		sem = make(chan struct{}, workers)
+	)
+	for _, name := range names {
+		if ctx.Err() != nil {
+			break
+		}
+		wg.Add(1)
+		go func(name string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			if ctx.Err() != nil {
+				return
+			}
+			emitSchemaCompareProgress(syncID, "object-start", name, "table", nil)
+			diff := SchemaObjectDiff{Name: name, Kind: "table", Status: "create"}
+			stmt, err := createTableDDL(ctx, srcMeta, dia, sameDriver, req, name)
+			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				diff.Error = err.Error()
+			} else {
+				diff.Statements = []string{stmt}
+			}
+			emitSchemaCompareProgress(syncID, "object-done", name, "table", &diff)
+			mu.Lock()
+			out[name] = diff
+			mu.Unlock()
+		}(name)
+	}
+	wg.Wait()
+	return out
 }
 
 // createTableDDL renders the CREATE statement for a source-only table. Same
