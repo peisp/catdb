@@ -38,6 +38,18 @@ export function fetchMore(handle: string, batch = 500, signal?: AbortSignal): Pr
   return bindSignal(p, signal)
 }
 
+// countQuery wraps the statement in SELECT COUNT(*) FROM (…) to get the exact
+// total of a still-streaming result. Rejects for non-countable statements.
+export function countQuery(
+  connId: string,
+  sql: string,
+  opts: Partial<QueryOptions> = {},
+  signal?: AbortSignal,
+): Promise<number> {
+  const p = QueryService.CountQuery(connId, sql, opts as QueryOptions)
+  return bindSignal(p as unknown as Promise<number> & { cancel?: () => void }, signal) as Promise<number>
+}
+
 export function closeHandle(handle: string): Promise<void> {
   return QueryService.Close(handle)
 }

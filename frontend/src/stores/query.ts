@@ -78,6 +78,10 @@ export interface QueryTab {
   columns: QueryColumn[]
   rows: any[][]
   rowsTotal: number
+  // Exact total from the parallel SELECT COUNT(*) wrap — null until known.
+  // Only populated while a large result is still draining (done results
+  // already carry the truth in rowsTotal).
+  exactTotal: number | null
   done: boolean
   isResultSet: boolean
   elapsedMs: number
@@ -112,6 +116,7 @@ function freshTab(connId: string, opts?: { kind?: TabKind; title?: string; db?: 
     columns: [],
     rows: [],
     rowsTotal: 0,
+    exactTotal: null,
     done: false,
     isResultSet: false,
     elapsedMs: 0,
@@ -476,6 +481,7 @@ export const useQueryStore = defineStore('query', () => {
     t.columns = []
     t.rows = []
     t.rowsTotal = 0
+    t.exactTotal = null
     t.done = false
     t.isResultSet = false
     t.elapsedMs = 0
@@ -550,6 +556,19 @@ export const useQueryStore = defineStore('query', () => {
         return
       }
       applyRun(t, res)
+      // Exact total while draining: wrap the query in SELECT COUNT(*) and run
+      // it in parallel so the grid shows "N / total" long before the drain
+      // finishes. Skipped inside manual transactions — the count runs on the
+      // pooled connection and wouldn't see uncommitted rows.
+      if (t.isResultSet && !t.done && !t.txnId) {
+        const sqlAtRun = t.lastRunSql
+        void queryApi
+          .countQuery(t.connId, sqlAtRun, { defaultSchema: options.defaultSchema })
+          .then((n) => {
+            if (t.lastRunSql === sqlAtRun) t.exactTotal = n
+          })
+          .catch(() => { /* not countable / count failed — total stays unknown */ })
+      }
       // Load the whole result set up front — the SQL editor shows full data
       // with no manual scroll-paging. Fetch stays batched so each IPC payload
       // stays bounded (铁律 #5); fetching blocks scroll-triggered fetchMore.

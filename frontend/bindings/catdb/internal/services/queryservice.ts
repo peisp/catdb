@@ -55,6 +55,22 @@ export function CommitTransaction(txnID: string): $CancellablePromise<void> {
 }
 
 /**
+ * CountQuery returns the total row count of the (final) statement in sqlText
+ * by wrapping it in SELECT COUNT(*) FROM (…) AS a derived table. The editor
+ * fires it alongside a streaming RunQuery so the result grid can show
+ * "N / total" before the drain finishes. Only statements that can legally sit
+ * in a derived table are countable (SELECT / WITH / TABLE / VALUES); anything
+ * else errors and the front-end treats the total as unknown.
+ * 
+ * The count always runs on the pooled connection, never inside an open
+ * user transaction — a Tx serializes on one physical connection, which the
+ * concurrently-streaming cursor may be holding.
+ */
+export function CountQuery(connID: string, sqlText: string, opts: $models.QueryOptions): $CancellablePromise<number> {
+    return $Call.ByName("catdb/internal/services.QueryService.CountQuery", connID, sqlText, opts);
+}
+
+/**
  * Explain runs EXPLAIN against the SQL and returns the entire plan inline.
  * Caps the rows to DefaultBatchSize — EXPLAIN plans are never huge.
  * 

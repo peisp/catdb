@@ -305,12 +305,16 @@ async function onRollback() {
 }
 
 // While the streaming cursor is still draining, rowsTotal is only what we've
-// loaded so far — show it as "N+" so it doesn't read as the true total
-// (DataGrip-style). Exact count once drained.
+// loaded so far. When the parallel COUNT(*) has answered, show "N / total";
+// before that fall back to "N+" (DataGrip-style). Exact count once drained.
 const rowsLabel = computed(() => {
   const t = tab.value
   if (!t.isResultSet || t.rowsTotal <= 0) return null
-  return { key: !t.done ? 'queryTab.rowsCountPartial' : 'queryTab.rowsCount', n: t.rowsTotal }
+  if (t.done) return { key: 'queryTab.rowsCount', n: t.rowsTotal, total: 0 }
+  if (t.exactTotal != null) {
+    return { key: 'queryTab.rowsCountOfTotal', n: t.rowsTotal, total: t.exactTotal }
+  }
+  return { key: 'queryTab.rowsCountPartial', n: t.rowsTotal, total: 0 }
 })
 
 const errorKind = computed<'canceled' | 'timeout' | 'sql' | null>(() => {
@@ -453,7 +457,7 @@ function onSplitDown(e: PointerEvent) {
         <span class="sep" />
         <n-tag size="small" :type="statusBadge.type">{{ $t(statusBadge.key) }}</n-tag>
         <span v-if="tab.elapsedMs > 0" class="mono mute">{{ tab.elapsedMs }} ms</span>
-        <span v-if="rowsLabel" class="mono mute">{{ $t(rowsLabel.key, { n: rowsLabel.n }) }}</span>
+        <span v-if="rowsLabel" class="mono mute">{{ $t(rowsLabel.key, { n: rowsLabel.n, total: rowsLabel.total }) }}</span>
         <span v-if="!tab.isResultSet && tab.execAffected !== null" class="mono mute">
           {{ $t('queryTab.affectedCount', { n: tab.execAffected }) }}
         </span>

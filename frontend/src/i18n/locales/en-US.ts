@@ -398,6 +398,7 @@ export default {
     noSchemas: 'No schemas',
     rowsCount: '{n} rows',
     rowsCountPartial: '{n}+ rows (not fully loaded)',
+    rowsCountOfTotal: '{n} / {total} rows',
     loadingMore: 'loading…',
     affectedCount: '{n} affected',
     rowsAffected: '{n} row(s) affected',

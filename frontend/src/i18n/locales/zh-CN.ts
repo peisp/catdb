@@ -390,6 +390,7 @@ export default {
     noSchemas: '无可用数据库',
     rowsCount: '{n} 行',
     rowsCountPartial: '{n}+ 行（未加载完）',
+    rowsCountOfTotal: '{n} / {total} 行',
     loadingMore: '加载中…',
     affectedCount: '{n} 行受影响',
     rowsAffected: '{n} 行受影响',

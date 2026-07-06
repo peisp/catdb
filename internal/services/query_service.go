@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -479,6 +480,94 @@ func (s *QueryService) Explain(ctx context.Context, connID, sqlText string, opts
 		ElapsedMs:   time.Since(start).Milliseconds(),
 		IsResultSet: true,
 	}, nil
+}
+
+// CountQuery returns the total row count of the (final) statement in sqlText
+// by wrapping it in SELECT COUNT(*) FROM (…) AS a derived table. The editor
+// fires it alongside a streaming RunQuery so the result grid can show
+// "N / total" before the drain finishes. Only statements that can legally sit
+// in a derived table are countable (SELECT / WITH / TABLE / VALUES); anything
+// else errors and the front-end treats the total as unknown.
+//
+// The count always runs on the pooled connection, never inside an open
+// user transaction — a Tx serializes on one physical connection, which the
+// concurrently-streaming cursor may be holding.
+func (s *QueryService) CountQuery(ctx context.Context, connID, sqlText string, opts QueryOptions) (int64, error) {
+	if connID == "" {
+		return 0, fmt.Errorf("QueryService: connID is required")
+	}
+	stmts := sqlscript.Split(sqlText)
+	if len(stmts) == 0 {
+		return 0, fmt.Errorf("QueryService: sql is empty")
+	}
+	final := strings.TrimSuffix(strings.TrimSpace(stmts[len(stmts)-1]), ";")
+	if !isCountableQuery(final) {
+		return 0, fmt.Errorf("QueryService: statement is not countable")
+	}
+
+	conn, err := s.mgr.Get(connID)
+	if err != nil {
+		conn, err = s.mgr.Open(ctx, connID)
+		if err != nil {
+			return 0, err
+		}
+	}
+	timeout := time.Duration(opts.TimeoutMs) * time.Millisecond
+	if timeout <= 0 {
+		timeout = DefaultQueryTimeout
+	}
+	tctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	q, tx, err := s.acquireQuerier(tctx, conn, connID, opts.DefaultSchema, "")
+	if err != nil {
+		return 0, err
+	}
+
+	rs, err := q.Query(tctx, "SELECT COUNT(*) FROM (\n"+final+"\n) AS `__catdb_count`")
+	if err != nil {
+		releaseTx(tx, err)
+		return 0, classifyErr(err, tctx)
+	}
+	rows, _, err := rs.Next(1)
+	_ = rs.Close()
+	releaseTx(tx, err)
+	if err != nil {
+		return 0, classifyErr(err, tctx)
+	}
+	if len(rows) == 0 || len(rows[0]) == 0 {
+		return 0, fmt.Errorf("QueryService: count returned no rows")
+	}
+	return scalarToInt64(rows[0][0])
+}
+
+// isCountableQuery reports whether the statement can be wrapped as a derived
+// table for COUNT(*). SHOW/EXPLAIN/DESC return rows but are not valid inside
+// a subquery.
+func isCountableQuery(s string) bool {
+	upper := strings.ToUpper(strings.TrimLeft(s, " \t\n\r("))
+	for _, kw := range []string{"SELECT", "WITH", "TABLE", "VALUES"} {
+		if strings.HasPrefix(upper, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// scalarToInt64 normalizes the driver's COUNT(*) scalar representation.
+func scalarToInt64(v any) (int64, error) {
+	switch x := v.(type) {
+	case int64:
+		return x, nil
+	case uint64:
+		return int64(x), nil
+	case []byte:
+		return strconv.ParseInt(string(x), 10, 64)
+	case string:
+		return strconv.ParseInt(x, 10, 64)
+	default:
+		return 0, fmt.Errorf("QueryService: unexpected count type %T", v)
+	}
 }
 
 // CapabilitiesFor returns the registered driver's Capabilities for the given

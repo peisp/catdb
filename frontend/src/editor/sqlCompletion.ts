@@ -601,8 +601,13 @@ function buildTables(items: Scored[], sc: SqlContext, catalog: CompletionCatalog
   }
 }
 
+// System catalogs are noise in everyday completion — hidden until the user
+// types a prefix that could be asking for them (e.g. "inf" → information_schema).
+const SYSTEM_SCHEMAS = new Set(['information_schema', 'mysql', 'performance_schema', 'sys'])
+
 function buildDatabases(items: Scored[], sc: SqlContext, catalog: CompletionCatalog, base = 0) {
   for (const db of catalog.databases()) {
+    if (!sc.prefix && SYSTEM_SCHEMAS.has(db.toLowerCase())) continue
     push(items, { label: db, type: 'namespace', apply: quoteName(db) }, sc.prefix, base)
   }
 }
@@ -726,12 +731,25 @@ export function createSqlCompletionSource(
   catalog: CompletionCatalog,
   labels: CompletionLabels,
 ): CompletionSource {
-  return (ctx: CompletionContext) => {
+  const source = (
+    ctx: CompletionContext,
+    retried = false,
+  ): CompletionResult | Promise<CompletionResult | null> | null => {
     const doc = ctx.state.doc.toString()
     const sc = getSqlContext(doc, ctx.pos)
     if (sc.suppressed) return null
 
     if (sc.qualifier.length) return buildQualified(sc, catalog, labels)
+
+    // FROM/JOIN position with a selected database whose table list hasn't
+    // been fetched yet: load it first, then re-run. Without this the popup
+    // degrades to database names only until the snapshot happens to arrive.
+    if (!retried && sc.clause === 'table') {
+      const cur = catalog.currentDb()
+      if (cur && catalog.tablesFor(cur) == null) {
+        return catalog.ensureTables(cur).then(() => source(ctx, true))
+      }
+    }
 
     // Auto-open on empty prefix only where the next token is strongly implied.
     const autoOpen =
@@ -839,6 +857,7 @@ export function createSqlCompletionSource(
     }
     return finish(items, sc)
   }
+  return (ctx: CompletionContext) => source(ctx)
 }
 
 // ── Function signature help ──────────────────────────────────────────────────
