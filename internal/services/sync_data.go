@@ -146,6 +146,24 @@ func resolveTablePairs(ctx context.Context, srcConn, tgtConn dbdriver.Connection
 		}
 		return m.ListColumns(ctx, db, schema, name)
 	}
+	// pkOf serves the primary key from the bulk index cache (PRIMARY entry is
+	// in key-sequence order, same as Editor.PrimaryKeys). Tables without a
+	// PRIMARY index fall back to the editor, which also probes for a unique
+	// non-null index — that semantic stays per-table.
+	pkOf := func(b *schemaBulk, ed dbdriver.Editor, db, schema, name string) ([]string, error) {
+		if b != nil {
+			for _, ix := range b.ixs[name] {
+				if ix.Primary {
+					cols := make([]string, len(ix.Columns))
+					for i, c := range ix.Columns {
+						cols[i] = c.Name
+					}
+					return cols, nil
+				}
+			}
+		}
+		return ed.PrimaryKeys(ctx, db, schema, name)
+	}
 
 	var out []tablePair
 	for _, name := range names {
@@ -158,11 +176,11 @@ func resolveTablePairs(ctx context.Context, srcConn, tgtConn dbdriver.Connection
 			out = append(out, p)
 			continue
 		}
-		srcPK, err := srcEd.PrimaryKeys(ctx, req.SourceDB, req.SourceSchema, name)
+		srcPK, err := pkOf(srcBulk, srcEd, req.SourceDB, req.SourceSchema, name)
 		if err != nil {
 			return nil, fmt.Errorf("SyncService: source primary keys of %s: %w", name, err)
 		}
-		tgtPK, err := tgtEd.PrimaryKeys(ctx, req.TargetDB, req.TargetSchema, name)
+		tgtPK, err := pkOf(tgtBulk, tgtEd, req.TargetDB, req.TargetSchema, name)
 		if err != nil {
 			return nil, fmt.Errorf("SyncService: target primary keys of %s: %w", name, err)
 		}

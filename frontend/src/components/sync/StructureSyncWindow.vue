@@ -122,6 +122,54 @@ function selectable(o: SchemaObjectDiff): boolean {
   return !o.error && o.status !== 'same' && o.status !== 'comparing' && (o.statements?.length ?? 0) > 0
 }
 
+// Progress events are buffered and flushed at most ~10×/s: with the bulk
+// metadata fast path a 1000-table compare can burst thousands of events in a
+// couple of seconds, and re-rendering the whole list per event would freeze
+// the very UI the events exist to keep alive.
+let pendingCmp: syncApi.SchemaCompareProgress[] = []
+let cmpFlushTimer: ReturnType<typeof setTimeout> | undefined
+
+function flushCmpEvents() {
+  cmpFlushTimer = undefined
+  if (pendingCmp.length === 0) return
+  const evts = pendingCmp
+  pendingCmp = []
+  const list = [...objects.value]
+  const idxByKey = new Map(list.map((o, i) => [objKey(o), i]))
+  let doneDelta = 0
+  let lastComparing = comparingName.value
+  for (const p of evts) {
+    const key = `${p.kind}:${p.name}`
+    if (p.phase === 'object-start') {
+      lastComparing = p.name
+      if (!idxByKey.has(key)) {
+        idxByKey.set(key, list.length)
+        list.push({ name: p.name, kind: p.kind, status: 'comparing', statements: [] } as unknown as SchemaObjectDiff)
+      }
+    } else if (p.phase === 'object-done' && p.object) {
+      doneDelta++
+      lastComparing = ''
+      const i = idxByKey.get(key)
+      if (i !== undefined) list[i] = p.object
+      else {
+        idxByKey.set(key, list.length)
+        list.push(p.object)
+      }
+    }
+  }
+  objects.value = list
+  comparedDone.value += doneDelta
+  comparingName.value = lastComparing
+}
+
+function stopCmpBuffer() {
+  if (cmpFlushTimer) {
+    clearTimeout(cmpFlushTimer)
+    cmpFlushTimer = undefined
+  }
+  pendingCmp = []
+}
+
 async function runCompare() {
   if (!canCompare.value) return
   isComparing.value = true
@@ -132,18 +180,8 @@ async function runCompare() {
   // databases would otherwise look frozen.
   const offCmp = syncApi.onSchemaCompareProgress((p) => {
     if (!p.syncId.startsWith('sc-')) return
-    if (p.phase === 'object-start') {
-      comparingName.value = p.name
-      objects.value = [
-        ...objects.value,
-        { name: p.name, kind: p.kind, status: 'comparing', statements: [] } as unknown as SchemaObjectDiff,
-      ]
-    } else if (p.phase === 'object-done' && p.object) {
-      comparedDone.value++
-      comparingName.value = ''
-      const key = `${p.kind}:${p.name}`
-      objects.value = objects.value.map((o) => (objKey(o) === key ? p.object! : o))
-    }
+    pendingCmp.push(p)
+    if (!cmpFlushTimer) cmpFlushTimer = setTimeout(flushCmpEvents, 100)
   })
   try {
     const res = await syncApi.compareSchemas({
@@ -171,6 +209,7 @@ async function runCompare() {
     }
   } finally {
     offCmp()
+    stopCmpBuffer()
     aborter.value = null
     isComparing.value = false
   }
@@ -610,6 +649,10 @@ function statusLabel(s: string): string {
   padding: 4px 8px;
   font-size: 12px;
   border-bottom: 1px solid var(--n-border-color, #f0f0f0);
+  /* Skip layout/paint of off-screen rows — keeps 1000+ row lists cheap
+     without a virtual scroller (unsupported engines simply ignore it). */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 25px;
 }
 .diff-row.inactive { opacity: 0.55; }
 .diff-row input[type="checkbox"] { margin: 0; }
@@ -638,6 +681,8 @@ function statusLabel(s: string): string {
 .chev { width: 9px; height: 9px; transition: transform 100ms ease; }
 .chev.open { transform: rotate(90deg); }
 .stmt-block {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 60px;
   margin: 0;
   padding: 6px 10px 6px 28px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

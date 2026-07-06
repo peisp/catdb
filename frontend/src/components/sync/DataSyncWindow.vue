@@ -165,24 +165,53 @@ function initLiveRows() {
     .map((x) => ({ table: x, state: 'pending' as const, inserts: 0, updates: 0, deletes: 0, scannedSource: 0, scannedTarget: 0 }))
 }
 
-function applyLiveEvent(p: syncApi.DataSyncProgress) {
-  if (!p.table) return
-  const idx = liveRows.value.findIndex((r) => r.table === p.table)
-  if (idx < 0) return
-  const r = { ...liveRows.value[idx] }
-  r.inserts = p.inserts
-  r.updates = p.updates
-  r.deletes = p.deletes
-  r.scannedSource = p.scannedSource
-  r.scannedTarget = p.scannedTarget
-  if (p.phase === 'table-start' || p.phase === 'progress') {
-    r.state = 'running'
-  } else if (p.phase === 'table-done') {
-    r.state = 'done'
-    r.skipped = p.skipped || undefined
-    r.error = p.error || undefined
+// Live events are buffered and flushed at most ~10×/s — merge progress fires
+// every batch per table, and with many tables the per-event array rebuild +
+// full list re-render would freeze the UI on exactly the workloads the live
+// list is meant to keep visible.
+let pendingLive: syncApi.DataSyncProgress[] = []
+let liveFlushTimer: ReturnType<typeof setTimeout> | undefined
+
+function flushLiveEvents() {
+  liveFlushTimer = undefined
+  if (pendingLive.length === 0) return
+  const evts = pendingLive
+  pendingLive = []
+  const rows = [...liveRows.value]
+  const idxByTable = new Map(rows.map((r, i) => [r.table, i]))
+  for (const p of evts) {
+    if (!p.table) continue
+    const i = idxByTable.get(p.table)
+    if (i === undefined) continue
+    const r = { ...rows[i] }
+    r.inserts = p.inserts
+    r.updates = p.updates
+    r.deletes = p.deletes
+    r.scannedSource = p.scannedSource
+    r.scannedTarget = p.scannedTarget
+    if (p.phase === 'table-start' || p.phase === 'progress') {
+      r.state = 'running'
+    } else if (p.phase === 'table-done') {
+      r.state = 'done'
+      r.skipped = p.skipped || undefined
+      r.error = p.error || undefined
+    }
+    rows[i] = r
   }
-  liveRows.value = [...liveRows.value.slice(0, idx), r, ...liveRows.value.slice(idx + 1)]
+  liveRows.value = rows
+}
+
+function queueLiveEvent(p: syncApi.DataSyncProgress) {
+  pendingLive.push(p)
+  if (!liveFlushTimer) liveFlushTimer = setTimeout(flushLiveEvents, 100)
+}
+
+function stopLiveBuffer() {
+  if (liveFlushTimer) {
+    clearTimeout(liveFlushTimer)
+    liveFlushTimer = undefined
+  }
+  pendingLive = []
 }
 
 let offProgress: (() => void) | null = null
@@ -227,7 +256,7 @@ async function runCompare() {
   aborter.value = ac
   offProgress?.()
   offProgress = syncApi.onDataSyncProgress((p) => {
-    if (p.syncId.startsWith('dc-')) applyLiveEvent(p)
+    if (p.syncId.startsWith('dc-')) queueLiveEvent(p)
   })
   try {
     const res = await syncApi.compareData({
@@ -251,6 +280,7 @@ async function runCompare() {
   } finally {
     offProgress?.()
     offProgress = null
+    stopLiveBuffer()
     aborter.value = null
     isComparing.value = false
   }
@@ -748,6 +778,10 @@ function sampleText(d: DataTableDiff): string {
   padding: 4px 8px;
   font-size: 12px;
   border-bottom: 1px solid var(--n-border-color, #f0f0f0);
+  /* Skip layout/paint of off-screen rows — keeps 1000+ row lists cheap
+     without a virtual scroller (unsupported engines simply ignore it). */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 25px;
 }
 .diff-row.inactive { opacity: 0.55; }
 .diff-name { font-weight: 500; cursor: default; min-width: 120px; }
@@ -775,6 +809,8 @@ function sampleText(d: DataTableDiff): string {
 .chev { width: 9px; height: 9px; transition: transform 100ms ease; }
 .chev.open { transform: rotate(90deg); }
 .stmt-block {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 60px;
   margin: 0;
   padding: 6px 10px 6px 28px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
