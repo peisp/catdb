@@ -26,13 +26,14 @@ import type { TableSummary } from '../../api/metadata'
 import { useMetadataStore } from '../../stores/metadata'
 import { useQueryStore } from '../../stores/query'
 import {
-  buildAlterPlan,
-  buildCreateTable,
   columnToDraft,
+  draftToWire,
+  emptyAlterPlan,
   emptyColumnDraft,
   foreignKeyToDraft,
   indexToDraft,
   parseTableCommentFromDDL,
+  type AlterPlan,
   type StructureDraft,
 } from '../../lib/alterPlan'
 import AlterSqlPanel from '../structure/AlterSqlPanel.vue'
@@ -207,28 +208,51 @@ function resetDraft() {
 }
 
 // ---- plan (CREATE in new mode, ALTER diff in edit mode) -------------------
+//
+// The diff runs in the Go backend (schemadiff + Dialect). Edits are frequent,
+// so refreshes are debounced and guarded by a sequence number — a stale
+// response never overwrites a newer plan.
 
-const plan = computed(() => {
-  if (props.mode === 'new') {
-    const stmt = buildCreateTable({
-      db: props.db,
-      table: newTableName.value,
-      draft: draft.value,
-    })
-    const stmts = stmt ? [stmt] : []
-    return { columns: stmts, indexes: stmts, foreignKeys: stmts, options: stmts, all: stmts }
+const plan = ref<AlterPlan>(emptyAlterPlan())
+let planSeq = 0
+let planTimer: ReturnType<typeof setTimeout> | undefined
+
+watch(
+  [draft, summary, origComment, newTableName, () => props.mode],
+  () => {
+    if (planTimer) clearTimeout(planTimer)
+    planTimer = setTimeout(refreshPlan, 150)
+  },
+  { deep: true, immediate: true },
+)
+
+async function refreshPlan() {
+  const seq = ++planSeq
+  try {
+    if (props.mode === 'new') {
+      const stmt = await metaApi.buildCreateTable(
+        props.connId, props.db, newTableName.value, draftToWire(draft.value),
+      )
+      if (seq !== planSeq) return
+      const stmts = stmt ? [stmt] : []
+      plan.value = { columns: stmts, indexes: stmts, foreignKeys: stmts, options: stmts, all: stmts }
+      return
+    }
+    if (!summary.value) {
+      if (seq === planSeq) plan.value = emptyAlterPlan()
+      return
+    }
+    const res = await metaApi.buildAlterPlan(
+      props.connId, props.db, props.table,
+      summary.value, origComment.value, draftToWire(draft.value),
+    )
+    if (seq !== planSeq) return
+    plan.value = res
+  } catch (e) {
+    // Per-keystroke preview refresh — log instead of toasting on every edit.
+    console.warn('alter plan refresh failed:', e)
   }
-  if (!summary.value) {
-    return { columns: [], indexes: [], foreignKeys: [], options: [], all: [] }
-  }
-  return buildAlterPlan({
-    db: props.db,
-    table: props.table,
-    origSummary: summary.value,
-    origComment: origComment.value,
-    draft: draft.value,
-  })
-})
+}
 
 // ---- apply ----------------------------------------------------------------
 

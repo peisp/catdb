@@ -7,7 +7,129 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as datasync$0 from "../core/datasync/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as schemadiff$0 from "../core/schemadiff/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as dbdriver$0 from "../dbdriver/models.js";
+
+/**
+ * AlterPlanRequest carries the original table snapshot (what the structure
+ * editor loaded) and the user-edited draft. The diff runs backend-side in
+ * internal/core/schemadiff; the connection is only consulted for its Dialect,
+ * so this is a pure computation — no queries hit the database.
+ */
+export class AlterPlanRequest {
+    "db": string;
+    "schema": string;
+    "table": string;
+    "orig": TableSummary;
+    "origComment": string;
+    "draft": schemadiff$0.Table;
+
+    /** Creates a new AlterPlanRequest instance. */
+    constructor($$source: Partial<AlterPlanRequest> = {}) {
+        if (!("db" in $$source)) {
+            this["db"] = "";
+        }
+        if (!("schema" in $$source)) {
+            this["schema"] = "";
+        }
+        if (!("table" in $$source)) {
+            this["table"] = "";
+        }
+        if (!("orig" in $$source)) {
+            this["orig"] = (new TableSummary());
+        }
+        if (!("origComment" in $$source)) {
+            this["origComment"] = "";
+        }
+        if (!("draft" in $$source)) {
+            this["draft"] = (new schemadiff$0.Table());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AlterPlanRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AlterPlanRequest {
+        const $$createField3_0 = $$createType0;
+        const $$createField5_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("orig" in $$parsedSource) {
+            $$parsedSource["orig"] = $$createField3_0($$parsedSource["orig"]);
+        }
+        if ("draft" in $$parsedSource) {
+            $$parsedSource["draft"] = $$createField5_0($$parsedSource["draft"]);
+        }
+        return new AlterPlanRequest($$parsedSource as Partial<AlterPlanRequest>);
+    }
+}
+
+/**
+ * AlterPlanResult groups the generated ALTER statements by structure-editor
+ * tab, plus the concatenation in safe execution order.
+ */
+export class AlterPlanResult {
+    "columns": string[];
+    "indexes": string[];
+    "foreignKeys": string[];
+    "options": string[];
+    "all": string[];
+
+    /** Creates a new AlterPlanResult instance. */
+    constructor($$source: Partial<AlterPlanResult> = {}) {
+        if (!("columns" in $$source)) {
+            this["columns"] = [];
+        }
+        if (!("indexes" in $$source)) {
+            this["indexes"] = [];
+        }
+        if (!("foreignKeys" in $$source)) {
+            this["foreignKeys"] = [];
+        }
+        if (!("options" in $$source)) {
+            this["options"] = [];
+        }
+        if (!("all" in $$source)) {
+            this["all"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AlterPlanResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AlterPlanResult {
+        const $$createField0_0 = $$createType2;
+        const $$createField1_0 = $$createType2;
+        const $$createField2_0 = $$createType2;
+        const $$createField3_0 = $$createType2;
+        const $$createField4_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("columns" in $$parsedSource) {
+            $$parsedSource["columns"] = $$createField0_0($$parsedSource["columns"]);
+        }
+        if ("indexes" in $$parsedSource) {
+            $$parsedSource["indexes"] = $$createField1_0($$parsedSource["indexes"]);
+        }
+        if ("foreignKeys" in $$parsedSource) {
+            $$parsedSource["foreignKeys"] = $$createField2_0($$parsedSource["foreignKeys"]);
+        }
+        if ("options" in $$parsedSource) {
+            $$parsedSource["options"] = $$createField3_0($$parsedSource["options"]);
+        }
+        if ("all" in $$parsedSource) {
+            $$parsedSource["all"] = $$createField4_0($$parsedSource["all"]);
+        }
+        return new AlterPlanResult($$parsedSource as Partial<AlterPlanResult>);
+    }
+}
 
 /**
  * AutocompleteColumn carries the per-column detail the editor shows in the
@@ -67,7 +189,7 @@ export class AutocompleteSnapshot {
      * Creates a new AutocompleteSnapshot instance from a string or object.
      */
     static createFrom($$source: any = {}): AutocompleteSnapshot {
-        const $$createField1_0 = $$createType1;
+        const $$createField1_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tables" in $$parsedSource) {
             $$parsedSource["tables"] = $$createField1_0($$parsedSource["tables"]);
@@ -105,7 +227,7 @@ export class AutocompleteTable {
      * Creates a new AutocompleteTable instance from a string or object.
      */
     static createFrom($$source: any = {}): AutocompleteTable {
-        const $$createField2_0 = $$createType3;
+        const $$createField2_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
             $$parsedSource["columns"] = $$createField2_0($$parsedSource["columns"]);
@@ -154,9 +276,9 @@ export class BrowseResult {
      * Creates a new BrowseResult instance from a string or object.
      */
     static createFrom($$source: any = {}): BrowseResult {
-        const $$createField0_0 = $$createType5;
-        const $$createField1_0 = $$createType7;
-        const $$createField2_0 = $$createType8;
+        const $$createField0_0 = $$createType8;
+        const $$createField1_0 = $$createType10;
+        const $$createField2_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
             $$parsedSource["columns"] = $$createField0_0($$parsedSource["columns"]);
@@ -216,9 +338,9 @@ export class ConnectionDraft {
      * Creates a new ConnectionDraft instance from a string or object.
      */
     static createFrom($$source: any = {}): ConnectionDraft {
-        const $$createField8_0 = $$createType9;
-        const $$createField9_0 = $$createType11;
-        const $$createField10_0 = $$createType13;
+        const $$createField8_0 = $$createType11;
+        const $$createField9_0 = $$createType13;
+        const $$createField10_0 = $$createType15;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("params" in $$parsedSource) {
             $$parsedSource["params"] = $$createField8_0($$parsedSource["params"]);
@@ -230,6 +352,284 @@ export class ConnectionDraft {
             $$parsedSource["sshTunnel"] = $$createField10_0($$parsedSource["sshTunnel"]);
         }
         return new ConnectionDraft($$parsedSource as Partial<ConnectionDraft>);
+    }
+}
+
+/**
+ * CreateTableRequest is the "new table" flow's draft.
+ */
+export class CreateTableRequest {
+    "db": string;
+    "schema": string;
+    "table": string;
+    "draft": schemadiff$0.Table;
+
+    /** Creates a new CreateTableRequest instance. */
+    constructor($$source: Partial<CreateTableRequest> = {}) {
+        if (!("db" in $$source)) {
+            this["db"] = "";
+        }
+        if (!("schema" in $$source)) {
+            this["schema"] = "";
+        }
+        if (!("table" in $$source)) {
+            this["table"] = "";
+        }
+        if (!("draft" in $$source)) {
+            this["draft"] = (new schemadiff$0.Table());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CreateTableRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): CreateTableRequest {
+        const $$createField3_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("draft" in $$parsedSource) {
+            $$parsedSource["draft"] = $$createField3_0($$parsedSource["draft"]);
+        }
+        return new CreateTableRequest($$parsedSource as Partial<CreateTableRequest>);
+    }
+}
+
+/**
+ * DataCompareRequest names the two databases and (optionally) the tables to
+ * compare. Empty Tables = every table present on both sides.
+ */
+export class DataCompareRequest {
+    "sourceConnId": string;
+    "sourceDb": string;
+    "sourceSchema": string;
+    "targetConnId": string;
+    "targetDb": string;
+    "targetSchema": string;
+    "tables": string[];
+    "batchSize": number;
+
+    /** Creates a new DataCompareRequest instance. */
+    constructor($$source: Partial<DataCompareRequest> = {}) {
+        if (!("sourceConnId" in $$source)) {
+            this["sourceConnId"] = "";
+        }
+        if (!("sourceDb" in $$source)) {
+            this["sourceDb"] = "";
+        }
+        if (!("sourceSchema" in $$source)) {
+            this["sourceSchema"] = "";
+        }
+        if (!("targetConnId" in $$source)) {
+            this["targetConnId"] = "";
+        }
+        if (!("targetDb" in $$source)) {
+            this["targetDb"] = "";
+        }
+        if (!("targetSchema" in $$source)) {
+            this["targetSchema"] = "";
+        }
+        if (!("tables" in $$source)) {
+            this["tables"] = [];
+        }
+        if (!("batchSize" in $$source)) {
+            this["batchSize"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DataCompareRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DataCompareRequest {
+        const $$createField6_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tables" in $$parsedSource) {
+            $$parsedSource["tables"] = $$createField6_0($$parsedSource["tables"]);
+        }
+        return new DataCompareRequest($$parsedSource as Partial<DataCompareRequest>);
+    }
+}
+
+/**
+ * DataCompareResult is the per-table outcome list, in name order.
+ */
+export class DataCompareResult {
+    "syncId": string;
+    "tables": DataTableDiff[];
+
+    /** Creates a new DataCompareResult instance. */
+    constructor($$source: Partial<DataCompareResult> = {}) {
+        if (!("syncId" in $$source)) {
+            this["syncId"] = "";
+        }
+        if (!("tables" in $$source)) {
+            this["tables"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DataCompareResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DataCompareResult {
+        const $$createField1_0 = $$createType17;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tables" in $$parsedSource) {
+            $$parsedSource["tables"] = $$createField1_0($$parsedSource["tables"]);
+        }
+        return new DataCompareResult($$parsedSource as Partial<DataCompareResult>);
+    }
+}
+
+/**
+ * DataSyncExecRequest executes the differences for the listed tables.
+ * AllowDelete gates DELETE of target-only rows (default false = keep them).
+ */
+export class DataSyncExecRequest {
+    "sourceConnId": string;
+    "sourceDb": string;
+    "sourceSchema": string;
+    "targetConnId": string;
+    "targetDb": string;
+    "targetSchema": string;
+    "tables": string[];
+    "allowDelete": boolean;
+    "batchSize": number;
+
+    /** Creates a new DataSyncExecRequest instance. */
+    constructor($$source: Partial<DataSyncExecRequest> = {}) {
+        if (!("sourceConnId" in $$source)) {
+            this["sourceConnId"] = "";
+        }
+        if (!("sourceDb" in $$source)) {
+            this["sourceDb"] = "";
+        }
+        if (!("sourceSchema" in $$source)) {
+            this["sourceSchema"] = "";
+        }
+        if (!("targetConnId" in $$source)) {
+            this["targetConnId"] = "";
+        }
+        if (!("targetDb" in $$source)) {
+            this["targetDb"] = "";
+        }
+        if (!("targetSchema" in $$source)) {
+            this["targetSchema"] = "";
+        }
+        if (!("tables" in $$source)) {
+            this["tables"] = [];
+        }
+        if (!("allowDelete" in $$source)) {
+            this["allowDelete"] = false;
+        }
+        if (!("batchSize" in $$source)) {
+            this["batchSize"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DataSyncExecRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DataSyncExecRequest {
+        const $$createField6_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tables" in $$parsedSource) {
+            $$parsedSource["tables"] = $$createField6_0($$parsedSource["tables"]);
+        }
+        return new DataSyncExecRequest($$parsedSource as Partial<DataSyncExecRequest>);
+    }
+}
+
+/**
+ * DataSyncExecResult mirrors DataCompareResult for the write pass.
+ */
+export class DataSyncExecResult {
+    "syncId": string;
+    "tables": DataTableDiff[];
+
+    /** Creates a new DataSyncExecResult instance. */
+    constructor($$source: Partial<DataSyncExecResult> = {}) {
+        if (!("syncId" in $$source)) {
+            this["syncId"] = "";
+        }
+        if (!("tables" in $$source)) {
+            this["tables"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DataSyncExecResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DataSyncExecResult {
+        const $$createField1_0 = $$createType17;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tables" in $$parsedSource) {
+            $$parsedSource["tables"] = $$createField1_0($$parsedSource["tables"]);
+        }
+        return new DataSyncExecResult($$parsedSource as Partial<DataSyncExecResult>);
+    }
+}
+
+/**
+ * DataTableDiff is one table's compare/execute outcome. Skipped carries a
+ * stable slug the front-end localizes; Samples is a bounded preview.
+ */
+export class DataTableDiff {
+    "table": string;
+    "inserts": number;
+    "updates": number;
+    "deletes": number;
+    "scannedSource": number;
+    "scannedTarget": number;
+    "samples"?: datasync$0.DiffSample[];
+
+    /**
+     * no-primary-key | pk-mismatch | missing-on-target | no-common-columns
+     */
+    "skipped"?: string;
+    "error"?: string;
+
+    /** Creates a new DataTableDiff instance. */
+    constructor($$source: Partial<DataTableDiff> = {}) {
+        if (!("table" in $$source)) {
+            this["table"] = "";
+        }
+        if (!("inserts" in $$source)) {
+            this["inserts"] = 0;
+        }
+        if (!("updates" in $$source)) {
+            this["updates"] = 0;
+        }
+        if (!("deletes" in $$source)) {
+            this["deletes"] = 0;
+        }
+        if (!("scannedSource" in $$source)) {
+            this["scannedSource"] = 0;
+        }
+        if (!("scannedTarget" in $$source)) {
+            this["scannedTarget"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DataTableDiff instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DataTableDiff {
+        const $$createField6_0 = $$createType19;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("samples" in $$parsedSource) {
+            $$parsedSource["samples"] = $$createField6_0($$parsedSource["samples"]);
+        }
+        return new DataTableDiff($$parsedSource as Partial<DataTableDiff>);
     }
 }
 
@@ -286,7 +686,7 @@ export class DataTransferRequest {
      * Creates a new DataTransferRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): DataTransferRequest {
-        const $$createField6_0 = $$createType8;
+        const $$createField6_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tables" in $$parsedSource) {
             $$parsedSource["tables"] = $$createField6_0($$parsedSource["tables"]);
@@ -320,7 +720,7 @@ export class DataTransferResult {
      * Creates a new DataTransferResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DataTransferResult {
-        const $$createField1_0 = $$createType16;
+        const $$createField1_0 = $$createType22;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tableResults" in $$parsedSource) {
             $$parsedSource["tableResults"] = $$createField1_0($$parsedSource["tableResults"]);
@@ -360,8 +760,8 @@ export class DriverInfo {
      * Creates a new DriverInfo instance from a string or object.
      */
     static createFrom($$source: any = {}): DriverInfo {
-        const $$createField2_0 = $$createType17;
-        const $$createField3_0 = $$createType19;
+        const $$createField2_0 = $$createType23;
+        const $$createField3_0 = $$createType25;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("capabilities" in $$parsedSource) {
             $$parsedSource["capabilities"] = $$createField2_0($$parsedSource["capabilities"]);
@@ -548,7 +948,7 @@ export class ImportOptions {
      * Creates a new ImportOptions instance from a string or object.
      */
     static createFrom($$source: any = {}): ImportOptions {
-        const $$createField6_0 = $$createType8;
+        const $$createField6_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
             $$parsedSource["columns"] = $$createField6_0($$parsedSource["columns"]);
@@ -624,7 +1024,7 @@ export class QueryBatchResult {
      * Creates a new QueryBatchResult instance from a string or object.
      */
     static createFrom($$source: any = {}): QueryBatchResult {
-        const $$createField0_0 = $$createType7;
+        const $$createField0_0 = $$createType10;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("rows" in $$parsedSource) {
             $$parsedSource["rows"] = $$createField0_0($$parsedSource["rows"]);
@@ -747,10 +1147,10 @@ export class QueryRunResult {
      * Creates a new QueryRunResult instance from a string or object.
      */
     static createFrom($$source: any = {}): QueryRunResult {
-        const $$createField1_0 = $$createType5;
-        const $$createField2_0 = $$createType7;
-        const $$createField8_0 = $$createType21;
-        const $$createField9_0 = $$createType23;
+        const $$createField1_0 = $$createType8;
+        const $$createField2_0 = $$createType10;
+        const $$createField8_0 = $$createType27;
+        const $$createField9_0 = $$createType29;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
             $$parsedSource["columns"] = $$createField1_0($$parsedSource["columns"]);
@@ -807,8 +1207,8 @@ export class RowChange {
      * Creates a new RowChange instance from a string or object.
      */
     static createFrom($$source: any = {}): RowChange {
-        const $$createField4_0 = $$createType24;
-        const $$createField5_0 = $$createType24;
+        const $$createField4_0 = $$createType30;
+        const $$createField5_0 = $$createType30;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("pk" in $$parsedSource) {
             $$parsedSource["pk"] = $$createField4_0($$parsedSource["pk"]);
@@ -851,6 +1251,248 @@ export class RowChangeResult {
     static createFrom($$source: any = {}): RowChangeResult {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new RowChangeResult($$parsedSource as Partial<RowChangeResult>);
+    }
+}
+
+/**
+ * SchemaCompareRequest names the two databases to reconcile. Tables narrows
+ * the comparison to the listed tables; empty means every table.
+ */
+export class SchemaCompareRequest {
+    "sourceConnId": string;
+    "sourceDb": string;
+    "sourceSchema": string;
+    "targetConnId": string;
+    "targetDb": string;
+    "targetSchema": string;
+    "tables": string[];
+
+    /** Creates a new SchemaCompareRequest instance. */
+    constructor($$source: Partial<SchemaCompareRequest> = {}) {
+        if (!("sourceConnId" in $$source)) {
+            this["sourceConnId"] = "";
+        }
+        if (!("sourceDb" in $$source)) {
+            this["sourceDb"] = "";
+        }
+        if (!("sourceSchema" in $$source)) {
+            this["sourceSchema"] = "";
+        }
+        if (!("targetConnId" in $$source)) {
+            this["targetConnId"] = "";
+        }
+        if (!("targetDb" in $$source)) {
+            this["targetDb"] = "";
+        }
+        if (!("targetSchema" in $$source)) {
+            this["targetSchema"] = "";
+        }
+        if (!("tables" in $$source)) {
+            this["tables"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SchemaCompareRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SchemaCompareRequest {
+        const $$createField6_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tables" in $$parsedSource) {
+            $$parsedSource["tables"] = $$createField6_0($$parsedSource["tables"]);
+        }
+        return new SchemaCompareRequest($$parsedSource as Partial<SchemaCompareRequest>);
+    }
+}
+
+/**
+ * SchemaCompareResult is the ordered object list (tables first, then views).
+ */
+export class SchemaCompareResult {
+    "objects": SchemaObjectDiff[];
+
+    /** Creates a new SchemaCompareResult instance. */
+    constructor($$source: Partial<SchemaCompareResult> = {}) {
+        if (!("objects" in $$source)) {
+            this["objects"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SchemaCompareResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SchemaCompareResult {
+        const $$createField0_0 = $$createType32;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("objects" in $$parsedSource) {
+            $$parsedSource["objects"] = $$createField0_0($$parsedSource["objects"]);
+        }
+        return new SchemaCompareResult($$parsedSource as Partial<SchemaCompareResult>);
+    }
+}
+
+/**
+ * SchemaObjectDiff is one table/view in the compare result. Statements is the
+ * DDL (already rendered for the target) that reconciles the object;
+ * Destructive marks statements that can lose data or objects (DROP TABLE /
+ * DROP VIEW / column drops) so the UI can default them to unchecked.
+ */
+export class SchemaObjectDiff {
+    "name": string;
+
+    /**
+     * "table" | "view"
+     */
+    "kind": string;
+
+    /**
+     * "create" | "drop" | "alter" | "same"
+     */
+    "status": string;
+    "statements": string[];
+    "destructive"?: boolean;
+
+    /**
+     * Error carries a per-object failure slug + detail; the object is shown
+     * but not executable. Other objects still compare.
+     */
+    "error"?: string;
+
+    /** Creates a new SchemaObjectDiff instance. */
+    constructor($$source: Partial<SchemaObjectDiff> = {}) {
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("statements" in $$source)) {
+            this["statements"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SchemaObjectDiff instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SchemaObjectDiff {
+        const $$createField3_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("statements" in $$parsedSource) {
+            $$parsedSource["statements"] = $$createField3_0($$parsedSource["statements"]);
+        }
+        return new SchemaObjectDiff($$parsedSource as Partial<SchemaObjectDiff>);
+    }
+}
+
+/**
+ * SchemaSyncExecRequest carries the user-approved statements to run on the
+ * target, in order. StopOnError halts at the first failure; otherwise the
+ * remaining statements still run and failures are reported per statement.
+ */
+export class SchemaSyncExecRequest {
+    "targetConnId": string;
+    "statements": string[];
+    "stopOnError": boolean;
+
+    /** Creates a new SchemaSyncExecRequest instance. */
+    constructor($$source: Partial<SchemaSyncExecRequest> = {}) {
+        if (!("targetConnId" in $$source)) {
+            this["targetConnId"] = "";
+        }
+        if (!("statements" in $$source)) {
+            this["statements"] = [];
+        }
+        if (!("stopOnError" in $$source)) {
+            this["stopOnError"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SchemaSyncExecRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SchemaSyncExecRequest {
+        const $$createField1_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("statements" in $$parsedSource) {
+            $$parsedSource["statements"] = $$createField1_0($$parsedSource["statements"]);
+        }
+        return new SchemaSyncExecRequest($$parsedSource as Partial<SchemaSyncExecRequest>);
+    }
+}
+
+/**
+ * SchemaSyncExecResult summarizes an Execute run.
+ */
+export class SchemaSyncExecResult {
+    "syncId": string;
+    "executed": number;
+    "failed": number;
+    "results": SchemaSyncStatementResult[];
+
+    /** Creates a new SchemaSyncExecResult instance. */
+    constructor($$source: Partial<SchemaSyncExecResult> = {}) {
+        if (!("syncId" in $$source)) {
+            this["syncId"] = "";
+        }
+        if (!("executed" in $$source)) {
+            this["executed"] = 0;
+        }
+        if (!("failed" in $$source)) {
+            this["failed"] = 0;
+        }
+        if (!("results" in $$source)) {
+            this["results"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SchemaSyncExecResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SchemaSyncExecResult {
+        const $$createField3_0 = $$createType34;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("results" in $$parsedSource) {
+            $$parsedSource["results"] = $$createField3_0($$parsedSource["results"]);
+        }
+        return new SchemaSyncExecResult($$parsedSource as Partial<SchemaSyncExecResult>);
+    }
+}
+
+/**
+ * SchemaSyncStatementResult reports one executed statement.
+ */
+export class SchemaSyncStatementResult {
+    "statement": string;
+    "error"?: string;
+
+    /** Creates a new SchemaSyncStatementResult instance. */
+    constructor($$source: Partial<SchemaSyncStatementResult> = {}) {
+        if (!("statement" in $$source)) {
+            this["statement"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SchemaSyncStatementResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SchemaSyncStatementResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SchemaSyncStatementResult($$parsedSource as Partial<SchemaSyncStatementResult>);
     }
 }
 
@@ -913,9 +1555,9 @@ export class TableSummary {
      * Creates a new TableSummary instance from a string or object.
      */
     static createFrom($$source: any = {}): TableSummary {
-        const $$createField0_0 = $$createType5;
-        const $$createField1_0 = $$createType26;
-        const $$createField2_0 = $$createType28;
+        const $$createField0_0 = $$createType8;
+        const $$createField1_0 = $$createType36;
+        const $$createField2_0 = $$createType38;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
             $$parsedSource["columns"] = $$createField0_0($$parsedSource["columns"]);
@@ -1063,32 +1705,42 @@ export class UpdateCheckResult {
 }
 
 // Private type creation functions
-const $$createType0 = AutocompleteTable.createFrom;
-const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = AutocompleteColumn.createFrom;
-const $$createType3 = $Create.Array($$createType2);
-const $$createType4 = dbdriver$0.ColumnMeta.createFrom;
-const $$createType5 = $Create.Array($$createType4);
-const $$createType6 = $Create.Array($Create.Any);
-const $$createType7 = $Create.Array($$createType6);
-const $$createType8 = $Create.Array($Create.Any);
-const $$createType9 = $Create.Map($Create.Any, $Create.Any);
-const $$createType10 = dbdriver$0.SSLConfig.createFrom;
-const $$createType11 = $Create.Nullable($$createType10);
-const $$createType12 = dbdriver$0.SSHConfig.createFrom;
+const $$createType0 = TableSummary.createFrom;
+const $$createType1 = schemadiff$0.Table.createFrom;
+const $$createType2 = $Create.Array($Create.Any);
+const $$createType3 = AutocompleteTable.createFrom;
+const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = AutocompleteColumn.createFrom;
+const $$createType6 = $Create.Array($$createType5);
+const $$createType7 = dbdriver$0.ColumnMeta.createFrom;
+const $$createType8 = $Create.Array($$createType7);
+const $$createType9 = $Create.Array($Create.Any);
+const $$createType10 = $Create.Array($$createType9);
+const $$createType11 = $Create.Map($Create.Any, $Create.Any);
+const $$createType12 = dbdriver$0.SSLConfig.createFrom;
 const $$createType13 = $Create.Nullable($$createType12);
-const $$createType14 = TableTransferResult.createFrom;
+const $$createType14 = dbdriver$0.SSHConfig.createFrom;
 const $$createType15 = $Create.Nullable($$createType14);
-const $$createType16 = $Create.Map($Create.Any, $$createType15);
-const $$createType17 = dbdriver$0.Capabilities.createFrom;
-const $$createType18 = dbdriver$0.ConnParamField.createFrom;
+const $$createType16 = DataTableDiff.createFrom;
+const $$createType17 = $Create.Array($$createType16);
+const $$createType18 = datasync$0.DiffSample.createFrom;
 const $$createType19 = $Create.Array($$createType18);
-const $$createType20 = dbdriver$0.ExecResult.createFrom;
+const $$createType20 = TableTransferResult.createFrom;
 const $$createType21 = $Create.Nullable($$createType20);
-const $$createType22 = TableRef.createFrom;
-const $$createType23 = $Create.Nullable($$createType22);
-const $$createType24 = $Create.Map($Create.Any, $Create.Any);
-const $$createType25 = dbdriver$0.IndexInfo.createFrom;
-const $$createType26 = $Create.Array($$createType25);
-const $$createType27 = dbdriver$0.ForeignKeyInfo.createFrom;
-const $$createType28 = $Create.Array($$createType27);
+const $$createType22 = $Create.Map($Create.Any, $$createType21);
+const $$createType23 = dbdriver$0.Capabilities.createFrom;
+const $$createType24 = dbdriver$0.ConnParamField.createFrom;
+const $$createType25 = $Create.Array($$createType24);
+const $$createType26 = dbdriver$0.ExecResult.createFrom;
+const $$createType27 = $Create.Nullable($$createType26);
+const $$createType28 = TableRef.createFrom;
+const $$createType29 = $Create.Nullable($$createType28);
+const $$createType30 = $Create.Map($Create.Any, $Create.Any);
+const $$createType31 = SchemaObjectDiff.createFrom;
+const $$createType32 = $Create.Array($$createType31);
+const $$createType33 = SchemaSyncStatementResult.createFrom;
+const $$createType34 = $Create.Array($$createType33);
+const $$createType35 = dbdriver$0.IndexInfo.createFrom;
+const $$createType36 = $Create.Array($$createType35);
+const $$createType37 = dbdriver$0.ForeignKeyInfo.createFrom;
+const $$createType38 = $Create.Array($$createType37);

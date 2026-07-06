@@ -116,6 +116,8 @@ var messages = map[Locale]map[string]string{
 		"window.newDatabase":    "New Database",
 		"window.editDatabase":   "Edit Database",
 		"window.dataTransfer":   "Data Transfer",
+		"window.structureSync":  "Structure Synchronization",
+		"window.dataSync":       "Data Synchronization",
 	},
 	LocaleZH: {
 		"menu.file":           "文件",
@@ -177,5 +179,7 @@ var messages = map[Locale]map[string]string{
 		"window.newDatabase":    "新建数据库",
 		"window.editDatabase":   "编辑数据库",
 		"window.dataTransfer":   "数据传输",
+		"window.structureSync":  "结构同步",
+		"window.dataSync":       "数据同步",
 	},
 }

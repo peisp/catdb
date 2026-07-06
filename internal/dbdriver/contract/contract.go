@@ -17,9 +17,11 @@ package contract
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	"catdb/internal/core/schemadiff"
 	"catdb/internal/dbdriver"
 )
 
@@ -56,6 +58,7 @@ func Run(t *testing.T, ctx context.Context, d dbdriver.Driver, cfg dbdriver.Conn
 	t.Run("Query/Cancel", func(t *testing.T) { testQueryCancel(t, ctx, conn, fx) })
 	t.Run("Metadata", func(t *testing.T) { testMetadata(t, ctx, d, conn, fx) })
 	t.Run("Edit", func(t *testing.T) { testEdit(t, ctx, d, conn, fx) })
+	t.Run("DDL", func(t *testing.T) { testDDL(t, ctx, d, conn) })
 }
 
 func testPing(t *testing.T, ctx context.Context, c dbdriver.Connection) {
@@ -114,9 +117,9 @@ func testQueryCancel(t *testing.T, ctx context.Context, c dbdriver.Connection, f
 	}
 }
 
-// makeContractTable creates the standard fixture table and registers cleanup.
-// Returns the (db, schema, qualified-name) triple the caller should use.
-func makeContractTable(t *testing.T, ctx context.Context, d dbdriver.Driver, c dbdriver.Connection, fx Fixtures, tn string) (db, schema, qualified string) {
+// pickTarget selects the database (and schema, when the driver has that
+// level) contract tables are created in.
+func pickTarget(t *testing.T, ctx context.Context, d dbdriver.Driver, c dbdriver.Connection) (db, schema string) {
 	t.Helper()
 	m := c.Metadata()
 	if m == nil {
@@ -141,7 +144,14 @@ func makeContractTable(t *testing.T, ctx context.Context, d dbdriver.Driver, c d
 		}
 		schema = pickFirst(schemas, "public")
 	}
+	return db, schema
+}
 
+// makeContractTable creates the standard fixture table and registers cleanup.
+// Returns the (db, schema, qualified-name) triple the caller should use.
+func makeContractTable(t *testing.T, ctx context.Context, d dbdriver.Driver, c dbdriver.Connection, fx Fixtures, tn string) (db, schema, qualified string) {
+	t.Helper()
+	db, schema = pickTarget(t, ctx, d, c)
 	qualified = dbdriver.QualifyTable(d.Dialect(), db, schema, tn)
 	mustExec(t, ctx, c, "DROP TABLE IF EXISTS "+qualified)
 	mustExec(t, ctx, c, fx.CreateTableSQL(qualified))
@@ -251,6 +261,102 @@ func testEdit(t *testing.T, ctx context.Context, d dbdriver.Driver, c dbdriver.C
 	if res.RowsAffected != 1 {
 		t.Fatalf("Delete RowsAffected = %d", res.RowsAffected)
 	}
+}
+
+// testDDL exercises the Dialect DDL generators end-to-end: GenerateCreateTable
+// executes cleanly and round-trips through metadata; a schemadiff ChangeSet
+// rendered by GenerateAlterTable executes and converges (re-diff is empty).
+func testDDL(t *testing.T, ctx context.Context, d dbdriver.Driver, c dbdriver.Connection) {
+	m := c.Metadata()
+	dia := d.Dialect()
+	tn := "ct_ddl"
+	db, schema := pickTarget(t, ctx, d, c)
+	qualified := dbdriver.QualifyTable(dia, db, schema, tn)
+
+	target := dbdriver.TableSchema{
+		Name:   tn,
+		Schema: firstNonEmpty(schema, db),
+		Columns: []dbdriver.ColumnMeta{
+			{Name: "id", NativeType: "INT", Nullable: false, IsPrimaryKey: true},
+			{Name: "name", NativeType: "VARCHAR(64)", Nullable: false},
+			{Name: "note", NativeType: "VARCHAR(255)", Nullable: true},
+		},
+	}
+	createSQL, err := dia.GenerateCreateTable(target)
+	if err != nil {
+		t.Fatalf("GenerateCreateTable: %v", err)
+	}
+	mustExec(t, ctx, c, "DROP TABLE IF EXISTS "+qualified)
+	mustExec(t, ctx, c, trimTrailingSemicolon(createSQL))
+	t.Cleanup(func() {
+		_, _ = c.Querier().Exec(ctx, "DROP TABLE IF EXISTS "+qualified)
+	})
+
+	// Round-trip: the created table must read back with the same shape.
+	current := readTableSchema(t, ctx, m, db, schema, tn)
+	if len(current.Columns) != 3 || !current.Columns[0].IsPrimaryKey {
+		t.Fatalf("created table read back wrong: %+v", current.Columns)
+	}
+	if cs := schemadiff.Diff(current, schemadiff.FromTableSchema(current, current), schemadiff.Options{}); !cs.Empty() {
+		t.Fatalf("self-diff of created table must be empty, got %+v", cs)
+	}
+
+	// Mutate: widen name, add a column, add an index — then reconcile.
+	desiredSchema := current
+	desiredSchema.Columns = append([]dbdriver.ColumnMeta{}, current.Columns...)
+	desiredSchema.Columns[1].NativeType = "VARCHAR(128)"
+	desiredSchema.Columns = append(desiredSchema.Columns, dbdriver.ColumnMeta{Name: "age", NativeType: "INT", Nullable: true})
+	desiredSchema.Indexes = append(append([]dbdriver.IndexInfo{}, current.Indexes...),
+		dbdriver.IndexInfo{Name: "ix_note", Columns: []dbdriver.IndexColumn{{Name: "note"}}, Type: "BTREE"})
+
+	cs := schemadiff.Diff(current, schemadiff.FromTableSchema(desiredSchema, current), schemadiff.Options{})
+	if cs.Empty() {
+		t.Fatal("expected a non-empty ChangeSet")
+	}
+	stmts, err := dia.GenerateAlterTable(db, schema, tn, cs)
+	if err != nil {
+		t.Fatalf("GenerateAlterTable: %v", err)
+	}
+	for _, s := range stmts {
+		mustExec(t, ctx, c, trimTrailingSemicolon(s))
+	}
+
+	// Convergence: after applying, re-diff must be empty.
+	after := readTableSchema(t, ctx, m, db, schema, tn)
+	if cs := schemadiff.Diff(after, schemadiff.FromTableSchema(desiredSchema, after), schemadiff.Options{}); !cs.Empty() {
+		t.Fatalf("re-diff after apply must be empty, got %+v", cs)
+	}
+}
+
+// readTableSchema assembles a TableSchema from the driver's metadata reads.
+func readTableSchema(t *testing.T, ctx context.Context, m dbdriver.Metadata, db, schema, tn string) dbdriver.TableSchema {
+	t.Helper()
+	cols, err := m.ListColumns(ctx, db, schema, tn)
+	if err != nil {
+		t.Fatalf("ListColumns: %v", err)
+	}
+	ix, err := m.ListIndexes(ctx, db, schema, tn)
+	if err != nil {
+		t.Fatalf("ListIndexes: %v", err)
+	}
+	fks, err := m.ListForeignKeys(ctx, db, schema, tn)
+	if err != nil {
+		t.Fatalf("ListForeignKeys: %v", err)
+	}
+	return dbdriver.TableSchema{Name: tn, Schema: schema, Columns: cols, Indexes: ix, ForeignKeys: fks}
+}
+
+func trimTrailingSemicolon(s string) string {
+	return strings.TrimSuffix(strings.TrimSpace(s), ";")
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // --- helpers ---

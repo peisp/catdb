@@ -126,6 +126,18 @@ func (s *SystemService) OpenTransferDialog(_ context.Context) {
 	wailsbridge.OpenChildWindow("transfer-editor", wailsbridge.Tr("window.dataTransfer"), "/#/transfer-editor", 800, 640)
 }
 
+// OpenStructureSyncDialog opens the Structure Synchronization dialog as its
+// own native child window, keyed by name "structure-sync".
+func (s *SystemService) OpenStructureSyncDialog(_ context.Context) {
+	wailsbridge.OpenChildWindow("structure-sync", wailsbridge.Tr("window.structureSync"), "/#/structure-sync", 860, 680)
+}
+
+// OpenDataSyncDialog opens the Data Synchronization dialog as its own native
+// child window, keyed by name "data-sync".
+func (s *SystemService) OpenDataSyncDialog(_ context.Context) {
+	wailsbridge.OpenChildWindow("data-sync", wailsbridge.Tr("window.dataSync"), "/#/data-sync", 860, 680)
+}
+
 // OpenExternalURL opens the given URL in the user's default browser.
 // Used by features like the update dialog's "view on GitHub" link — a plain
 // <a target="_blank"> inside the WebView either no-ops or navigates the

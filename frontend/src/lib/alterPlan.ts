@@ -1,21 +1,13 @@
 import { t } from '../i18n'
 
-// alterPlan — diff (original table summary) vs. (user-edited draft) and emit
-// MySQL ALTER TABLE statements. Pure TypeScript: no Vue, no IPC. The structure
-// editor calls this on every edit to refresh the SQL preview panel; the same
-// statements drive the Apply button.
+// alterPlan — the structure editor's draft model and UI helpers.
 //
-// Rationale (per ARCHITECTURE design note): MySQL is the only driver in MVP,
-// so generating in the front-end gives instant feedback with zero IPC cost.
-// When a second driver lands, factor BuildAlterTable into Dialect on the Go
-// side and call it from here instead.
-//
-// MySQL quirks baked in:
-//   - identifiers quoted with backticks; embedded backticks doubled
-//   - changing an index = DROP + ADD (no ALTER INDEX … in MySQL)
-//   - same for foreign keys
-//   - column position uses AFTER `prev` (or FIRST) on ADD/MODIFY/CHANGE
-//   - PRIMARY KEY is its own DROP/ADD pair, not an index name
+// The ALTER/CREATE diff engine that used to live here has moved to the Go
+// backend (internal/core/schemadiff + Dialect.GenerateAlterTable); components
+// call metadata.buildAlterPlan / buildCreateTable instead. What remains is
+// pure editing state: draft shapes with stable client-side keys, MySQL
+// native-type parsing for the three-field type editor, and the snapshot→draft
+// converters.
 import type {
   ColumnMeta,
   ForeignKeyInfo,
@@ -23,25 +15,11 @@ import type {
   TableSummary,
 } from '../api/metadata'
 
-// ---- identifier / literal quoting -----------------------------------------
+// ---- identifier quoting -----------------------------------------------------
 
 /** MySQL identifier quoting — backticks, double any embedded backtick. */
 export function quoteIdent(name: string): string {
   return '`' + String(name).replace(/`/g, '``') + '`'
-}
-
-/** MySQL string-literal quoting — single quotes, escape \ and ', plus \n/\r/\t. */
-export function quoteString(s: string): string {
-  return (
-    "'" +
-    String(s)
-      .replace(/\\/g, '\\\\')
-      .replace(/'/g, "''")
-      .replace(/\n/g, '\\n')
-      .replace(/\r/g, '\\r')
-      .replace(/\t/g, '\\t') +
-    "'"
-  )
 }
 
 /** Compose `db`.`table` form when db is non-empty. */
@@ -49,37 +27,12 @@ export function quoteTable(db: string, table: string): string {
   return db ? `${quoteIdent(db)}.${quoteIdent(table)}` : quoteIdent(table)
 }
 
-// Tokens that we pass through unquoted when found as a DEFAULT value.
-// Anything else that isn't a pure number gets wrapped in '…' as a string lit.
-const DEFAULT_KEYWORDS = new Set([
-  'NULL',
-  'CURRENT_TIMESTAMP',
-  'CURRENT_DATE',
-  'CURRENT_TIME',
-  'NOW()',
-  'UUID()',
-  'TRUE',
-  'FALSE',
-])
-
-/** Format a DEFAULT expression. Returns the right-hand side of `DEFAULT …`. */
-export function formatDefaultExpr(raw: string): string {
-  const trimmed = raw.trim()
-  if (trimmed === '') return "''"
-  const upper = trimmed.toUpperCase()
-  if (DEFAULT_KEYWORDS.has(upper)) return upper
-  // Functional defaults like (CURRENT_TIMESTAMP) or (UUID()) — keep verbatim.
-  if (trimmed.startsWith('(') && trimmed.endsWith(')')) return trimmed
-  // Pure numeric literal (incl. negative, decimal, scientific).
-  if (/^-?\d+(\.\d+)?(e-?\d+)?$/i.test(trimmed)) return trimmed
-  return quoteString(trimmed)
-}
-
 // ---- draft shapes ----------------------------------------------------------
 //
 // The structure editor keeps a parallel "draft" copy of the table summary
 // while the user edits. Drafts carry stable client-side keys (_key) and a
-// snapshot of the original name/position so we can detect rename and reorder.
+// snapshot of the original name/position so the backend diff can detect
+// rename and reorder.
 
 export interface ColumnDraft {
   _key: string
@@ -174,18 +127,6 @@ export function buildNativeType(c: {
     s += ' UNSIGNED'
   }
   return s
-}
-
-/**
- * Canonicalize a native-type string for equality comparison: uppercase, drop
- * whitespace inside parens, normalize the UNSIGNED suffix. So that drafts
- * built from split fields ("DECIMAL(10,2)") compare equal to backend strings
- * the server happens to return as "decimal(10, 2)" or "decimal(10,2) unsigned".
- */
-export function normNativeType(s: string): string {
-  if (!s) return ''
-  const p = parseNativeType(s)
-  return buildNativeType(p)
 }
 
 /** Whether a base type accepts the UNSIGNED modifier (numeric types only). */
@@ -455,373 +396,98 @@ export function emptyForeignKeyDraft(): ForeignKeyDraft {
   }
 }
 
-// ---- column definition formatting -----------------------------------------
+// ---- draft → backend wire format -------------------------------------------
+//
+// The Go diff engine (internal/core/schemadiff) takes a schemadiff.Table.
+// draftToWire reassembles each column's canonical native type from the split
+// editor fields and strips the client-only keys.
 
-/**
- * Format a column definition fragment (everything after the column name, used
- * verbatim in ADD / MODIFY / CHANGE). Skips PRIMARY KEY — that's emitted as a
- * separate constraint.
- */
-export function columnDefBody(c: ColumnDraft): string {
-  const parts: string[] = []
-  parts.push(buildNativeType(c) || 'VARCHAR(255)')
-  parts.push(c.nullable ? 'NULL' : 'NOT NULL')
-  if (c.default !== undefined) {
-    parts.push(`DEFAULT ${formatDefaultExpr(c.default)}`)
-  }
-  if (c.isAutoIncrement) parts.push('AUTO_INCREMENT')
-  if (c.comment) parts.push(`COMMENT ${quoteString(c.comment)}`)
-  return parts.join(' ')
+export interface WireColumn {
+  origName: string
+  name: string
+  nativeType: string
+  nullable: boolean
+  default?: string
+  isPrimaryKey: boolean
+  isAutoIncrement: boolean
+  comment: string
 }
 
-function fullColumnDef(c: ColumnDraft): string {
-  return `${quoteIdent(c.name)} ${columnDefBody(c)}`
+export interface WireIndex {
+  origName: string
+  name: string
+  columns: { name: string; order: string }[]
+  unique: boolean
+  primary: boolean
+  type: string
+  comment: string
 }
 
-// ---- column diff -----------------------------------------------------------
-
-function columnDefBodiesEqual(a: ColumnDraft, b: ColumnMeta): boolean {
-  // Compare every non-name, non-position attribute that ends up in the DDL.
-  // We compare the *built* native type so cosmetic param whitespace differences
-  // (e.g. "decimal(10, 2)" vs "decimal(10,2)") in user input don't generate a
-  // bogus MODIFY when the column hasn't really changed.
-  if (normNativeType(buildNativeType(a)) !== normNativeType(b.nativeType ?? '')) return false
-  if (!!a.nullable !== !!b.nullable) return false
-  const ad = a.default ?? null
-  const bd = b.default ?? null
-  if (ad !== bd) return false
-  if (!!a.isAutoIncrement !== !!b.isAutoIncrement) return false
-  if ((a.comment ?? '') !== (b.comment ?? '')) return false
-  return true
+export interface WireForeignKey {
+  origName: string
+  name: string
+  columns: string[]
+  referencedSchema: string
+  referencedTable: string
+  referencedColumns: string[]
+  onUpdate: string
+  onDelete: string
 }
 
-interface ColumnDiff {
-  /** Statements that mutate columns (ADD / DROP / CHANGE / MODIFY). */
-  columnStmts: string[]
-  /** PRIMARY KEY DROP / ADD pair (separate so callers can group). */
-  pkStmts: string[]
+export interface WireTable {
+  columns: WireColumn[]
+  indexes: WireIndex[]
+  foreignKeys: WireForeignKey[]
+  comment: string
 }
 
-export function diffColumns(
-  orig: ColumnMeta[],
-  draft: ColumnDraft[],
-  fq: string,
-): ColumnDiff {
-  const origByName = new Map<string, { col: ColumnMeta; pos: number }>()
-  orig.forEach((c, i) => origByName.set(c.name, { col: c, pos: i }))
-
-  const draftByOrigName = new Map<string, ColumnDraft>()
-  for (const c of draft) {
-    if (c.origName) draftByOrigName.set(c.origName, c)
+export function draftToWire(draft: StructureDraft): WireTable {
+  return {
+    columns: (draft.columns ?? []).map((c) => ({
+      origName: c.origName,
+      name: c.name,
+      nativeType: buildNativeType(c),
+      nullable: c.nullable,
+      // undefined key is dropped by JSON serialization → Go nil (no DEFAULT).
+      default: c.default,
+      isPrimaryKey: c.isPrimaryKey,
+      isAutoIncrement: c.isAutoIncrement,
+      comment: c.comment ?? '',
+    })),
+    indexes: (draft.indexes ?? []).map((ix) => ({
+      origName: ix.origName,
+      name: ix.name,
+      columns: (ix.columns ?? []).map((c) => ({ name: c.name, order: c.order ?? '' })),
+      unique: ix.unique,
+      primary: ix.primary,
+      type: ix.type ?? '',
+      comment: ix.comment ?? '',
+    })),
+    foreignKeys: (draft.foreignKeys ?? []).map((fk) => ({
+      origName: fk.origName,
+      name: fk.name,
+      columns: [...fk.columns],
+      referencedSchema: fk.referencedSchema ?? '',
+      referencedTable: fk.referencedTable ?? '',
+      referencedColumns: [...fk.referencedColumns],
+      onUpdate: fk.onUpdate ?? '',
+      onDelete: fk.onDelete ?? '',
+    })),
+    comment: draft.options?.comment ?? '',
   }
-
-  const stmts: string[] = []
-
-  // ---- DROP -----------------------------------------------------------------
-  // A column is dropped when its original name is not claimed by any draft
-  // row (neither as origName nor as the new name of a renamed row).
-  for (const c of orig) {
-    if (!draftByOrigName.has(c.name)) {
-      stmts.push(`ALTER TABLE ${fq} DROP COLUMN ${quoteIdent(c.name)};`)
-    }
-  }
-
-  // Build the post-drop "surviving" order list so we can emit accurate
-  // AFTER clauses. Surviving = column in draft whose origName matches some
-  // remaining original column.
-  const survivingDraftIdx: number[] = []
-  draft.forEach((c, i) => {
-    if (c.origName && origByName.has(c.origName)) survivingDraftIdx.push(i)
-  })
-  // Build the original order *restricted* to surviving names so we can tell
-  // whether a survivor's previous-column changed.
-  const survivingOrigOrder: string[] = orig
-    .filter((c) => draftByOrigName.has(c.name))
-    .map((c) => c.name)
-
-  // ---- ADD / CHANGE / MODIFY -----------------------------------------------
-  // Walk the draft in its final order; that order also tells us each column's
-  // "previous column" for the AFTER clause.
-  let prevName: string | null = null
-  for (let i = 0; i < draft.length; i++) {
-    const d = draft[i]
-    const trimmedName = d.name.trim()
-    if (!trimmedName) {
-      // Skip rows with blank names — the user hasn't finished typing.
-      // We DO update prevName: it remains the previous non-blank name so a
-      // later non-blank row's AFTER clause doesn't latch onto a blank id.
-      continue
-    }
-
-    const positional = positionalClause(prevName)
-
-    if (!d.origName) {
-      // Brand-new column.
-      stmts.push(
-        `ALTER TABLE ${fq} ADD COLUMN ${fullColumnDef(d)}${positional};`,
-      )
-    } else {
-      const origEntry = origByName.get(d.origName)
-      if (!origEntry) {
-        // origName was set but doesn't match anything (shouldn't normally
-        // happen — defensive). Treat as new.
-        stmts.push(
-          `ALTER TABLE ${fq} ADD COLUMN ${fullColumnDef(d)}${positional};`,
-        )
-      } else {
-        const renamed = d.origName !== trimmedName
-        const bodyChanged = !columnDefBodiesEqual(d, origEntry.col)
-        const moved = positionChanged(
-          d.origName,
-          trimmedName,
-          survivingDraftIdx,
-          survivingOrigOrder,
-          draft,
-        )
-        if (renamed) {
-          // CHANGE handles both rename and any def change at once.
-          stmts.push(
-            `ALTER TABLE ${fq} CHANGE COLUMN ${quoteIdent(d.origName)} ${fullColumnDef(d)}${moved ? positional : ''};`,
-          )
-        } else if (bodyChanged || moved) {
-          stmts.push(
-            `ALTER TABLE ${fq} MODIFY COLUMN ${fullColumnDef(d)}${moved ? positional : ''};`,
-          )
-        }
-      }
-    }
-    prevName = trimmedName
-  }
-
-  // ---- PRIMARY KEY ----------------------------------------------------------
-  const origPK = orig.filter((c) => c.isPrimaryKey).map((c) => c.name)
-  const draftPK = draft
-    .filter((c) => c.isPrimaryKey && c.name.trim() !== '')
-    .map((c) => c.name.trim())
-  const pkStmts: string[] = []
-  if (!arraysEqual(origPK, draftPK)) {
-    if (origPK.length > 0) {
-      pkStmts.push(`ALTER TABLE ${fq} DROP PRIMARY KEY;`)
-    }
-    if (draftPK.length > 0) {
-      pkStmts.push(
-        `ALTER TABLE ${fq} ADD PRIMARY KEY (${draftPK.map(quoteIdent).join(', ')});`,
-      )
-    }
-  }
-
-  return { columnStmts: stmts, pkStmts }
 }
 
-/** Compose the positional clause (`FIRST` / `AFTER \`prev\``) for a draft column. */
-function positionalClause(prevName: string | null): string {
-  if (prevName === null) return ' FIRST'
-  return ` AFTER ${quoteIdent(prevName)}`
+/** The per-tab statement bundle returned by metadata.buildAlterPlan. */
+export interface AlterPlan {
+  columns: string[]
+  indexes: string[]
+  foreignKeys: string[]
+  options: string[]
+  all: string[]
 }
 
-/**
- * Whether `name` moved relative to the surviving-only original order. We only
- * emit AFTER on MODIFY when this returns true — unmoved columns don't need a
- * positional clause.
- */
-function positionChanged(
-  origName: string,
-  newName: string,
-  survivingDraftIdx: number[],
-  survivingOrigOrder: string[],
-  draft: ColumnDraft[],
-): boolean {
-  const finalIdx = survivingDraftIdx.findIndex((i) => draft[i].origName === origName)
-  const origIdx = survivingOrigOrder.indexOf(origName)
-  if (finalIdx < 0 || origIdx < 0) return false
-  // Previous column in surviving-final-order:
-  const prevFinal =
-    finalIdx === 0 ? null : draft[survivingDraftIdx[finalIdx - 1]].origName
-  // Previous column in surviving-original-order:
-  const prevOrig = origIdx === 0 ? null : survivingOrigOrder[origIdx - 1]
-  return prevFinal !== prevOrig
-}
-
-function arraysEqual(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
-  return true
-}
-
-// ---- index diff -----------------------------------------------------------
-
-function indexFromDraft(d: IndexDraft, fq: string): string {
-  // Filter out blank column rows the user added but didn't fill in.
-  const cols = (d.columns ?? []).filter((c) => c.name.trim() !== '')
-  if (!d.name.trim() || cols.length === 0) return ''
-  const colSpec = cols
-    .map((c) => {
-      const dir = (c.order ?? '').toUpperCase()
-      const suffix = dir === 'ASC' || dir === 'DESC' ? ` ${dir}` : ''
-      return `${quoteIdent(c.name.trim())}${suffix}`
-    })
-    .join(', ')
-  const kw = d.unique ? 'UNIQUE INDEX' : 'INDEX'
-  const using = d.type && d.type.toUpperCase() !== 'BTREE' ? ` USING ${d.type.toUpperCase()}` : ''
-  const comment = d.comment && d.comment.trim() !== '' ? ` COMMENT ${quoteString(d.comment)}` : ''
-  return `ALTER TABLE ${fq} ADD ${kw} ${quoteIdent(d.name.trim())} (${colSpec})${using}${comment};`
-}
-
-function indexColumnsEqual(a: IndexColumnDraft[], b: { name: string; order?: string }[]): boolean {
-  if (a.length !== b.length) return false
-  for (let i = 0; i < a.length; i++) {
-    if (a[i].name !== b[i].name) return false
-    const ao = (a[i].order ?? '').toUpperCase()
-    const bo = (b[i].order ?? '').toUpperCase()
-    if (ao !== bo) return false
-  }
-  return true
-}
-
-function indexesEqual(a: IndexDraft, b: IndexInfo): boolean {
-  if (a.name !== b.name) return false
-  if (!!a.unique !== !!b.unique) return false
-  if ((a.type ?? '').toUpperCase() !== (b.type ?? '').toUpperCase()) return false
-  if ((a.comment ?? '') !== (b.comment ?? '')) return false
-  if (!indexColumnsEqual(a.columns, b.columns ?? [])) return false
-  return true
-}
-
-export function diffIndexes(
-  orig: IndexInfo[],
-  draft: IndexDraft[],
-  fq: string,
-): string[] {
-  // PRIMARY is handled in diffColumns' PK pipeline — filter it out here.
-  const origNonPK = orig.filter((ix) => !ix.primary)
-  const draftNonPK = draft.filter((ix) => !ix.primary)
-
-  const origByName = new Map<string, IndexInfo>()
-  origNonPK.forEach((ix) => origByName.set(ix.name, ix))
-  const draftByOrigName = new Map<string, IndexDraft>()
-  draftNonPK.forEach((d) => {
-    if (d.origName) draftByOrigName.set(d.origName, d)
-  })
-
-  const drops: string[] = []
-  const adds: string[] = []
-
-  // DROP: original indexes whose name is no longer claimed by any draft row.
-  for (const ix of origNonPK) {
-    if (!draftByOrigName.has(ix.name)) {
-      drops.push(`ALTER TABLE ${fq} DROP INDEX ${quoteIdent(ix.name)};`)
-    }
-  }
-
-  // ADD: every draft row whose definition differs from its original counterpart.
-  for (const d of draftNonPK) {
-    const filledCols = (d.columns ?? []).filter((c) => c.name.trim() !== '')
-    if (!d.name.trim() || filledCols.length === 0) continue
-    if (!d.origName) {
-      // brand-new index
-      const stmt = indexFromDraft(d, fq)
-      if (stmt) adds.push(stmt)
-      continue
-    }
-    const orig = origByName.get(d.origName)
-    if (!orig) continue
-    // If anything changed (name/cols/unique/type), DROP + ADD.
-    if (!indexesEqual(d, orig)) {
-      drops.push(`ALTER TABLE ${fq} DROP INDEX ${quoteIdent(d.origName)};`)
-      const stmt = indexFromDraft(d, fq)
-      if (stmt) adds.push(stmt)
-    }
-  }
-  // Group: drops first (so we can re-add with the same name), then adds.
-  return [...drops, ...adds]
-}
-
-// ---- foreign-key diff -----------------------------------------------------
-
-function fkFromDraft(d: ForeignKeyDraft, fq: string): string {
-  if (!d.name.trim() || d.columns.length === 0 || !d.referencedTable.trim() || d.referencedColumns.length === 0) {
-    return ''
-  }
-  const cols = d.columns.map(quoteIdent).join(', ')
-  const refCols = d.referencedColumns.map(quoteIdent).join(', ')
-  const refTable = quoteTable(d.referencedSchema, d.referencedTable)
-  let stmt = `ALTER TABLE ${fq} ADD CONSTRAINT ${quoteIdent(d.name.trim())} FOREIGN KEY (${cols}) REFERENCES ${refTable} (${refCols})`
-  if (d.onUpdate && d.onUpdate.toUpperCase() !== 'RESTRICT') {
-    stmt += ` ON UPDATE ${d.onUpdate.toUpperCase()}`
-  }
-  if (d.onDelete && d.onDelete.toUpperCase() !== 'RESTRICT') {
-    stmt += ` ON DELETE ${d.onDelete.toUpperCase()}`
-  }
-  return stmt + ';'
-}
-
-function fkEqual(a: ForeignKeyDraft, b: ForeignKeyInfo): boolean {
-  if (a.name !== b.name) return false
-  if (!arraysEqual(a.columns, b.columns ?? [])) return false
-  if ((a.referencedSchema ?? '') !== (b.referencedSchema ?? '')) return false
-  if ((a.referencedTable ?? '') !== (b.referencedTable ?? '')) return false
-  if (!arraysEqual(a.referencedColumns, b.referencedColumns ?? [])) return false
-  // MySQL reports RESTRICT as the absence of an ON UPDATE/DELETE clause; treat
-  // empty and RESTRICT the same.
-  const norm = (s: string | undefined) => {
-    const u = (s ?? '').toUpperCase()
-    return u === '' ? 'RESTRICT' : u
-  }
-  if (norm(a.onUpdate) !== norm(b.onUpdate)) return false
-  if (norm(a.onDelete) !== norm(b.onDelete)) return false
-  return true
-}
-
-export function diffForeignKeys(
-  orig: ForeignKeyInfo[],
-  draft: ForeignKeyDraft[],
-  fq: string,
-): string[] {
-  const origByName = new Map<string, ForeignKeyInfo>()
-  orig.forEach((fk) => origByName.set(fk.name, fk))
-  const draftByOrigName = new Map<string, ForeignKeyDraft>()
-  draft.forEach((d) => {
-    if (d.origName) draftByOrigName.set(d.origName, d)
-  })
-
-  const drops: string[] = []
-  const adds: string[] = []
-
-  for (const fk of orig) {
-    if (!draftByOrigName.has(fk.name)) {
-      drops.push(`ALTER TABLE ${fq} DROP FOREIGN KEY ${quoteIdent(fk.name)};`)
-    }
-  }
-  for (const d of draft) {
-    if (!d.name.trim()) continue
-    if (!d.origName) {
-      const stmt = fkFromDraft(d, fq)
-      if (stmt) adds.push(stmt)
-      continue
-    }
-    const orig = origByName.get(d.origName)
-    if (!orig) continue
-    if (!fkEqual(d, orig)) {
-      drops.push(`ALTER TABLE ${fq} DROP FOREIGN KEY ${quoteIdent(d.origName)};`)
-      const stmt = fkFromDraft(d, fq)
-      if (stmt) adds.push(stmt)
-    }
-  }
-  return [...drops, ...adds]
-}
-
-// ---- table comment / options diff -----------------------------------------
-
-export function diffOptions(
-  origComment: string,
-  draft: TableOptionsDraft,
-  fq: string,
-): string[] {
-  const stmts: string[] = []
-  if ((origComment ?? '') !== (draft.comment ?? '')) {
-    stmts.push(`ALTER TABLE ${fq} COMMENT = ${quoteString(draft.comment ?? '')};`)
-  }
-  return stmts
+export function emptyAlterPlan(): AlterPlan {
+  return { columns: [], indexes: [], foreignKeys: [], options: [], all: [] }
 }
 
 // ---- DDL parsing (read-only) ----------------------------------------------
@@ -841,141 +507,4 @@ export function parseTableCommentFromDDL(ddl: string): string {
   const m = tail.match(/\bCOMMENT\s*=\s*'((?:[^']|'')*)'/)
   if (!m) return ''
   return m[1].replace(/''/g, "'")
-}
-
-// ---- top-level: build all alter statements grouped by tab -----------------
-
-export interface AlterPlan {
-  /** Column-tab statements: DROP/ADD/MODIFY/CHANGE plus PRIMARY KEY pair. */
-  columns: string[]
-  /** Index-tab statements (excluding PK). */
-  indexes: string[]
-  /** Foreign-key-tab statements. */
-  foreignKeys: string[]
-  /** Options-tab statements (currently table comment only). */
-  options: string[]
-  /** Concatenation in safe-execution order. */
-  all: string[]
-}
-
-export interface BuildAlterPlanInput {
-  db: string
-  table: string
-  origSummary: TableSummary
-  origComment: string
-  draft: StructureDraft
-}
-
-export function buildAlterPlan({
-  db,
-  table,
-  origSummary,
-  origComment,
-  draft,
-}: BuildAlterPlanInput): AlterPlan {
-  const fq = quoteTable(db, table)
-  const colDiff = diffColumns(origSummary.columns ?? [], draft.columns, fq)
-  const indexes = diffIndexes(origSummary.indexes ?? [], draft.indexes, fq)
-  const foreignKeys = diffForeignKeys(origSummary.foreignKeys ?? [], draft.foreignKeys, fq)
-  const options = diffOptions(origComment, draft.options, fq)
-
-  // Column tab shows column-edits + PK changes.
-  const columnsTab = [...colDiff.columnStmts, ...colDiff.pkStmts]
-  // Execution order for "Apply all": columns + PK first (so indexes/FKs can
-  // reference the new shape), then indexes, then FKs, then options.
-  const all = [
-    ...colDiff.columnStmts,
-    ...colDiff.pkStmts,
-    ...indexes,
-    ...foreignKeys,
-    ...options,
-  ]
-  return { columns: columnsTab, indexes, foreignKeys, options, all }
-}
-
-// ---- CREATE TABLE ---------------------------------------------------------
-
-export interface BuildCreateTableInput {
-  db: string
-  table: string
-  draft: StructureDraft
-}
-
-/**
- * Build a single MySQL `CREATE TABLE` statement from a structure draft. Used
- * by the "new table" flow in TableStructure.vue; reuses the same column/index/
- * FK formatters as the ALTER path so the dialect stays in one place.
- *
- * Returns '' when the table name or columns are not yet sufficient to form
- * a valid statement — the caller renders an empty preview in that case.
- */
-export function buildCreateTable({
-  db,
-  table,
-  draft,
-}: BuildCreateTableInput): string {
-  const tableName = (table ?? '').trim()
-  if (!tableName) return ''
-  const cols = (draft.columns ?? []).filter((c) => c.name.trim() !== '')
-  if (cols.length === 0) return ''
-
-  const fq = quoteTable(db, tableName)
-  const lines: string[] = []
-
-  for (const c of cols) {
-    lines.push(`  ${quoteIdent(c.name.trim())} ${columnDefBody(c)}`)
-  }
-
-  const pkCols = cols
-    .filter((c) => c.isPrimaryKey)
-    .map((c) => c.name.trim())
-  if (pkCols.length > 0) {
-    lines.push(`  PRIMARY KEY (${pkCols.map(quoteIdent).join(', ')})`)
-  }
-
-  for (const ix of draft.indexes ?? []) {
-    if (ix.primary) continue
-    const ixCols = (ix.columns ?? []).filter((c) => c.name.trim() !== '')
-    if (!ix.name.trim() || ixCols.length === 0) continue
-    const colSpec = ixCols
-      .map((c) => {
-        const dir = (c.order ?? '').toUpperCase()
-        const suffix = dir === 'ASC' || dir === 'DESC' ? ` ${dir}` : ''
-        return `${quoteIdent(c.name.trim())}${suffix}`
-      })
-      .join(', ')
-    const kw = ix.unique ? 'UNIQUE INDEX' : 'INDEX'
-    const using = ix.type && ix.type.toUpperCase() !== 'BTREE' ? ` USING ${ix.type.toUpperCase()}` : ''
-    const comment = ix.comment && ix.comment.trim() !== '' ? ` COMMENT ${quoteString(ix.comment)}` : ''
-    lines.push(`  ${kw} ${quoteIdent(ix.name.trim())} (${colSpec})${using}${comment}`)
-  }
-
-  for (const fk of draft.foreignKeys ?? []) {
-    if (
-      !fk.name.trim() ||
-      fk.columns.length === 0 ||
-      !fk.referencedTable.trim() ||
-      fk.referencedColumns.length === 0
-    ) {
-      continue
-    }
-    const fkCols = fk.columns.map(quoteIdent).join(', ')
-    const refCols = fk.referencedColumns.map(quoteIdent).join(', ')
-    const refTable = quoteTable(fk.referencedSchema, fk.referencedTable)
-    let line = `  CONSTRAINT ${quoteIdent(fk.name.trim())} FOREIGN KEY (${fkCols}) REFERENCES ${refTable} (${refCols})`
-    if (fk.onUpdate && fk.onUpdate.toUpperCase() !== 'RESTRICT') {
-      line += ` ON UPDATE ${fk.onUpdate.toUpperCase()}`
-    }
-    if (fk.onDelete && fk.onDelete.toUpperCase() !== 'RESTRICT') {
-      line += ` ON DELETE ${fk.onDelete.toUpperCase()}`
-    }
-    lines.push(line)
-  }
-
-  const body = lines.join(',\n')
-  const tail =
-    draft.options.comment && draft.options.comment.trim() !== ''
-      ? ` COMMENT=${quoteString(draft.options.comment)}`
-      : ''
-  return `CREATE TABLE ${fq} (\n${body}\n)${tail};`
 }

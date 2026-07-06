@@ -8,6 +8,8 @@ import AppIcon from '../shared/AppIcon.vue'
 import unplugIcon from '../../assets/icons/unplug.svg?raw'
 import fileCodeCornerIcon from '../../assets/icons/file-code-corner.svg?raw'
 import arrowLeftRightIcon from '../../assets/icons/arrow-left-right.svg?raw'
+import tableIcon from '../../assets/icons/table-2.svg?raw'
+import databaseZapIcon from '../../assets/icons/database-zap.svg?raw'
 
 const queryStore = useQueryStore()
 
@@ -36,6 +38,12 @@ function openNewQuery() {
 function openTransferDialog() {
   void systemApi.openTransferDialog()
 }
+function openStructureSyncDialog() {
+  void systemApi.openStructureSyncDialog()
+}
+function openDataSyncDialog() {
+  void systemApi.openDataSyncDialog()
+}
 </script>
 
 <template>
@@ -47,6 +55,14 @@ function openTransferDialog() {
     <button type="button" class="toolbar-btn" @click="openTransferDialog">
       <AppIcon :src="arrowLeftRightIcon" :size="14" />
       {{ $t('transfer.dataTransfer') }}
+    </button>
+    <button type="button" class="toolbar-btn" @click="openStructureSyncDialog">
+      <AppIcon :src="tableIcon" :size="14" />
+      {{ $t('structSync.toolbarLabel') }}
+    </button>
+    <button type="button" class="toolbar-btn" @click="openDataSyncDialog">
+      <AppIcon :src="databaseZapIcon" :size="14" />
+      {{ $t('dataSync.toolbarLabel') }}
     </button>
     <button type="button" class="toolbar-btn" :disabled="!activeConn" @click="openNewQuery">
       <AppIcon :src="fileCodeCornerIcon" :size="14" />

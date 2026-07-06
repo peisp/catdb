@@ -71,9 +71,3 @@ func (dialect) MapType(nativeType string) dbdriver.LogicalType {
 		return dbdriver.TypeUnknown
 	}
 }
-
-// GenerateCreateTable is stubbed for M1. The full implementation lands with
-// the metadata browser in M3.
-func (d dialect) GenerateCreateTable(_ dbdriver.TableSchema) (string, error) {
-	return "", fmt.Errorf("mysqldrv: GenerateCreateTable not implemented (lands in M3)")
-}

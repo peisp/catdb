@@ -95,6 +95,36 @@ func (m *Manager) Open(ctx context.Context, connID string) (dbdriver.Connection,
 	return conn, nil
 }
 
+// OpenDedicated opens a NEW physical connection for connID, bypassing the
+// shared cache. The caller owns the returned Connection and must Close it.
+// Long-running exclusive work (data sync's write transactions, bulk loads)
+// uses this so it never blocks the shared connection other windows are on
+// (CLAUDE.md rule 9).
+func (m *Manager) OpenDedicated(ctx context.Context, connID string) (dbdriver.Connection, error) {
+	prof, err := m.store.GetConnection(ctx, connID)
+	if err != nil {
+		return nil, err
+	}
+	d, err := registry.Get(prof.Driver)
+	if err != nil {
+		return nil, err
+	}
+	secret, err := m.secrets.Load(connID)
+	if err != nil && !errors.Is(err, storage.ErrSecretNotFound) {
+		return nil, err
+	}
+	cfg := prof.ToDBDriverConfig(secret.Password)
+	if cfg.SSHTunnel != nil {
+		if secret.SSHPassword != "" {
+			cfg.SSHTunnel.Password = secret.SSHPassword
+		}
+		if secret.SSHKeyPassword != "" {
+			cfg.SSHTunnel.PrivateKeyPass = secret.SSHKeyPassword
+		}
+	}
+	return d.Open(ctx, cfg)
+}
+
 // Get returns an already-open connection without touching storage or the
 // driver. Returns ErrNotOpen if Open has not been called for the ID.
 func (m *Manager) Get(connID string) (dbdriver.Connection, error) {

@@ -53,6 +53,25 @@ export function BrowseTable(connID: string, db: string, schema: string, table: s
 }
 
 /**
+ * BuildAlterPlan diffs the draft against the original snapshot and renders
+ * ALTER statements through the connection's Dialect.
+ */
+export function BuildAlterPlan(connID: string, req: $models.AlterPlanRequest): $CancellablePromise<$models.AlterPlanResult> {
+    return $Call.ByName("catdb/internal/services.MetadataService.BuildAlterPlan", connID, req).then(($result: any) => {
+        return $$createType2($result);
+    });
+}
+
+/**
+ * BuildCreateTable renders a CREATE TABLE statement from a structure draft.
+ * Mirrors the editor's preview contract: an empty table name or a draft with
+ * no named columns yields "" (empty preview), not an error.
+ */
+export function BuildCreateTable(connID: string, req: $models.CreateTableRequest): $CancellablePromise<string> {
+    return $Call.ByName("catdb/internal/services.MetadataService.BuildCreateTable", connID, req);
+}
+
+/**
  * CountTableRows runs `SELECT COUNT(*) FROM db.table [WHERE …]` so the data
  * browser can show the exact total on demand (it's a potentially slow scan,
  * hence user-triggered rather than automatic). whereClause is the same raw
@@ -68,37 +87,37 @@ export function GetCreateTable(connID: string, db: string, schema: string, table
 
 export function GetTableSummary(connID: string, db: string, schema: string, table: string): $CancellablePromise<$models.TableSummary> {
     return $Call.ByName("catdb/internal/services.MetadataService.GetTableSummary", connID, db, schema, table).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType3($result);
     });
 }
 
 export function ListColumns(connID: string, db: string, schema: string, table: string): $CancellablePromise<dbdriver$0.ColumnMeta[]> {
     return $Call.ByName("catdb/internal/services.MetadataService.ListColumns", connID, db, schema, table).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType5($result);
     });
 }
 
 export function ListDatabases(connID: string): $CancellablePromise<string[]> {
     return $Call.ByName("catdb/internal/services.MetadataService.ListDatabases", connID).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType6($result);
     });
 }
 
 export function ListForeignKeys(connID: string, db: string, schema: string, table: string): $CancellablePromise<dbdriver$0.ForeignKeyInfo[]> {
     return $Call.ByName("catdb/internal/services.MetadataService.ListForeignKeys", connID, db, schema, table).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType8($result);
     });
 }
 
 export function ListIndexes(connID: string, db: string, schema: string, table: string): $CancellablePromise<dbdriver$0.IndexInfo[]> {
     return $Call.ByName("catdb/internal/services.MetadataService.ListIndexes", connID, db, schema, table).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType10($result);
     });
 }
 
 export function ListRoutines(connID: string, db: string, schema: string): $CancellablePromise<dbdriver$0.RoutineInfo[]> {
     return $Call.ByName("catdb/internal/services.MetadataService.ListRoutines", connID, db, schema).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType12($result);
     });
 }
 
@@ -108,36 +127,37 @@ export function ListRoutines(connID: string, db: string, schema: string): $Cance
  */
 export function ListSchemas(connID: string, db: string): $CancellablePromise<string[]> {
     return $Call.ByName("catdb/internal/services.MetadataService.ListSchemas", connID, db).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType6($result);
     });
 }
 
 export function ListTables(connID: string, db: string, schema: string): $CancellablePromise<dbdriver$0.TableInfo[]> {
     return $Call.ByName("catdb/internal/services.MetadataService.ListTables", connID, db, schema).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType14($result);
     });
 }
 
 export function ListViews(connID: string, db: string, schema: string): $CancellablePromise<dbdriver$0.ViewInfo[]> {
     return $Call.ByName("catdb/internal/services.MetadataService.ListViews", connID, db, schema).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType16($result);
     });
 }
 
 // Private type creation functions
 const $$createType0 = $models.AutocompleteSnapshot.createFrom;
 const $$createType1 = $models.BrowseResult.createFrom;
-const $$createType2 = $models.TableSummary.createFrom;
-const $$createType3 = dbdriver$0.ColumnMeta.createFrom;
-const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = $Create.Array($Create.Any);
-const $$createType6 = dbdriver$0.ForeignKeyInfo.createFrom;
-const $$createType7 = $Create.Array($$createType6);
-const $$createType8 = dbdriver$0.IndexInfo.createFrom;
-const $$createType9 = $Create.Array($$createType8);
-const $$createType10 = dbdriver$0.RoutineInfo.createFrom;
-const $$createType11 = $Create.Array($$createType10);
-const $$createType12 = dbdriver$0.TableInfo.createFrom;
-const $$createType13 = $Create.Array($$createType12);
-const $$createType14 = dbdriver$0.ViewInfo.createFrom;
-const $$createType15 = $Create.Array($$createType14);
+const $$createType2 = $models.AlterPlanResult.createFrom;
+const $$createType3 = $models.TableSummary.createFrom;
+const $$createType4 = dbdriver$0.ColumnMeta.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = $Create.Array($Create.Any);
+const $$createType7 = dbdriver$0.ForeignKeyInfo.createFrom;
+const $$createType8 = $Create.Array($$createType7);
+const $$createType9 = dbdriver$0.IndexInfo.createFrom;
+const $$createType10 = $Create.Array($$createType9);
+const $$createType11 = dbdriver$0.RoutineInfo.createFrom;
+const $$createType12 = $Create.Array($$createType11);
+const $$createType13 = dbdriver$0.TableInfo.createFrom;
+const $$createType14 = $Create.Array($$createType13);
+const $$createType15 = dbdriver$0.ViewInfo.createFrom;
+const $$createType16 = $Create.Array($$createType15);

@@ -96,3 +96,6 @@ func (sqliteDialect) MapType(string) dbdriver.LogicalType      { return dbdriver
 func (sqliteDialect) GenerateCreateTable(dbdriver.TableSchema) (string, error) {
 	return "", nil
 }
+func (sqliteDialect) GenerateAlterTable(db, schema, table string, cs dbdriver.ChangeSet) ([]string, error) {
+	return nil, nil
+}

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"catdb/internal/core/schemadiff"
 	"catdb/internal/core/session"
 	"catdb/internal/dbdriver"
 	"catdb/internal/registry"
@@ -159,6 +160,101 @@ func (s *MetadataService) GetTableSummary(ctx context.Context, connID, db, schem
 		return empty, err
 	}
 	return TableSummary{Columns: cols, Indexes: ix, ForeignKeys: fk}, nil
+}
+
+// AlterPlanRequest carries the original table snapshot (what the structure
+// editor loaded) and the user-edited draft. The diff runs backend-side in
+// internal/core/schemadiff; the connection is only consulted for its Dialect,
+// so this is a pure computation — no queries hit the database.
+type AlterPlanRequest struct {
+	DB          string           `json:"db"`
+	Schema      string           `json:"schema"`
+	Table       string           `json:"table"`
+	Orig        TableSummary     `json:"orig"`
+	OrigComment string           `json:"origComment"`
+	Draft       schemadiff.Table `json:"draft"`
+}
+
+// AlterPlanResult groups the generated ALTER statements by structure-editor
+// tab, plus the concatenation in safe execution order.
+type AlterPlanResult struct {
+	Columns     []string `json:"columns"`
+	Indexes     []string `json:"indexes"`
+	ForeignKeys []string `json:"foreignKeys"`
+	Options     []string `json:"options"`
+	All         []string `json:"all"`
+}
+
+// BuildAlterPlan diffs the draft against the original snapshot and renders
+// ALTER statements through the connection's Dialect.
+func (s *MetadataService) BuildAlterPlan(ctx context.Context, connID string, req AlterPlanRequest) (AlterPlanResult, error) {
+	var empty AlterPlanResult
+	if req.Table == "" {
+		return empty, fmt.Errorf("MetadataService: table is required")
+	}
+	dia, err := s.resolveDialect(ctx, connID)
+	if err != nil {
+		return empty, err
+	}
+	current := dbdriver.TableSchema{
+		Name:        req.Table,
+		Schema:      req.Schema,
+		Columns:     req.Orig.Columns,
+		Indexes:     req.Orig.Indexes,
+		ForeignKeys: req.Orig.ForeignKeys,
+		Comment:     req.OrigComment,
+	}
+	cs := schemadiff.Diff(current, req.Draft, schemadiff.Options{})
+
+	render := func(part dbdriver.ChangeSet) ([]string, error) {
+		if part.Empty() {
+			return []string{}, nil
+		}
+		return dia.GenerateAlterTable(req.DB, req.Schema, req.Table, part)
+	}
+	out := AlterPlanResult{}
+	if out.Columns, err = render(dbdriver.ChangeSet{Columns: cs.Columns, PrimaryKey: cs.PrimaryKey}); err != nil {
+		return empty, err
+	}
+	if out.Indexes, err = render(dbdriver.ChangeSet{Indexes: cs.Indexes}); err != nil {
+		return empty, err
+	}
+	if out.ForeignKeys, err = render(dbdriver.ChangeSet{ForeignKeys: cs.ForeignKeys}); err != nil {
+		return empty, err
+	}
+	if out.Options, err = render(dbdriver.ChangeSet{Options: cs.Options}); err != nil {
+		return empty, err
+	}
+	// Safe execution order: columns + PK → indexes → FKs → options.
+	out.All = append(append(append(append([]string{}, out.Columns...), out.Indexes...), out.ForeignKeys...), out.Options...)
+	return out, nil
+}
+
+// CreateTableRequest is the "new table" flow's draft.
+type CreateTableRequest struct {
+	DB     string           `json:"db"`
+	Schema string           `json:"schema"`
+	Table  string           `json:"table"`
+	Draft  schemadiff.Table `json:"draft"`
+}
+
+// BuildCreateTable renders a CREATE TABLE statement from a structure draft.
+// Mirrors the editor's preview contract: an empty table name or a draft with
+// no named columns yields "" (empty preview), not an error.
+func (s *MetadataService) BuildCreateTable(ctx context.Context, connID string, req CreateTableRequest) (string, error) {
+	dia, err := s.resolveDialect(ctx, connID)
+	if err != nil {
+		return "", err
+	}
+	schemaName := req.Schema
+	if schemaName == "" {
+		schemaName = req.DB
+	}
+	ts := req.Draft.ToTableSchema(req.Table, schemaName)
+	if ts.Name == "" || len(ts.Columns) == 0 {
+		return "", nil
+	}
+	return dia.GenerateCreateTable(ts)
 }
 
 // AutocompleteSnapshot is the cache the front-end hands to CodeMirror's

@@ -57,6 +57,14 @@ export function OpenConnectionEditor(driver: string, connID: string): $Cancellab
 }
 
 /**
+ * OpenDataSyncDialog opens the Data Synchronization dialog as its own native
+ * child window, keyed by name "data-sync".
+ */
+export function OpenDataSyncDialog(): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.SystemService.OpenDataSyncDialog");
+}
+
+/**
  * OpenDatabaseEditor pops the "新建/编辑数据库" form as its own native window,
  * reusing the catdb-tree-database right-click flow. Pass an empty dbName for
  * create mode; a non-empty dbName for edit mode.
@@ -77,6 +85,14 @@ export function OpenDatabaseEditor(connID: string, dbName: string): $Cancellable
  */
 export function OpenExternalURL(target: string): $CancellablePromise<void> {
     return $Call.ByName("catdb/internal/services.SystemService.OpenExternalURL", target);
+}
+
+/**
+ * OpenStructureSyncDialog opens the Structure Synchronization dialog as its
+ * own native child window, keyed by name "structure-sync".
+ */
+export function OpenStructureSyncDialog(): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.SystemService.OpenStructureSyncDialog");
 }
 
 /**

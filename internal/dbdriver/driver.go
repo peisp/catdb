@@ -113,6 +113,11 @@ type Dialect interface {
 
 	// GenerateCreateTable emits a CREATE TABLE statement for the given schema.
 	GenerateCreateTable(t TableSchema) (string, error)
+
+	// GenerateAlterTable renders a schemadiff ChangeSet into DDL statements
+	// for the (db, schema, table) target, in safe execution order. An empty
+	// ChangeSet yields an empty slice.
+	GenerateAlterTable(db, schema, table string, cs ChangeSet) ([]string, error)
 }
 
 // Editor builds parameterized write statements for the row-edit feature.

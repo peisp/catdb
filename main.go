@@ -54,6 +54,7 @@ func main() {
 			application.NewService(services.NewMetadataService(mgr)),
 			application.NewService(services.NewEditService(mgr)),
 			application.NewService(services.NewTransferService(mgr)),
+			application.NewService(services.NewSyncService(mgr)),
 			application.NewService(services.NewSystemService()),
 			application.NewService(services.NewSavedQueryService(store)),
 			application.NewService(services.NewUpdateService(store, "")),

@@ -7,6 +7,7 @@ import * as MetadataService from "./metadataservice.js";
 import * as QueryService from "./queryservice.js";
 import * as SavedQueryService from "./savedqueryservice.js";
 import * as SettingsService from "./settingsservice.js";
+import * as SyncService from "./syncservice.js";
 import * as SystemService from "./systemservice.js";
 import * as TransferService from "./transferservice.js";
 import * as UpdateService from "./updateservice.js";
@@ -17,17 +18,26 @@ export {
     QueryService,
     SavedQueryService,
     SettingsService,
+    SyncService,
     SystemService,
     TransferService,
     UpdateService
 };
 
 export {
+    AlterPlanRequest,
+    AlterPlanResult,
     AutocompleteColumn,
     AutocompleteSnapshot,
     AutocompleteTable,
     BrowseResult,
     ConnectionDraft,
+    CreateTableRequest,
+    DataCompareRequest,
+    DataCompareResult,
+    DataSyncExecRequest,
+    DataSyncExecResult,
+    DataTableDiff,
     DataTransferRequest,
     DataTransferResult,
     DriverInfo,
@@ -42,6 +52,12 @@ export {
     QueryRunResult,
     RowChange,
     RowChangeResult,
+    SchemaCompareRequest,
+    SchemaCompareResult,
+    SchemaObjectDiff,
+    SchemaSyncExecRequest,
+    SchemaSyncExecResult,
+    SchemaSyncStatementResult,
     TableRef,
     TableSummary,
     TableTransferResult,

@@ -69,6 +69,31 @@ export function countTableRows(
 ): Promise<number> {
   return MetadataService.CountTableRows(connId, db, schema, table, whereClause) as unknown as Promise<number>
 }
+// buildAlterPlan / buildCreateTable — backend diff engine (schemadiff +
+// Dialect). `draft` is the wire shape produced by lib/alterPlan draftToWire.
+export interface AlterPlanStatements {
+  columns: string[]
+  indexes: string[]
+  foreignKeys: string[]
+  options: string[]
+  all: string[]
+}
+export function buildAlterPlan(
+  connId: string, db: string, table: string,
+  orig: TableSummary, origComment: string, draft: unknown,
+  schema = '',
+): Promise<AlterPlanStatements> {
+  return MetadataService.BuildAlterPlan(connId, {
+    db, schema, table, orig, origComment, draft,
+  } as never) as unknown as Promise<AlterPlanStatements>
+}
+export function buildCreateTable(
+  connId: string, db: string, table: string, draft: unknown, schema = '',
+): Promise<string> {
+  return MetadataService.BuildCreateTable(connId, {
+    db, schema, table, draft,
+  } as never) as unknown as Promise<string>
+}
 export function browseTable(
   connId: string, db: string, table: string,
   limit: number, offset: number,
