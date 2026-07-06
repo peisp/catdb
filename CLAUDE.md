@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-> Claude Code 在本仓库工作时**必须先读本文件**。这里是工作规约（约束 + 约定 + 命令），不是功能说明。功能与设计见 `ARCHITECTURE.md`，任务与范围见 `MVP.md`。
+> Claude Code 在本仓库工作时**必须先读本文件**。这里是工作规约（约束 + 约定 + 命令），不是功能说明。功能与设计见 `ARCHITECTURE.md`。
 
 ## 项目一句话
 
-基于 **Wails v3（Go 后端 + Vue 3/TS 前端 + 原生 WebView）** 的跨平台数据库管理工具（类 Navicat/DBeaver/TablePlus）。MVP 只做 **MySQL**；其他数据库通过**编译期注册的 Go 接口插件**扩展。
+基于 **Wails v3（Go 后端 + Vue 3/TS 前端 + 原生 WebView）** 的跨平台数据库管理工具（类 Navicat/DBeaver/TablePlus）。当前只支持 **MySQL**；其他数据库通过**编译期注册的 Go 接口插件**扩展。
 
 ## 技术栈（不要擅自替换）
 
@@ -45,7 +45,7 @@ internal/
   services/         # Wails Service：Connection/Query/Metadata/Edit/Transfer/Settings
 plugins/
   plugins_all.go    # build-tag 控制的匿名导入聚合
-  mysqldrv/         # MVP 唯一插件
+  mysqldrv/         # 目前唯一插件
 frontend/src/
   api/              # 前端防腐层：封装生成的绑定 + 事件，组件只调 api/ 不直接 import bindings/
   components/       # 编辑器/表格/对象树/连接表单
@@ -62,7 +62,7 @@ frontend/src/
 7. **驱动靠 `init()` 注册**：新驱动在自己包的 `init()` 里 `registry.Register(...)`，并在 `plugins/plugins_all.go` 匿名导入。不要写运行时动态加载（go plugin / Goja），那不是本项目主线。
 8. **密码绝不明文落盘**：连接配置（host/port/user/options）存 SQLite，密码只进 keyring。代码评审看到明文密码持久化直接拒绝。
 9. **多窗口并发隔离**：事务/独占操作走会话管理器分离的独立连接并绑定窗口 ID，事务期间该物理连接不被其他窗口借调。不要把未提交事务放在共享连接池上裸跑。
-10. **平台优先级**：MVP 只保证 Windows + macOS。Linux 锁 GTK3 栈（`-tags gtk3`），不为 GTK4 实验特性写代码。
+10. **平台优先级**：只保证 Windows + macOS。Linux 锁 GTK3 栈（`-tags gtk3`），不为 GTK4 实验特性写代码。
 11. **UI 必须向原生靠拢、去 Web 感**：这是桌面应用不是网页。写任何前端 UI 前先读 `UI_SPEC.md`。硬性要求：系统字体栈 + 桌面字号（12–13px）、高密度布局、小圆角发丝线、克制按钮无花哨动画；右键用 **Wails 原生上下文菜单**、文件/确认用 **Wails 原生对话框**、顶层菜单走 **原生应用菜单**，不要用 HTML 浮层模拟系统级交互。
 
 ## 多语言（i18n）
@@ -112,6 +112,5 @@ frontend/src/
 
 - 有不确定的问题就问用户，不要自己猜
 - 接口语义、数据流、设计取舍 → 读 `ARCHITECTURE.md`
-- 当前该做什么、做到什么程度算完成 → 读 `MVP.md`
 - 任何前端外观/交互怎么做才"像原生" → 读 `UI_SPEC.md`
 - Wails v3 API 细节 → 查 https://v3.wails.io/ ，**不要凭训练记忆**（v3 与 v2 差异大，记忆易错）

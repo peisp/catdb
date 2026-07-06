@@ -2,7 +2,7 @@
 
 > 一个跨平台的桌面数据库管理工具。
 
-MVP 阶段 **暂时只支持 MySQL**，其他数据库类型待更新。
+目前支持 **MySQL**；其他数据库通过编译期注册的插件接口扩展，逐步跟进。
 
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)
 ![go](https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go&logoColor=white)
@@ -36,6 +36,12 @@ MVP 阶段 **暂时只支持 MySQL**，其他数据库类型待更新。
 - **大结果集**：后端分批 `ResultSet.Next(batch)` 流式读取，前端虚拟滚动；超出预览上限自动转为流式导出（CSV / JSON / SQL / Excel）。
 - **行内编辑**：基于主键 / 唯一键的安全 UPDATE / DELETE；无可识别唯一键的表自动标记为只读。
 - **对象树**：库 → 表 / 视图 → 列 / 索引 / 外键 的懒加载浏览；查看 / 复制 `SHOW CREATE TABLE`。
+- **表结构编辑器**：列 / 索引 / 外键 / 表选项的可视化编辑与新建表；ALTER / CREATE 由后端 diff 引擎（schemadiff + Dialect）生成并实时预览。
+- **数据传输**：跨连接 / 跨库整批复制表结构与数据，流式分批 + 进度 + 逐表结果；支持 CSV / SQL 文件导入。
+- **结构同步**：比对两个库的表 / 视图 DDL 差异，生成 ALTER / CREATE / DROP 脚本按项勾选执行；破坏性语句默认不勾选且执行前原生确认。
+- **数据同步**：按主键排序流式归并比对行数据（内存恒定，不随表大小增长），差异以参数化 INSERT / UPDATE / DELETE 在独立连接上分批事务执行；删除目标端多余行默认关闭。
+- **多语言**：English / 简体中文，运行时切换、无需重启。
+- **自动更新**：基于 GitHub Releases 的更新检查。
 - **原生桌面感**：系统字体栈、13 px 桌面字号、紧凑密度、发丝线圆角；右键 / 菜单 / 确认弹窗走 Wails 原生菜单与对话框，不用网页 div 模拟。
 - **独立连接编辑器窗口**：新建 / 编辑连接是真正的子窗口，常规 / 高级 / SSL / SSH 用 Segmented Control 切换。
 - **明暗主题**跟随系统（`prefers-color-scheme`）。
@@ -50,11 +56,10 @@ MVP 阶段 **暂时只支持 MySQL**，其他数据库类型待更新。
 | Windows + macOS | ✅ |
 | Linux (GTK3) | 可跑但不保证 |
 | PostgreSQL / SQLite / SQL Server / … | ⬜ 接口预留，等插件 |
+| 数据传输 / 结构同步 / 数据同步 | ✅ |
 | 运行时动态插件 (go plugin / Goja) | ⬜ 主线不做 |
-| ER 图、数据同步 / 对比 | ⬜ 后续迭代 |
+| ER 图 | ⬜ 后续迭代 |
 | AG Grid / Monaco | ⬜ 锁定 TanStack + CodeMirror |
-
-详细的范围边界见 [`MVP.md`](MVP.md)。
 
 ---
 
@@ -96,7 +101,7 @@ wails3 dev                # 或: task dev
 wails3 build              # 或: task build
 
 # 改动 Service 的公共方法签名后，必须重新生成前端 TS 绑定
-wails3 generate bindings -names
+wails3 generate bindings -ts -names
 ```
 
 ### 测试
@@ -133,8 +138,10 @@ catdb/
 │   │   └── contract/        #   驱动契约测试套件（新驱动必须跑过）
 │   ├── registry/            # 编译期驱动注册表
 │   ├── core/
-│   │   ├── session/         #   连接管理器（一连接一池，事务走独立物理连接）
-│   │   └── scanner/         #   通用 ResultSet 流式扫描器
+│   │   ├── session/         #   连接管理器（一连接一池，长任务可租借独立连接）
+│   │   ├── scanner/         #   通用 ResultSet 流式扫描器
+│   │   ├── schemadiff/      #   驱动无关的表结构 diff（→ ChangeSet → Dialect 渲染 DDL）
+│   │   └── datasync/        #   按主键流式归并的行数据比对 / 同步引擎
 │   ├── storage/             # SQLite 连接配置存储 + keyring 凭据
 │   ├── tunnel/              # SSH 隧道
 │   ├── platform/            # 平台细节（macOS 切英文输入法等）
@@ -144,11 +151,12 @@ catdb/
 │       ├── metadata_service.go
 │       ├── edit_service.go
 │       ├── transfer_service.go
+│       ├── sync_service.go   #  结构同步 + 数据同步
 │       └── system_service.go
 ├── plugins/
 │   ├── plugins_all.go       # 通过 build-tag 控制的匿名导入聚合
 │   ├── plugins_mysql.go
-│   └── mysqldrv/            # MVP 唯一插件：MySQL Driver 实现
+│   └── mysqldrv/            # 目前唯一插件：MySQL Driver 实现
 └── frontend/
     └── src/
         ├── api/             # 前端防腐层：封装绑定 + 事件，组件只调 api/
@@ -178,11 +186,10 @@ catdb/
 仓库内置 [`CLAUDE.md`](CLAUDE.md)，是 Claude Code 在本仓库工作的**强制约定**（铁律 + 命令速查 + 目录归属）。任何贡献者改代码前也建议先读它：
 
 - 接口语义、数据流、设计取舍 → [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- 当前里程碑要做什么 / 完成定义 → [`MVP.md`](MVP.md)
 - UI / 交互怎么做才"像原生" → [`UI_SPEC.md`](UI_SPEC.md)
 - 工作规约（铁律 + 命令） → [`CLAUDE.md`](CLAUDE.md)
 
-提交前请确保 `task test` 通过；改动 Service 公共方法后记得跑 `wails3 generate bindings -names`。
+提交前请确保 `task test` 通过；改动 Service 公共方法后记得跑 `wails3 generate bindings -ts -names`。
 
 ---
 
@@ -190,8 +197,8 @@ catdb/
 
 | 平台 | 状态 |
 |---|---|
-| macOS (Apple Silicon + Intel) | ✅ MVP 目标平台 |
-| Windows | ✅ MVP 目标平台 |
+| macOS (Apple Silicon + Intel) | ✅ 目标平台 |
+| Windows | ✅ 目标平台 |
 | Linux (GTK3, `-tags gtk3`) | 🟡 可跑，不保证 GTK4 实验特性 |
 
 

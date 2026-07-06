@@ -1,6 +1,6 @@
 # 架构设计文档（ARCHITECTURE.md）
 
-> 本文档说明系统**为什么这样分层、接口契约是什么、数据如何流动、关键取舍的理由**。Claude Code 在动接口、写核心层、加新驱动前应先读本文。操作规约见 `CLAUDE.md`，任务范围见 `MVP.md`。
+> 本文档说明系统**为什么这样分层、接口契约是什么、数据如何流动、关键取舍的理由**。Claude Code 在动接口、写核心层、加新驱动前应先读本文。操作规约见 `CLAUDE.md`。
 
 ---
 
@@ -323,6 +323,25 @@ MySQL：建立 `*ssh.Client` 后用 `mysql.RegisterDialContext("mysql+ssh", dial
 
 > **已知缺口**：Wails v3 暂无统一主题（明暗）读取/设置/订阅 API（官方 issue #4665 未实现）。`wailsbridge` 需自封装：前端 `matchMedia('(prefers-color-scheme: dark)')` 驱动 Naive UI 暗色主题，Go 侧标题栏用 `CustomTheme` 双套色同步。
 
+### 6.6 结构 diff 引擎（core/schemadiff + Dialect DDL 渲染）
+
+结构编辑器与结构同步共用一套 diff 引擎，分两层：
+
+- **diff（驱动无关）**：`schemadiff.Diff(current dbdriver.TableSchema, desired schemadiff.Table, opts)` 产出结构化 `dbdriver.ChangeSet`（列 add/drop/modify/rename + 位置、PK drop/add、索引与外键的 drop+add 对、表注释），**不含任何 SQL 文本**。`desired` 里的 `OrigName` 承载改名语义：结构编辑器由 draft 提供；结构同步用 `FromTableSchema(src, target)` 按同名回填（同步场景无改名，源缺列=ADD、目标多列=DROP）。比较时对原生类型做归一化（`NormalizeNativeType`：大小写/括号内空白/UNSIGNED 位置/ZEROFILL），索引省略的 ASC/BTREE 与显式值视为相等，FK 的空 ON UPDATE/DELETE 视同 RESTRICT——都是为了消除"读回值 vs 书写值"的假差异。
+- **渲染（方言相关）**：`Dialect.GenerateCreateTable(TableSchema)` 与 `Dialect.GenerateAlterTable(db, schema, table, ChangeSet)` 把结构/变更集渲染成目标数据库的 DDL。ChangeSet 类型定义在 `dbdriver`（Dialect 接口要引用它；schemadiff 又依赖 dbdriver，放 core 会成环）。
+
+调用方：`MetadataService.BuildAlterPlan/BuildCreateTable`（结构编辑器，前端 draft 过 IPC 后端算 diff）与 `SyncService.CompareSchemas`（结构同步，双端元数据读回后 diff，**用目标端 Dialect 渲染**——语句在目标服务器执行）。
+
+### 6.7 数据同步归并引擎（core/datasync）
+
+按主键排序的双端流式归并比对，内存与表大小无关：
+
+- 两端各发一条 `SELECT <公共列> FROM t ORDER BY <pk>`，经 `ResultSet.Next(batch)` 流式拉取；双指针归并把每行分类为 insert（仅源有）/ update（键同值异，含变更列位置）/ delete（仅目标有），交给调用方注入的 Handlers。
+- **Compare（dry-run）**：Handlers 只累计计数 + 保留有限采样（默认 100 条）给前端预览——差异明细不整批过 IPC。
+- **Execute**：Handlers 用目标端 `Editor.BuildInsert/Update/Delete` 生成**参数化**语句，在 `session.Manager.OpenDedicated` 的**独立连接**上按批（默认 500 条/事务）提交——共享连接不被长事务占用（规约 9）。`AllowDelete=false` 时 delete 只计数不执行。
+- 值比较前做归一化（[]byte↔string、整型宽度、float32→64）；NULL 排最前。已知限制：字符串主键在大小写不敏感 collation 下的服务端排序可能与 Go 侧比较不一致，可能错位归并——数值/二进制键（绝大多数场景）精确。
+- 前置校验在 `SyncService.resolveTablePairs`：双端 PK 探测（`Editor.PrimaryKeys`）、PK 列集一致、公共列含全部 PK，不满足的表标记 skipped slug（`no-primary-key`/`pk-mismatch`/…）而非静默跳过。
+
 ---
 
 ## 7. 测试架构
@@ -340,7 +359,7 @@ MySQL：建立 `*ssh.Client` 后用 `mysql.RegisterDialContext("mysql+ssh", dial
 | Wails v3 仍 alpha，API 可能 break | 锁 `v3.0.0-alpha2.106`；wailsbridge/api 防腐层隔离 |
 | Service 方法命名 v2→v3 已变更 | 统一用 `ServiceStartup/ServiceShutdown` |
 | WebView2 IPC body ~2MB 上限 | v3 已自动分块；但仍靠分页+虚拟滚动防卡死 |
-| Linux GTK3/GTK4 过渡期不稳 | MVP 锁 GTK3；优先 Win/Mac |
+| Linux GTK3/GTK4 过渡期不稳 | 锁 GTK3；优先 Win/Mac |
 | CGO 复杂化交叉编译 | SQLite 用 modernc 纯 Go；避免 CGO 驱动 |
 
 ---

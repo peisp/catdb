@@ -26,7 +26,7 @@
 - **标题栏配色**：用 `CustomTheme` 设定明暗双套标题栏/边框/文字色，跟随应用主题，避免标题栏与内容区割裂。
 - **细节**：标题栏底部 1px 分隔线（非阴影）；窗口圆角交给系统（不要自己加大圆角）。
 
-> ⚠️ Frameless 的代价：窗口控制、拖拽、双击标题栏最大化、各平台交通灯/caption 按钮位置都要自己处理且分平台。这是真实工作量，列入 M4（见 MVP.md）。
+> ⚠️ Frameless 的代价：窗口控制、拖拽、双击标题栏最大化、各平台交通灯/caption 按钮位置都要自己处理且分平台。这是真实工作量。
 
 **窗口相关的 Wails v3 API**：`import { Window } from '@wailsio/runtime'`。窗口生命周期、关闭拦截、缩放、置顶等操作都通过此模块，不用 `window.open()`、`window.close()`、`beforeunload` 等浏览器 API。
 
