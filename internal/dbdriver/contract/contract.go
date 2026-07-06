@@ -17,6 +17,7 @@ package contract
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -200,6 +201,45 @@ func testMetadata(t *testing.T, ctx context.Context, d dbdriver.Driver, c dbdriv
 	if len(ddl) == 0 {
 		t.Fatal("GetCreateTable returned empty DDL")
 	}
+
+	// Optional BulkMetadata extension: whole-schema reads must agree with the
+	// per-table reads for the fixture table. nil vs empty slice is not a
+	// meaningful difference (a table absent from a bulk map = no entries).
+	if bm, ok := m.(dbdriver.BulkMetadata); ok {
+		allCols, err := bm.ListAllColumns(ctx, db, schema)
+		if err != nil {
+			t.Fatalf("ListAllColumns: %v", err)
+		}
+		if !slicesAgree(allCols[tn], cols) {
+			t.Fatalf("ListAllColumns[%s] disagrees with ListColumns:\nbulk %+v\nper-table %+v", tn, allCols[tn], cols)
+		}
+		allIx, err := bm.ListAllIndexes(ctx, db, schema)
+		if err != nil {
+			t.Fatalf("ListAllIndexes: %v", err)
+		}
+		if !slicesAgree(allIx[tn], ix) {
+			t.Fatalf("ListAllIndexes[%s] disagrees with ListIndexes:\nbulk %+v\nper-table %+v", tn, allIx[tn], ix)
+		}
+		fks, err := m.ListForeignKeys(ctx, db, schema, tn)
+		if err != nil {
+			t.Fatalf("ListForeignKeys: %v", err)
+		}
+		allFK, err := bm.ListAllForeignKeys(ctx, db, schema)
+		if err != nil {
+			t.Fatalf("ListAllForeignKeys: %v", err)
+		}
+		if !slicesAgree(allFK[tn], fks) {
+			t.Fatalf("ListAllForeignKeys[%s] disagrees with ListForeignKeys:\nbulk %+v\nper-table %+v", tn, allFK[tn], fks)
+		}
+	}
+}
+
+// slicesAgree is DeepEqual that treats nil and empty slices as equal.
+func slicesAgree[T any](a, b []T) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	return reflect.DeepEqual(a, b)
 }
 
 func testEdit(t *testing.T, ctx context.Context, d dbdriver.Driver, c dbdriver.Connection, fx Fixtures) {

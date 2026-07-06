@@ -98,6 +98,18 @@ type Metadata interface {
 	GetCreateTable(ctx context.Context, db, schema, table string) (string, error)
 }
 
+// BulkMetadata is an OPTIONAL extension a driver's Metadata may implement:
+// whole-schema reads in ONE query per aspect, keyed by table name. Structure
+// sync probes for it via type assertion — with N tables this turns ~3N
+// per-table information_schema round-trips into 3, which dominates compare
+// latency on remote/tunneled connections. Drivers that don't implement it
+// are served by the per-table Metadata methods transparently.
+type BulkMetadata interface {
+	ListAllColumns(ctx context.Context, db, schema string) (map[string][]ColumnMeta, error)
+	ListAllIndexes(ctx context.Context, db, schema string) (map[string][]IndexInfo, error)
+	ListAllForeignKeys(ctx context.Context, db, schema string) (map[string][]ForeignKeyInfo, error)
+}
+
 // Dialect describes per-database SQL quirks.
 type Dialect interface {
 	// QuoteIdentifier wraps an identifier (table/column) for the target

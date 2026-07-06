@@ -134,6 +134,19 @@ func resolveTablePairs(ctx context.Context, srcConn, tgtConn dbdriver.Connection
 		return nil, fmt.Errorf("SyncService: connection has no editor adapter")
 	}
 
+	// Whole-schema column prefetch (optional BulkMetadata fast path) — cuts
+	// two per-table round-trips from the validation pass.
+	srcBulk := prefetchSchemaBulk(ctx, srcMeta, req.SourceDB, req.SourceSchema)
+	tgtBulk := prefetchSchemaBulk(ctx, tgtMeta, req.TargetDB, req.TargetSchema)
+	colsOf := func(b *schemaBulk, m dbdriver.Metadata, db, schema, name string) ([]dbdriver.ColumnMeta, error) {
+		if b != nil {
+			if c, ok := b.cols[name]; ok {
+				return c, nil
+			}
+		}
+		return m.ListColumns(ctx, db, schema, name)
+	}
+
 	var out []tablePair
 	for _, name := range names {
 		if err := ctx.Err(); err != nil {
@@ -163,11 +176,11 @@ func resolveTablePairs(ctx context.Context, srcConn, tgtConn dbdriver.Connection
 			out = append(out, p)
 			continue
 		}
-		srcCols, err := srcMeta.ListColumns(ctx, req.SourceDB, req.SourceSchema, name)
+		srcCols, err := colsOf(srcBulk, srcMeta, req.SourceDB, req.SourceSchema, name)
 		if err != nil {
 			return nil, fmt.Errorf("SyncService: source columns of %s: %w", name, err)
 		}
-		tgtCols, err := tgtMeta.ListColumns(ctx, req.TargetDB, req.TargetSchema, name)
+		tgtCols, err := colsOf(tgtBulk, tgtMeta, req.TargetDB, req.TargetSchema, name)
 		if err != nil {
 			return nil, fmt.Errorf("SyncService: target columns of %s: %w", name, err)
 		}

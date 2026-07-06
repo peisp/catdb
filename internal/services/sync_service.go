@@ -171,6 +171,12 @@ func compareSchemasConns(ctx context.Context, srcConn, tgtConn dbdriver.Connecti
 		}
 	}
 
+	// Whole-schema prefetch via the optional BulkMetadata extension: 3 queries
+	// per side instead of 3 per table — the difference between seconds and
+	// minutes on remote connections. Nil = extension absent, per-table reads.
+	srcBulk := prefetchSchemaBulk(ctx, srcMeta, req.SourceDB, req.SourceSchema)
+	tgtBulk := prefetchSchemaBulk(ctx, tgtMeta, req.TargetDB, req.TargetSchema)
+
 	out := SchemaCompareResult{SyncID: fmt.Sprintf("sc-%d", time.Now().UnixNano())}
 	names := sortedKeys(srcByName, tgtByName)
 	for _, name := range names {
@@ -197,12 +203,12 @@ func compareSchemasConns(ctx context.Context, srcConn, tgtConn dbdriver.Connecti
 				"DROP TABLE " + dbdriver.QualifyTable(dia, req.TargetDB, req.TargetSchema, name) + ";",
 			}
 		default:
-			src, rerr := readTableSchema(ctx, srcMeta, req.SourceDB, req.SourceSchema, name, srcByName[name].Comment)
+			src, rerr := readTableSchemaBulk(ctx, srcMeta, srcBulk, req.SourceDB, req.SourceSchema, name, srcByName[name].Comment)
 			if rerr != nil {
 				diff.Error = rerr.Error()
 				break
 			}
-			tgt, rerr := readTableSchema(ctx, tgtMeta, req.TargetDB, req.TargetSchema, name, tgtByName[name].Comment)
+			tgt, rerr := readTableSchemaBulk(ctx, tgtMeta, tgtBulk, req.TargetDB, req.TargetSchema, name, tgtByName[name].Comment)
 			if rerr != nil {
 				diff.Error = rerr.Error()
 				break
@@ -261,6 +267,52 @@ func createTableDDL(ctx context.Context, srcMeta dbdriver.Metadata, dia dbdriver
 	src.Name = name
 	src.Schema = firstNonEmptyStr(req.TargetSchema, req.TargetDB)
 	return dia.GenerateCreateTable(src)
+}
+
+// schemaBulk caches whole-schema metadata fetched through the optional
+// dbdriver.BulkMetadata extension.
+type schemaBulk struct {
+	cols map[string][]dbdriver.ColumnMeta
+	ixs  map[string][]dbdriver.IndexInfo
+	fks  map[string][]dbdriver.ForeignKeyInfo
+}
+
+// prefetchSchemaBulk loads the whole schema in three queries when the driver
+// supports it. Any failure degrades to nil — callers fall back to per-table
+// reads, never fail the compare over an optional fast path.
+func prefetchSchemaBulk(ctx context.Context, m dbdriver.Metadata, db, schema string) *schemaBulk {
+	bm, ok := m.(dbdriver.BulkMetadata)
+	if !ok {
+		return nil
+	}
+	cols, err := bm.ListAllColumns(ctx, db, schema)
+	if err != nil {
+		return nil
+	}
+	ixs, err := bm.ListAllIndexes(ctx, db, schema)
+	if err != nil {
+		return nil
+	}
+	fks, err := bm.ListAllForeignKeys(ctx, db, schema)
+	if err != nil {
+		return nil
+	}
+	return &schemaBulk{cols: cols, ixs: ixs, fks: fks}
+}
+
+// readTableSchemaBulk serves a table from the prefetched cache; absent cache
+// or a table missing from it (e.g. created after the prefetch) falls back to
+// the per-table reads.
+func readTableSchemaBulk(ctx context.Context, m dbdriver.Metadata, b *schemaBulk, db, schema, table, comment string) (dbdriver.TableSchema, error) {
+	if b != nil {
+		if cols, ok := b.cols[table]; ok {
+			return dbdriver.TableSchema{
+				Name: table, Schema: schema, Comment: comment,
+				Columns: cols, Indexes: b.ixs[table], ForeignKeys: b.fks[table],
+			}, nil
+		}
+	}
+	return readTableSchema(ctx, m, db, schema, table, comment)
 }
 
 // readTableSchema assembles a TableSchema from the driver's metadata reads.
