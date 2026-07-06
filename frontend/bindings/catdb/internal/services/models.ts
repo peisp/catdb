@@ -1311,10 +1311,14 @@ export class SchemaCompareRequest {
  * SchemaCompareResult is the ordered object list (tables first, then views).
  */
 export class SchemaCompareResult {
+    "syncId": string;
     "objects": SchemaObjectDiff[];
 
     /** Creates a new SchemaCompareResult instance. */
     constructor($$source: Partial<SchemaCompareResult> = {}) {
+        if (!("syncId" in $$source)) {
+            this["syncId"] = "";
+        }
         if (!("objects" in $$source)) {
             this["objects"] = [];
         }
@@ -1326,10 +1330,10 @@ export class SchemaCompareResult {
      * Creates a new SchemaCompareResult instance from a string or object.
      */
     static createFrom($$source: any = {}): SchemaCompareResult {
-        const $$createField0_0 = $$createType32;
+        const $$createField1_0 = $$createType32;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("objects" in $$parsedSource) {
-            $$parsedSource["objects"] = $$createField0_0($$parsedSource["objects"]);
+            $$parsedSource["objects"] = $$createField1_0($$parsedSource["objects"]);
         }
         return new SchemaCompareResult($$parsedSource as Partial<SchemaCompareResult>);
     }

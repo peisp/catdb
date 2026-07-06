@@ -94,9 +94,18 @@ const canCompare = computed(
 const isComparing = ref(false)
 const compared = ref(false)
 const objects = ref<SchemaObjectDiff[]>([])
-const checked = ref<Set<number>>(new Set())
-const expanded = ref<Set<number>>(new Set())
+const checked = ref<Set<string>>(new Set())
+const expanded = ref<Set<string>>(new Set())
 const aborter = ref<AbortController | null>(null)
+// Live-compare state: which object is being read right now + how many are done.
+const comparingName = ref('')
+const comparedDone = ref(0)
+
+// Stable row key — live rows get replaced in place as results stream in, so
+// selection/expansion must not be index-based.
+function objKey(o: SchemaObjectDiff): string {
+  return `${o.kind}:${o.name}`
+}
 
 function clearResult() {
   compared.value = false
@@ -105,10 +114,12 @@ function clearResult() {
   expanded.value = new Set()
   execDone.value = false
   execFailures.value = []
+  comparingName.value = ''
+  comparedDone.value = 0
 }
 
 function selectable(o: SchemaObjectDiff): boolean {
-  return !o.error && o.status !== 'same' && (o.statements?.length ?? 0) > 0
+  return !o.error && o.status !== 'same' && o.status !== 'comparing' && (o.statements?.length ?? 0) > 0
 }
 
 async function runCompare() {
@@ -117,6 +128,23 @@ async function runCompare() {
   clearResult()
   const ac = new AbortController()
   aborter.value = ac
+  // Stream per-object results into the list while the compare runs — large
+  // databases would otherwise look frozen.
+  const offCmp = syncApi.onSchemaCompareProgress((p) => {
+    if (!p.syncId.startsWith('sc-')) return
+    if (p.phase === 'object-start') {
+      comparingName.value = p.name
+      objects.value = [
+        ...objects.value,
+        { name: p.name, kind: p.kind, status: 'comparing', statements: [] } as unknown as SchemaObjectDiff,
+      ]
+    } else if (p.phase === 'object-done' && p.object) {
+      comparedDone.value++
+      comparingName.value = ''
+      const key = `${p.kind}:${p.name}`
+      objects.value = objects.value.map((o) => (objKey(o) === key ? p.object! : o))
+    }
+  })
   try {
     const res = await syncApi.compareSchemas({
       sourceConnId: srcConnId.value,
@@ -129,9 +157,9 @@ async function runCompare() {
     }, ac.signal)
     objects.value = res.objects ?? []
     // Default selection: every actionable object except destructive ones.
-    const sel = new Set<number>()
-    objects.value.forEach((o, i) => {
-      if (selectable(o) && !o.destructive) sel.add(i)
+    const sel = new Set<string>()
+    objects.value.forEach((o) => {
+      if (selectable(o) && !o.destructive) sel.add(objKey(o))
     })
     checked.value = sel
     compared.value = true
@@ -142,6 +170,7 @@ async function runCompare() {
       message.error(t('structSync.compareFailed', { error: err?.message ?? String(err) }))
     }
   } finally {
+    offCmp()
     aborter.value = null
     isComparing.value = false
   }
@@ -149,31 +178,33 @@ async function runCompare() {
 
 const diffCount = computed(() => objects.value.filter((o) => o.status !== 'same').length)
 
-function toggleChecked(i: number) {
-  if (!selectable(objects.value[i])) return
+function toggleChecked(o: SchemaObjectDiff) {
+  if (!selectable(o)) return
   const s = new Set(checked.value)
-  if (s.has(i)) s.delete(i)
-  else s.add(i)
+  const k = objKey(o)
+  if (s.has(k)) s.delete(k)
+  else s.add(k)
   checked.value = s
 }
 
-function toggleExpanded(i: number) {
+function toggleExpanded(o: SchemaObjectDiff) {
   const s = new Set(expanded.value)
-  if (s.has(i)) s.delete(i)
-  else s.add(i)
+  const k = objKey(o)
+  if (s.has(k)) s.delete(k)
+  else s.add(k)
   expanded.value = s
 }
 
 const selectedStatements = computed(() => {
   const out: string[] = []
-  objects.value.forEach((o, i) => {
-    if (checked.value.has(i)) out.push(...(o.statements ?? []))
+  objects.value.forEach((o) => {
+    if (checked.value.has(objKey(o))) out.push(...(o.statements ?? []))
   })
   return out
 })
 
 const hasDestructiveSelected = computed(() =>
-  objects.value.some((o, i) => checked.value.has(i) && o.destructive),
+  objects.value.some((o) => checked.value.has(objKey(o)) && o.destructive),
 )
 
 // --- execute -------------------------------------------------------------------
@@ -257,6 +288,7 @@ function statusLabel(s: string): string {
     case 'create': return t('structSync.statusCreate')
     case 'drop': return t('structSync.statusDrop')
     case 'alter': return t('structSync.statusAlter')
+    case 'comparing': return t('structSync.statusComparing')
     default: return t('structSync.statusSame')
   }
 }
@@ -337,34 +369,38 @@ function statusLabel(s: string): string {
 
             <div v-if="sameSourceTarget" class="warning-row">{{ $t('structSync.sameSourceTarget') }}</div>
 
-            <!-- Diff list -->
-            <div v-if="compared" class="diff-section">
+            <!-- Diff list (fills live while comparing) -->
+            <div v-if="compared || isComparing" class="diff-section">
               <div class="diff-header">
-                <span>{{ $t('structSync.diffSummary', { total: objects.length, diff: diffCount }) }}</span>
+                <span v-if="isComparing">
+                  {{ $t('structSync.comparingLive', { n: comparedDone }) }}
+                  <template v-if="comparingName"> — {{ comparingName }}</template>
+                </span>
+                <span v-else>{{ $t('structSync.diffSummary', { total: objects.length, diff: diffCount }) }}</span>
               </div>
-              <div v-if="diffCount === 0" class="empty-diff">{{ $t('structSync.noDiff') }}</div>
+              <div v-if="compared && diffCount === 0" class="empty-diff">{{ $t('structSync.noDiff') }}</div>
               <div v-else class="diff-list">
-                <template v-for="(o, i) in objects" :key="o.kind + ':' + o.name">
-                  <div v-if="o.status !== 'same'" class="diff-row" :class="{ inactive: !selectable(o) }">
+                <template v-for="o in objects" :key="objKey(o)">
+                  <div v-if="o.status !== 'same'" class="diff-row" :class="{ inactive: !selectable(o), comparing: o.status === 'comparing' }">
                     <input
                       type="checkbox"
-                      :checked="checked.has(i)"
+                      :checked="checked.has(objKey(o))"
                       :disabled="!selectable(o) || isExecuting"
-                      @change="toggleChecked(i)"
+                      @change="toggleChecked(o)"
                     />
-                    <span class="diff-name" @click="toggleExpanded(i)">{{ o.name }}</span>
+                    <span class="diff-name" @click="toggleExpanded(o)">{{ o.name }}</span>
                     <span class="tag kind">{{ o.kind === 'view' ? $t('structSync.kindView') : $t('structSync.kindTable') }}</span>
                     <span class="tag" :class="'st-' + o.status">{{ statusLabel(o.status) }}</span>
                     <span v-if="o.destructive" class="tag destructive">{{ $t('structSync.destructive') }}</span>
                     <span v-if="o.error" class="diff-error">{{ o.error }}</span>
-                    <span class="stmt-count" @click="toggleExpanded(i)">
+                    <span v-if="o.status !== 'comparing'" class="stmt-count" @click="toggleExpanded(o)">
                       {{ $t('structSync.statementCount', { n: o.statements?.length ?? 0 }) }}
-                      <svg viewBox="0 0 10 10" class="chev" :class="{ open: expanded.has(i) }" aria-hidden="true">
+                      <svg viewBox="0 0 10 10" class="chev" :class="{ open: expanded.has(objKey(o)) }" aria-hidden="true">
                         <path d="M3 2l4 3-4 3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
                       </svg>
                     </span>
                   </div>
-                  <pre v-if="o.status !== 'same' && expanded.has(i)" class="stmt-block">{{ (o.statements ?? []).join('\n') }}</pre>
+                  <pre v-if="o.status !== 'same' && expanded.has(objKey(o))" class="stmt-block">{{ (o.statements ?? []).join('\n') }}</pre>
                 </template>
               </div>
             </div>
@@ -585,6 +621,8 @@ function statusLabel(s: string): string {
   white-space: nowrap;
 }
 .tag.kind { border-color: rgba(127,127,127,0.35); opacity: 0.7; }
+.tag.st-comparing { background: rgba(127, 127, 127, 0.1); opacity: 0.75; }
+.diff-row.comparing .diff-name { opacity: 0.6; }
 .tag.st-create { background: rgba(24, 160, 88, 0.12); color: #18a058; }
 .tag.st-alter { background: rgba(240, 160, 32, 0.14); color: #d48806; }
 .tag.st-drop { background: rgba(208, 48, 80, 0.12); color: #d03050; }

@@ -84,7 +84,24 @@ type SchemaObjectDiff struct {
 
 // SchemaCompareResult is the ordered object list (tables first, then views).
 type SchemaCompareResult struct {
+	SyncID  string             `json:"syncId"`
 	Objects []SchemaObjectDiff `json:"objects"`
+}
+
+// emitSchemaCompareProgress streams per-object compare progress so the UI can
+// fill its list live instead of freezing on large databases. Phases:
+// "object-start" (name/kind), "object-done" (full diff), "done" (all objects).
+func emitSchemaCompareProgress(syncID, phase, name, kind string, obj *SchemaObjectDiff) {
+	payload := map[string]any{
+		"syncId": syncID,
+		"phase":  phase,
+		"name":   name,
+		"kind":   kind,
+	}
+	if obj != nil {
+		payload["object"] = obj
+	}
+	wailsbridge.Emit("sync:schema-progress", payload)
 }
 
 // CompareSchemas diffs every (selected) table and view of source vs target
@@ -154,12 +171,13 @@ func compareSchemasConns(ctx context.Context, srcConn, tgtConn dbdriver.Connecti
 		}
 	}
 
-	var out SchemaCompareResult
+	out := SchemaCompareResult{SyncID: fmt.Sprintf("sc-%d", time.Now().UnixNano())}
 	names := sortedKeys(srcByName, tgtByName)
 	for _, name := range names {
 		if err := ctx.Err(); err != nil {
 			return empty, err
 		}
+		emitSchemaCompareProgress(out.SyncID, "object-start", name, "table", nil)
 		_, inSrc := srcByName[name]
 		_, inTgt := tgtByName[name]
 		diff := SchemaObjectDiff{Name: name, Kind: "table"}
@@ -204,13 +222,15 @@ func compareSchemasConns(ctx context.Context, srcConn, tgtConn dbdriver.Connecti
 			diff.Statements = stmts
 		}
 		out.Objects = append(out.Objects, diff)
+		emitSchemaCompareProgress(out.SyncID, "object-done", name, "table", &diff)
 	}
 
 	// Views: presence + normalized-definition comparison. Best-effort — a
 	// driver whose view definitions can't be read just reports the error on
 	// the affected object.
-	viewDiffs := compareViews(ctx, srcConn, tgtConn, dia, req, included)
+	viewDiffs := compareViews(ctx, srcConn, tgtConn, dia, req, included, out.SyncID)
 	out.Objects = append(out.Objects, viewDiffs...)
+	emitSchemaCompareProgress(out.SyncID, "done", "", "", nil)
 	return out, nil
 }
 
@@ -274,7 +294,7 @@ func hasDestructiveChange(cs dbdriver.ChangeSet) bool {
 
 // compareViews diffs view presence + normalized definitions. MySQL-flavored
 // (information_schema.VIEWS); other drivers fail gracefully per object.
-func compareViews(ctx context.Context, srcConn, tgtConn dbdriver.Connection, dia dbdriver.Dialect, req SchemaCompareRequest, included func(string) bool) []SchemaObjectDiff {
+func compareViews(ctx context.Context, srcConn, tgtConn dbdriver.Connection, dia dbdriver.Dialect, req SchemaCompareRequest, included func(string) bool, syncID string) []SchemaObjectDiff {
 	srcMeta, tgtMeta := srcConn.Metadata(), tgtConn.Metadata()
 	srcViews, err := srcMeta.ListViews(ctx, req.SourceDB, req.SourceSchema)
 	if err != nil {
@@ -305,6 +325,7 @@ func compareViews(ctx context.Context, srcConn, tgtConn dbdriver.Connection, dia
 
 	var out []SchemaObjectDiff
 	for _, name := range sortedKeys(srcSet, tgtSet) {
+		emitSchemaCompareProgress(syncID, "object-start", name, "view", nil)
 		diff := SchemaObjectDiff{Name: name, Kind: "view"}
 		inSrc, inTgt := srcSet[name], tgtSet[name]
 		fq := dbdriver.QualifyTable(dia, req.TargetDB, req.TargetSchema, name)
@@ -333,6 +354,7 @@ func compareViews(ctx context.Context, srcConn, tgtConn dbdriver.Connection, dia
 			diff.Statements = []string{createViewStatement(fq, srcDefs[name], req, dia)}
 		}
 		out = append(out, diff)
+		emitSchemaCompareProgress(syncID, "object-done", name, "view", &diff)
 	}
 	return out
 }

@@ -69,16 +69,22 @@ type DataSyncExecResult struct {
 	Tables []DataTableDiff `json:"tables"`
 }
 
-func emitDataProgress(syncID, table string, st datasync.Stats, done bool) {
+// emitDataProgress streams per-table lifecycle events so the UI can render a
+// live row list during long compares/syncs. Phases: "table-start" (row begins),
+// "progress" (running counts, ~every merge batch), "table-done" (final counts
+// or skipped/error), "done" (whole run finished).
+func emitDataProgress(syncID, table, phase string, st datasync.Stats, skipped, errMsg string) {
 	wailsbridge.Emit("sync:data-progress", map[string]any{
 		"syncId":        syncID,
 		"table":         table,
+		"phase":         phase,
 		"inserts":       st.Inserts,
 		"updates":       st.Updates,
 		"deletes":       st.Deletes,
 		"scannedSource": st.ScannedSource,
 		"scannedTarget": st.ScannedTarget,
-		"done":          done,
+		"skipped":       skipped,
+		"error":         errMsg,
 	})
 }
 
@@ -274,25 +280,29 @@ func compareDataConns(ctx context.Context, srcConn, tgtConn dbdriver.Connection,
 			return empty, err
 		}
 		d := DataTableDiff{Table: p.table, Skipped: p.skipped}
-		if p.skipped == "" {
-			ts := newTableSync(p, srcConn, tgtConn, srcDrv.Dialect(), tgtDrv.Dialect(), req)
-			stats, samples, cerr := ts.Compare(ctx, sampleLimit, func(st datasync.Stats) {
-				emitDataProgress(res.SyncID, p.table, st, false)
-			})
-			if cerr != nil {
-				if ctx.Err() != nil {
-					return empty, cerr
-				}
-				d.Error = cerr.Error()
-			}
-			d.Inserts, d.Updates, d.Deletes = stats.Inserts, stats.Updates, stats.Deletes
-			d.ScannedSource, d.ScannedTarget = stats.ScannedSource, stats.ScannedTarget
-			d.Samples = samples
-			emitDataProgress(res.SyncID, p.table, stats, false)
+		if p.skipped != "" {
+			emitDataProgress(res.SyncID, p.table, "table-done", datasync.Stats{}, p.skipped, "")
+			res.Tables = append(res.Tables, d)
+			continue
 		}
+		emitDataProgress(res.SyncID, p.table, "table-start", datasync.Stats{}, "", "")
+		ts := newTableSync(p, srcConn, tgtConn, srcDrv.Dialect(), tgtDrv.Dialect(), req)
+		stats, samples, cerr := ts.Compare(ctx, sampleLimit, func(st datasync.Stats) {
+			emitDataProgress(res.SyncID, p.table, "progress", st, "", "")
+		})
+		if cerr != nil {
+			if ctx.Err() != nil {
+				return empty, cerr
+			}
+			d.Error = cerr.Error()
+		}
+		d.Inserts, d.Updates, d.Deletes = stats.Inserts, stats.Updates, stats.Deletes
+		d.ScannedSource, d.ScannedTarget = stats.ScannedSource, stats.ScannedTarget
+		d.Samples = samples
+		emitDataProgress(res.SyncID, p.table, "table-done", stats, "", d.Error)
 		res.Tables = append(res.Tables, d)
 	}
-	emitDataProgress(res.SyncID, "", datasync.Stats{}, true)
+	emitDataProgress(res.SyncID, "", "done", datasync.Stats{}, "", "")
 	return res, nil
 }
 
@@ -348,29 +358,33 @@ func executeDataSyncConns(ctx context.Context, srcConn, tgtConn, writeConn dbdri
 	res := DataSyncExecResult{SyncID: fmt.Sprintf("de-%d", time.Now().UnixNano())}
 	for _, p := range pairs {
 		if err := ctx.Err(); err != nil {
-			emitDataProgress(res.SyncID, "", datasync.Stats{}, true)
+			emitDataProgress(res.SyncID, "", "done", datasync.Stats{}, "", "cancelled")
 			return res, err
 		}
 		d := DataTableDiff{Table: p.table, Skipped: p.skipped}
-		if p.skipped == "" {
-			ts := newTableSync(p, srcConn, tgtConn, srcDrv.Dialect(), tgtDrv.Dialect(), compareReq)
-			stats, xerr := ts.Execute(ctx, writeConn, req.AllowDelete, func(st datasync.Stats) {
-				emitDataProgress(res.SyncID, p.table, st, false)
-			})
-			if xerr != nil {
-				if ctx.Err() != nil {
-					emitDataProgress(res.SyncID, "", datasync.Stats{}, true)
-					res.Tables = append(res.Tables, d)
-					return res, xerr
-				}
-				d.Error = xerr.Error()
-			}
-			d.Inserts, d.Updates, d.Deletes = stats.Inserts, stats.Updates, stats.Deletes
-			d.ScannedSource, d.ScannedTarget = stats.ScannedSource, stats.ScannedTarget
-			emitDataProgress(res.SyncID, p.table, stats, false)
+		if p.skipped != "" {
+			emitDataProgress(res.SyncID, p.table, "table-done", datasync.Stats{}, p.skipped, "")
+			res.Tables = append(res.Tables, d)
+			continue
 		}
+		emitDataProgress(res.SyncID, p.table, "table-start", datasync.Stats{}, "", "")
+		ts := newTableSync(p, srcConn, tgtConn, srcDrv.Dialect(), tgtDrv.Dialect(), compareReq)
+		stats, xerr := ts.Execute(ctx, writeConn, req.AllowDelete, func(st datasync.Stats) {
+			emitDataProgress(res.SyncID, p.table, "progress", st, "", "")
+		})
+		if xerr != nil {
+			if ctx.Err() != nil {
+				emitDataProgress(res.SyncID, "", "done", datasync.Stats{}, "", "cancelled")
+				res.Tables = append(res.Tables, d)
+				return res, xerr
+			}
+			d.Error = xerr.Error()
+		}
+		d.Inserts, d.Updates, d.Deletes = stats.Inserts, stats.Updates, stats.Deletes
+		d.ScannedSource, d.ScannedTarget = stats.ScannedSource, stats.ScannedTarget
+		emitDataProgress(res.SyncID, p.table, "table-done", stats, "", d.Error)
 		res.Tables = append(res.Tables, d)
 	}
-	emitDataProgress(res.SyncID, "", datasync.Stats{}, true)
+	emitDataProgress(res.SyncID, "", "done", datasync.Stats{}, "", "")
 	return res, nil
 }

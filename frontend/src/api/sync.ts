@@ -51,6 +51,20 @@ export function onSyncProgress(cb: (p: SyncProgress) => void): () => void {
   return on<SyncProgress>('sync:progress', cb)
 }
 
+/** Per-object progress while CompareSchemas walks the two databases. */
+export type SchemaCompareProgress = {
+  syncId: string
+  phase: 'object-start' | 'object-done' | 'done'
+  name: string
+  kind: string
+  object?: SchemaObjectDiff
+}
+
+/** Subscribe to schema-compare progress events. Returns the unsubscribe function. */
+export function onSchemaCompareProgress(cb: (p: SchemaCompareProgress) => void): () => void {
+  return on<SchemaCompareProgress>('sync:schema-progress', cb)
+}
+
 // ---- data sync ---------------------------------------------------------------
 
 export type DataCompareRequest = BoundDataCompareRequest
@@ -62,12 +76,14 @@ export type DataSyncExecResult = BoundDataExecResult
 export type DataSyncProgress = {
   syncId: string
   table: string
+  phase: 'table-start' | 'progress' | 'table-done' | 'done'
   inserts: number
   updates: number
   deletes: number
   scannedSource: number
   scannedTarget: number
-  done: boolean
+  skipped?: string
+  error?: string
 }
 
 export function compareData(req: DataCompareRequest, signal?: AbortSignal): Promise<DataCompareResult> {

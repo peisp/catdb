@@ -142,6 +142,49 @@ const aborter = ref<AbortController | null>(null)
 const liveTable = ref('')
 const liveStats = ref({ inserts: 0, updates: 0, deletes: 0 })
 
+// Live per-table rows shown WHILE a compare runs, so a big database never
+// looks frozen: every selected table starts as pending, flips to running with
+// live counts, then done (or skipped/error).
+type LiveRow = {
+  table: string
+  state: 'pending' | 'running' | 'done'
+  inserts: number
+  updates: number
+  deletes: number
+  scannedSource: number
+  scannedTarget: number
+  skipped?: string
+  error?: string
+}
+const liveRows = ref<LiveRow[]>([])
+const liveDoneCount = computed(() => liveRows.value.filter((r) => r.state === 'done').length)
+
+function initLiveRows() {
+  liveRows.value = Array.from(selectedTables.value)
+    .sort()
+    .map((x) => ({ table: x, state: 'pending' as const, inserts: 0, updates: 0, deletes: 0, scannedSource: 0, scannedTarget: 0 }))
+}
+
+function applyLiveEvent(p: syncApi.DataSyncProgress) {
+  if (!p.table) return
+  const idx = liveRows.value.findIndex((r) => r.table === p.table)
+  if (idx < 0) return
+  const r = { ...liveRows.value[idx] }
+  r.inserts = p.inserts
+  r.updates = p.updates
+  r.deletes = p.deletes
+  r.scannedSource = p.scannedSource
+  r.scannedTarget = p.scannedTarget
+  if (p.phase === 'table-start' || p.phase === 'progress') {
+    r.state = 'running'
+  } else if (p.phase === 'table-done') {
+    r.state = 'done'
+    r.skipped = p.skipped || undefined
+    r.error = p.error || undefined
+  }
+  liveRows.value = [...liveRows.value.slice(0, idx), r, ...liveRows.value.slice(idx + 1)]
+}
+
 let offProgress: (() => void) | null = null
 onUnmounted(() => { offProgress?.() })
 
@@ -149,6 +192,7 @@ function clearResult() {
   compared.value = false
   tables.value = []
   expanded.value = new Set()
+  liveRows.value = []
 }
 
 const canCompare = computed(
@@ -178,9 +222,13 @@ async function runCompare() {
   clearResult()
   liveTable.value = ''
   liveStats.value = { inserts: 0, updates: 0, deletes: 0 }
+  initLiveRows()
   const ac = new AbortController()
   aborter.value = ac
-  subscribeProgress('dc-')
+  offProgress?.()
+  offProgress = syncApi.onDataSyncProgress((p) => {
+    if (p.syncId.startsWith('dc-')) applyLiveEvent(p)
+  })
   try {
     const res = await syncApi.compareData({
       sourceConnId: srcConnId.value,
@@ -375,7 +423,7 @@ function sampleText(d: DataTableDiff): string {
             <div v-if="sameSourceTarget" class="warning-row">{{ $t('dataSync.sameSourceTarget') }}</div>
 
             <!-- Table selection (pre-compare) -->
-            <div v-if="!compared && srcTables.length > 0" class="section tables-section">
+            <div v-if="!compared && !isComparing && srcTables.length > 0" class="section tables-section">
               <h3 class="section-label">
                 {{ $t('dataSync.tables') }}
                 <span class="table-count">({{ selectedTables.size }} / {{ srcTables.length }})</span>
@@ -402,8 +450,32 @@ function sampleText(d: DataTableDiff): string {
               </n-spin>
             </div>
 
+            <!-- Live compare rows: every selected table pending → running(counts) → done -->
+            <div v-if="isComparing" class="diff-section">
+              <div class="diff-header">
+                <span>{{ $t('dataSync.comparingLive', { done: liveDoneCount, total: liveRows.length }) }}</span>
+              </div>
+              <div class="diff-list">
+                <div v-for="r in liveRows" :key="r.table" class="diff-row" :class="{ pending: r.state === 'pending' }">
+                  <span class="diff-name">{{ r.table }}</span>
+                  <span v-if="r.state === 'pending'" class="tag skipped">{{ $t('dataSync.statePending') }}</span>
+                  <template v-else>
+                    <span v-if="r.skipped" class="tag skipped">{{ skipLabel(r.skipped) }}</span>
+                    <span v-else-if="r.error" class="diff-error">{{ r.error }}</span>
+                    <template v-else>
+                      <span class="stat ins" :class="{ zero: r.inserts === 0 }">+{{ r.inserts }}</span>
+                      <span class="stat upd" :class="{ zero: r.updates === 0 }">~{{ r.updates }}</span>
+                      <span class="stat del" :class="{ zero: r.deletes === 0 }">−{{ r.deletes }}</span>
+                      <span class="scanned">{{ $t('dataSync.scanned', { src: r.scannedSource, tgt: r.scannedTarget }) }}</span>
+                    </template>
+                    <span v-if="r.state === 'running'" class="tag running">{{ $t('dataSync.stateRunning') }}</span>
+                  </template>
+                </div>
+              </div>
+            </div>
+
             <!-- Compare result -->
-            <div v-if="compared" class="diff-section">
+            <div v-if="compared && !isComparing" class="diff-section">
               <div class="diff-header">
                 <span>{{ $t('dataSync.diffSummary', { total: tables.length, diff: diffTables.length }) }}</span>
                 <button type="button" class="select-btn" @click="clearResult">{{ $t('dataSync.reselect') }}</button>
@@ -436,10 +508,10 @@ function sampleText(d: DataTableDiff): string {
               </div>
             </div>
 
-            <!-- Live progress -->
-            <div v-if="isComparing || isExecuting" class="progress-row">
+            <!-- Live progress (execute pass) -->
+            <div v-if="isExecuting" class="progress-row">
               <span class="progress-text">
-                {{ isExecuting ? $t('dataSync.executing') : $t('dataSync.comparing') }}
+                {{ $t('dataSync.executing') }}
                 <template v-if="liveTable"> — {{ liveTable }}：+{{ liveStats.inserts }} ~{{ liveStats.updates }} −{{ liveStats.deletes }}</template>
               </span>
             </div>
@@ -691,6 +763,8 @@ function sampleText(d: DataTableDiff): string {
   border: 1px solid transparent; white-space: nowrap;
 }
 .tag.skipped { background: rgba(127, 127, 127, 0.12); opacity: 0.8; }
+.tag.running { background: rgba(22, 119, 255, 0.12); color: #1677ff; }
+.diff-row.pending { opacity: 0.45; }
 .diff-error { color: #d03050; font-size: 11px; }
 .stmt-count {
   margin-left: auto;
