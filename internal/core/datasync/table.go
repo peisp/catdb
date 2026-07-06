@@ -73,23 +73,39 @@ func orderedSelect(dia dbdriver.Dialect, db, schema, table string, cols, pk []st
 		strings.Join(order, ", "))
 }
 
-// openStreams starts both ordered SELECTs. The returned close func must run
-// even on error paths.
+// openStreams starts both ordered SELECTs CONCURRENTLY. The source stream
+// pins a pool connection for the whole merge, so when source and target share
+// a connection profile the very first table forces a fresh physical dial
+// (TCP + handshake + TLS — seconds over an SSH tunnel) for the target side;
+// opening in parallel makes that cost max(src, tgt) instead of src + tgt.
+// The returned close func must run even on error paths.
 func (t *TableSync) openStreams(ctx context.Context) (src, tgt RowSource, closeAll func(), err error) {
-	srcRS, err := t.SrcQuerier.Query(ctx, orderedSelect(t.SrcDialect, t.SrcDB, t.SrcSchema, t.Table, t.Columns, t.PK))
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("datasync: read source %s: %w", t.Table, err)
+	type opened struct {
+		rs  dbdriver.ResultSet
+		err error
 	}
-	tgtRS, err := t.TgtQuerier.Query(ctx, orderedSelect(t.TgtDialect, t.TgtDB, t.TgtSchema, t.Table, t.Columns, t.PK))
-	if err != nil {
-		_ = srcRS.Close()
-		return nil, nil, nil, fmt.Errorf("datasync: read target %s: %w", t.Table, err)
+	srcCh := make(chan opened, 1)
+	go func() {
+		rs, err := t.SrcQuerier.Query(ctx, orderedSelect(t.SrcDialect, t.SrcDB, t.SrcSchema, t.Table, t.Columns, t.PK))
+		srcCh <- opened{rs, err}
+	}()
+	tgtRS, tgtErr := t.TgtQuerier.Query(ctx, orderedSelect(t.TgtDialect, t.TgtDB, t.TgtSchema, t.Table, t.Columns, t.PK))
+	srcRes := <-srcCh
+	if srcRes.err != nil {
+		if tgtErr == nil {
+			_ = tgtRS.Close()
+		}
+		return nil, nil, nil, fmt.Errorf("datasync: read source %s: %w", t.Table, srcRes.err)
+	}
+	if tgtErr != nil {
+		_ = srcRes.rs.Close()
+		return nil, nil, nil, fmt.Errorf("datasync: read target %s: %w", t.Table, tgtErr)
 	}
 	closeAll = func() {
-		_ = srcRS.Close()
+		_ = srcRes.rs.Close()
 		_ = tgtRS.Close()
 	}
-	return NewResultSetSource(srcRS, t.batch()), NewResultSetSource(tgtRS, t.batch()), closeAll, nil
+	return NewResultSetSource(srcRes.rs, t.batch()), NewResultSetSource(tgtRS, t.batch()), closeAll, nil
 }
 
 // Compare runs the merge in dry-run mode: counts + up to sampleLimit samples.

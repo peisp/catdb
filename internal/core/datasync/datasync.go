@@ -125,6 +125,12 @@ func Merge(ctx context.Context, src, tgt RowSource, pkIdx []int, h Handlers) (St
 	if tgtRow != nil {
 		stats.ScannedTarget++
 	}
+	// First-batch signal: both streams are open and rows are flowing. Without
+	// this the UI sees nothing until progressEvery rows have merged, which
+	// reads as a hang right after the (potentially slow) stream opening.
+	if h.Progress != nil {
+		h.Progress(stats)
+	}
 
 	advanceSrc := func() error {
 		srcRow, err = src.Next()

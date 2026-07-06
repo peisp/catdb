@@ -175,6 +175,24 @@ func TestMergeSourceError(t *testing.T) {
 	}
 }
 
+func TestMergeEmitsEarlyProgress(t *testing.T) {
+	// The first Progress call must arrive right after the initial batch pulls
+	// (streams-open signal), not only after progressEvery merged rows.
+	var calls []Stats
+	h := Handlers{Progress: func(s Stats) { calls = append(calls, s) }}
+	_, err := Merge(context.Background(),
+		src([]any{int64(1), "a"}), src([]any{int64(1), "a"}), []int{0}, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) < 2 {
+		t.Fatalf("want early + final progress, got %d calls", len(calls))
+	}
+	if calls[0].ScannedSource != 1 || calls[0].ScannedTarget != 1 {
+		t.Fatalf("early progress must reflect the first rows, got %+v", calls[0])
+	}
+}
+
 func TestCompareValueOrdering(t *testing.T) {
 	cases := []struct {
 		a, b any
