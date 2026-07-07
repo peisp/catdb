@@ -41,6 +41,18 @@ function qualify(d: import('./dialect').UIDialect, ctx: ActiveCtx): string {
     .join('.')
 }
 
+/** Human-readable table name for prompts/toasts (db[.schema].table, unquoted). */
+function displayName(ctx: ActiveCtx): string {
+  return [ctx.db, ctx.schema, ctx.table].filter(Boolean).join('.')
+}
+
+// DDL below must run in the table's own database: schema-ful drivers
+// (Postgres) reject three-part names that reference a sibling database, so
+// route via QueryOptions.DefaultDatabase (a no-op for single-db drivers).
+function runOpts(ctx: ActiveCtx) {
+  return { defaultDatabase: ctx.db }
+}
+
 let active: ActiveCtx | null = null
 
 /** Called by TablesOverview / ObjectTree right before the native menu opens. */
@@ -56,13 +68,13 @@ export async function renameTable(ctx: ActiveCtx): Promise<void> {
   const { message } = createDiscreteApi(['message'])
   const newName = await openTextPrompt({
     title: t('table.rename.title'),
-    label: t('common.currentLabel', { name: `${ctx.db}.${ctx.table}` }),
+    label: t('common.currentLabel', { name: displayName(ctx) }),
     initial: ctx.table,
     okText: t('common.rename'),
     validate: (v) => {
       if (!v) return t('table.rename.empty')
       if (v === ctx.table) return t('common.sameName')
-      if (/[`\s.]/.test(v)) return t('table.rename.invalidChars')
+      if (/[`"\s.]/.test(v)) return t('table.rename.invalidChars')
       return null
     },
   })
@@ -74,15 +86,23 @@ export async function renameTable(ctx: ActiveCtx): Promise<void> {
     await runQuery(
       ctx.connId,
       `ALTER TABLE ${qualify(d, ctx)} RENAME TO ${quoteIdentWith(d, newName)}`,
+      runOpts(ctx),
     )
     // Re-point any open tabs at the new name so titles + future
     // openTableTab lookups stay consistent.
     const qs = useQueryStore()
     for (const t of qs.tabs) {
-      if (t.connId !== ctx.connId || t.db !== ctx.db || t.table !== ctx.table) continue
+      if (
+        t.connId !== ctx.connId ||
+        t.db !== ctx.db ||
+        (t.schema ?? '') !== (ctx.schema ?? '') ||
+        t.table !== ctx.table
+      )
+        continue
       t.table = newName
-      if (t.kind === 'table') t.title = `⊞ ${ctx.db}.${newName}`
-      else if (t.kind === 'structure') t.title = `⚙ ${ctx.db}.${newName}`
+      const qualified = [ctx.db, ctx.schema, newName].filter(Boolean).join('.')
+      if (t.kind === 'table') t.title = `⊞ ${qualified}`
+      else if (t.kind === 'structure') t.title = `⚙ ${qualified}`
     }
     const meta = useMetadataStore()
     meta.invalidateTables(ctx.connId, ctx.db, ctx.schema ?? '')
@@ -125,7 +145,7 @@ export function installTableContextMenuListener(): void {
     const ctx = active
     const choice = await confirm({
       title: t('table.truncate.title'),
-      message: t('table.truncate.confirm', { name: `${ctx.db}.${ctx.table}` }),
+      message: t('table.truncate.confirm', { name: displayName(ctx) }),
       buttons: [
         { value: 'cancel', label: t('common.cancel'), isCancel: true },
         { value: 'truncate', label: t('table.truncate.ok') },
@@ -134,7 +154,7 @@ export function installTableContextMenuListener(): void {
     if (choice !== 'truncate') return
     try {
       const d = await uiDialectForConnection(ctx.connId)
-      await runQuery(ctx.connId, `TRUNCATE TABLE ${qualify(d, ctx)}`)
+      await runQuery(ctx.connId, `TRUNCATE TABLE ${qualify(d, ctx)}`, runOpts(ctx))
       message.success(t('table.truncate.success', { name: ctx.table }))
       await ctx.onAfterMutate?.()
     } catch (e) {
@@ -148,7 +168,7 @@ export function installTableContextMenuListener(): void {
     const choice = await confirm({
       kind: 'error',
       title: t('table.drop.title'),
-      message: t('table.drop.confirm', { name: `${ctx.db}.${ctx.table}` }),
+      message: t('table.drop.confirm', { name: displayName(ctx) }),
       buttons: [
         { value: 'cancel', label: t('common.cancel'), isCancel: true },
         { value: 'drop', label: t('common.delete') },
@@ -157,7 +177,7 @@ export function installTableContextMenuListener(): void {
     if (choice !== 'drop') return
     try {
       const d = await uiDialectForConnection(ctx.connId)
-      await runQuery(ctx.connId, `DROP TABLE ${qualify(d, ctx)}`)
+      await runQuery(ctx.connId, `DROP TABLE ${qualify(d, ctx)}`, runOpts(ctx))
       message.success(t('table.drop.success', { name: ctx.table }))
       useMetadataStore().invalidateTables(ctx.connId, ctx.db, ctx.schema ?? '')
       await ctx.onAfterMutate?.()

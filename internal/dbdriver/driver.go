@@ -2,6 +2,7 @@ package dbdriver
 
 import (
 	"context"
+	"errors"
 )
 
 // Driver is the entry point for one database type (e.g. "mysql", "postgres").
@@ -56,6 +57,41 @@ type Connection interface {
 	// query/exec ops route through the same physical connection while the
 	// transaction is in flight. opts may be nil (driver defaults).
 	Begin(ctx context.Context, opts *TxOptions) (Tx, error)
+}
+
+// DatabaseRouter is an OPTIONAL extension for drivers whose databases are
+// hard isolation boundaries (PostgreSQL): one session cannot execute SQL
+// against a sibling database, so the driver maintains per-database pools
+// internally. Generic layers that are about to run SQL addressed at a
+// specific database resolve their Querier/Tx through RouteQuerier/RouteBegin,
+// which probe for this extension; drivers without it (MySQL — every database
+// is reachable from one session) fall back to Connection.Querier()/Begin().
+type DatabaseRouter interface {
+	// QuerierFor returns a Querier whose session database is db.
+	QuerierFor(ctx context.Context, db string) (Querier, error)
+	// BeginFor starts a transaction on db.
+	BeginFor(ctx context.Context, db string, opts *TxOptions) (Tx, error)
+}
+
+// RouteQuerier resolves the Querier for SQL addressed at db. db=="" always
+// means the connection's default database.
+func RouteQuerier(ctx context.Context, conn Connection, db string) (Querier, error) {
+	if r, ok := conn.(DatabaseRouter); ok && db != "" {
+		return r.QuerierFor(ctx, db)
+	}
+	q := conn.Querier()
+	if q == nil {
+		return nil, errors.New("dbdriver: connection has no querier")
+	}
+	return q, nil
+}
+
+// RouteBegin starts a transaction on db (see RouteQuerier).
+func RouteBegin(ctx context.Context, conn Connection, db string, opts *TxOptions) (Tx, error) {
+	if r, ok := conn.(DatabaseRouter); ok && db != "" {
+		return r.BeginFor(ctx, db, opts)
+	}
+	return conn.Begin(ctx, opts)
 }
 
 // Querier runs SQL on a Connection or Tx.

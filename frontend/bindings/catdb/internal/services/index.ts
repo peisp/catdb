@@ -31,7 +31,6 @@ export {
     AutocompleteSnapshot,
     AutocompleteTable,
     BrowseResult,
-    CharsetCatalog,
     ConnectionDraft,
     CreateTableRequest,
     DataCompareRequest,

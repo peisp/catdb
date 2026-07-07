@@ -122,14 +122,16 @@ export class Group {
 }
 
 /**
- * SavedQuery is a named SQL snippet persisted under a connection's database
- * node in the object tree. Scoped by (ConnID, DBName); SQL text holds no
- * secrets so it lives in SQLite alongside the connection profile.
+ * SavedQuery is a named SQL snippet shown under the object tree's 「查询」
+ * group. Scoped by (ConnID, DBName, SchemaName) — SchemaName is "" for
+ * drivers without a schema level (MySQL). SQL text holds no secrets so it
+ * lives in SQLite alongside the connection profile.
  */
 export class SavedQuery {
     "id": string;
     "connId": string;
     "dbName": string;
+    "schemaName": string;
     "name": string;
     "sqlText": string;
     "sortOrder": number;
@@ -146,6 +148,9 @@ export class SavedQuery {
         }
         if (!("dbName" in $$source)) {
             this["dbName"] = "";
+        }
+        if (!("schemaName" in $$source)) {
+            this["schemaName"] = "";
         }
         if (!("name" in $$source)) {
             this["name"] = "";

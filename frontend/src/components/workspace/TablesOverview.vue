@@ -184,7 +184,7 @@ function editSelected() {
 
 function createTable() {
   if (!props.db) return
-  queryStore.openNewTableTab(props.connId, props.db)
+  queryStore.openNewTableTab(props.connId, props.db, props.schema ?? '')
 }
 
 function renameSelected() {

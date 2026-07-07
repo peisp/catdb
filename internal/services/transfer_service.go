@@ -51,6 +51,7 @@ type ExportOptions struct {
 	IncludeHeader bool           `json:"includeHeader,omitempty"` // CSV: write column row
 	IncludeDDL    bool           `json:"includeDDL,omitempty"`    // SQL: include CREATE TABLE (single-table exports only)
 	TableName     string         `json:"tableName,omitempty"`     // SQL: target table name for INSERTs
+	DB            string         `json:"db,omitempty"`            // database the SQL addresses (per-db routing)
 }
 
 // ExportResult is the synchronous return — progress events still fire during.
@@ -121,9 +122,9 @@ func (s *TransferService) exportStreaming(ctx context.Context, connID, sqlText s
 			return empty, err
 		}
 	}
-	q := conn.Querier()
-	if q == nil {
-		return empty, fmt.Errorf("TransferService: connection has no querier")
+	q, err := dbdriver.RouteQuerier(ctx, conn, opts.DB)
+	if err != nil {
+		return empty, err
 	}
 
 	transferID := "x-" + uuid.NewString()
@@ -217,8 +218,10 @@ func (s *TransferService) ExportTable(ctx context.Context, connID, db, schema, t
 	}
 	sqlText := fmt.Sprintf("SELECT * FROM %s", dbdriver.QualifyTable(dia, db, schema, table))
 	// Carry the table name through so the SQL writer can produce real
-	// INSERT INTO <table> statements rather than INSERT INTO query_results.
+	// INSERT INTO <table> statements rather than INSERT INTO query_results,
+	// and the database so exportStreaming routes to the right pool.
 	opts.TableName = table
+	opts.DB = db
 
 	// For SQL+IncludeDDL we prepend SHOW CREATE TABLE before the data dump.
 	var ddlPrefix string
@@ -551,9 +554,9 @@ func (s *TransferService) StartTransfer(ctx context.Context, req DataTransferReq
 			return empty, fmt.Errorf("TransferService: source: %w", err)
 		}
 	}
-	srcQ := srcConn.Querier()
-	if srcQ == nil {
-		return empty, fmt.Errorf("TransferService: source has no querier")
+	srcQ, err := dbdriver.RouteQuerier(ctx, srcConn, req.SourceDB)
+	if err != nil {
+		return empty, fmt.Errorf("TransferService: source: %w", err)
 	}
 
 	// Resolve target connection.
@@ -564,9 +567,9 @@ func (s *TransferService) StartTransfer(ctx context.Context, req DataTransferReq
 			return empty, fmt.Errorf("TransferService: target: %w", err)
 		}
 	}
-	tgtQ := tgtConn.Querier()
-	if tgtQ == nil {
-		return empty, fmt.Errorf("TransferService: target has no querier")
+	tgtQ, err := dbdriver.RouteQuerier(ctx, tgtConn, req.TargetDB)
+	if err != nil {
+		return empty, fmt.Errorf("TransferService: target: %w", err)
 	}
 
 	// Drivers / dialects for identifier quoting.

@@ -111,9 +111,9 @@ func (s *EditService) ApplyChange(ctx context.Context, connID string, ch RowChan
 		return empty, err
 	}
 
-	q := conn.Querier()
-	if q == nil {
-		return empty, fmt.Errorf("EditService: connection has no querier")
+	q, err := dbdriver.RouteQuerier(ctx, conn, ch.DB)
+	if err != nil {
+		return empty, err
 	}
 	res, err := q.Exec(ctx, sqlText, args...)
 	if err != nil {

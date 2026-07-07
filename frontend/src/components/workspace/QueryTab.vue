@@ -196,7 +196,14 @@ watch(
 const editor = ref<InstanceType<typeof SqlEditor> | null>(null)
 
 function runOpts() {
-  return currentDb.value ? { defaultSchema: currentDb.value } : {}
+  if (!currentDb.value) return {}
+  // Schema-ful databases (Postgres) are isolation boundaries: the picked
+  // database routes to its own session (defaultDatabase) and unqualified
+  // names resolve via the server's default search_path. On MySQL the picker
+  // value IS the namespace (USE db → defaultSchema).
+  return caps.value?.schemas
+    ? { defaultDatabase: currentDb.value }
+    : { defaultSchema: currentDb.value }
 }
 
 async function run() {
@@ -241,7 +248,7 @@ function onResultExport(format: string) {
     message.warning(t('queryTab.exportNeedsSql'))
     return
   }
-  startExport({ kind: 'query', connId: tab.value.connId, sql: tab.value.sql, defaultName: 'query-' + tab.value.id }, format as any)
+  startExport({ kind: 'query', connId: tab.value.connId, sql: tab.value.sql, db: caps.value?.schemas ? (currentDb.value ?? '') : '', defaultName: 'query-' + tab.value.id }, format as any)
 }
 
 function onSqlUpdate(v: string) {

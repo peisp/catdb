@@ -168,7 +168,7 @@ func (t *TableSync) Execute(ctx context.Context, writeConn dbdriver.Connection, 
 	}
 	defer closeAll()
 
-	ap := &txApplier{conn: writeConn, batch: t.batch()}
+	ap := &txApplier{conn: writeConn, db: t.TgtDB, batch: t.batch()}
 	defer ap.rollback()
 
 	rowMap := func(row []any, only []int) map[string]any {
@@ -235,6 +235,7 @@ func (t *TableSync) Execute(ctx context.Context, writeConn dbdriver.Connection, 
 // transactions: commit every `batch` statements, keep going.
 type txApplier struct {
 	conn    dbdriver.Connection
+	db      string // target database (per-db routing on schema-isolated drivers)
 	batch   int
 	tx      dbdriver.Tx
 	pending int
@@ -242,7 +243,7 @@ type txApplier struct {
 
 func (a *txApplier) exec(ctx context.Context, sqlText string, args []any) error {
 	if a.tx == nil {
-		tx, err := a.conn.Begin(ctx, nil)
+		tx, err := dbdriver.RouteBegin(ctx, a.conn, a.db, nil)
 		if err != nil {
 			return fmt.Errorf("datasync: begin: %w", err)
 		}

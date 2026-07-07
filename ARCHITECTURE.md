@@ -142,7 +142,9 @@ type Metadata interface {
 }
 
 // 可选扩展（类型断言探测）：BulkMetadata（整库批量元数据，加速结构同步）、
-// DatabaseEditor（建库/改库 UI：字符集/排序规则清单 + CREATE/ALTER DATABASE 渲染）
+// DatabaseEditor（建库/改库 UI：驱动自描述的选项字段目录 DatabaseOptionFields
+// —— MySQL 是字符集/排序规则、PG 是所有者/模板/编码/locale/表空间 ——
+// + map 选项渲染 CREATE/ALTER DATABASE，前端动态渲染表单，无需改前端）
 
 type Dialect interface {
 	QuoteIdentifier(name string) string                // MySQL `x` / PG "x"

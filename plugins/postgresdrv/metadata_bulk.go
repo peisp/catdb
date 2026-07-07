@@ -16,7 +16,11 @@ var _ dbdriver.BulkMetadata = metadata{}
 
 func (m metadata) ListAllColumns(ctx context.Context, db, schema string) (map[string][]dbdriver.ColumnMeta, error) {
 	ns := resolveSchema(db, schema)
-	rows, err := m.pool.Query(ctx, columnsQuery+` ORDER BY c.relname, a.attnum`, ns)
+	pool, err := m.poolFor(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := pool.Query(ctx, columnsQuery+` ORDER BY c.relname, a.attnum`, ns)
 	if err != nil {
 		return nil, fmt.Errorf("postgresdrv: list all columns: %w", err)
 	}
@@ -34,7 +38,11 @@ func (m metadata) ListAllColumns(ctx context.Context, db, schema string) (map[st
 
 func (m metadata) ListAllIndexes(ctx context.Context, db, schema string) (map[string][]dbdriver.IndexInfo, error) {
 	ns := resolveSchema(db, schema)
-	rows, err := m.pool.Query(ctx, indexesQuery+` ORDER BY c.relname, i.relname, k.n`, ns)
+	pool, err := m.poolFor(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := pool.Query(ctx, indexesQuery+` ORDER BY c.relname, i.relname, k.n`, ns)
 	if err != nil {
 		return nil, fmt.Errorf("postgresdrv: list all indexes: %w", err)
 	}
@@ -51,7 +59,11 @@ func (m metadata) ListAllIndexes(ctx context.Context, db, schema string) (map[st
 
 func (m metadata) ListAllForeignKeys(ctx context.Context, db, schema string) (map[string][]dbdriver.ForeignKeyInfo, error) {
 	ns := resolveSchema(db, schema)
-	rows, err := m.pool.Query(ctx, foreignKeysQuery+` ORDER BY c.relname, con.conname, u.ord`, ns)
+	pool, err := m.poolFor(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := pool.Query(ctx, foreignKeysQuery+` ORDER BY c.relname, con.conname, u.ord`, ns)
 	if err != nil {
 		return nil, fmt.Errorf("postgresdrv: list all foreign keys: %w", err)
 	}

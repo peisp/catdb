@@ -256,21 +256,29 @@ func sameStringSet(a, b []string) bool {
 	return true
 }
 
-func newTableSync(p tablePair, srcConn, tgtConn dbdriver.Connection, srcDia, tgtDia dbdriver.Dialect, req DataCompareRequest) *datasync.TableSync {
+func newTableSync(ctx context.Context, p tablePair, srcConn, tgtConn dbdriver.Connection, srcDia, tgtDia dbdriver.Dialect, req DataCompareRequest) (*datasync.TableSync, error) {
+	srcQ, err := dbdriver.RouteQuerier(ctx, srcConn, req.SourceDB)
+	if err != nil {
+		return nil, fmt.Errorf("SyncService: source: %w", err)
+	}
+	tgtQ, err := dbdriver.RouteQuerier(ctx, tgtConn, req.TargetDB)
+	if err != nil {
+		return nil, fmt.Errorf("SyncService: target: %w", err)
+	}
 	return &datasync.TableSync{
 		Table:      p.table,
-		SrcQuerier: srcConn.Querier(),
+		SrcQuerier: srcQ,
 		SrcDialect: srcDia,
 		SrcDB:      req.SourceDB,
 		SrcSchema:  req.SourceSchema,
-		TgtQuerier: tgtConn.Querier(),
+		TgtQuerier: tgtQ,
 		TgtDialect: tgtDia,
 		TgtDB:      req.TargetDB,
 		TgtSchema:  req.TargetSchema,
 		PK:         p.pk,
 		Columns:    p.columns,
 		BatchSize:  req.BatchSize,
-	}
+	}, nil
 }
 
 // CompareData runs the dry-run merge for every resolvable table: counts +
@@ -317,7 +325,10 @@ func compareDataConns(ctx context.Context, srcConn, tgtConn dbdriver.Connection,
 			continue
 		}
 		emitDataProgress(res.SyncID, p.table, "table-start", datasync.Stats{}, "", "")
-		ts := newTableSync(p, srcConn, tgtConn, srcDrv.Dialect(), tgtDrv.Dialect(), req)
+		ts, err := newTableSync(ctx, p, srcConn, tgtConn, srcDrv.Dialect(), tgtDrv.Dialect(), req)
+		if err != nil {
+			return empty, err
+		}
 		stats, samples, cerr := ts.Compare(ctx, sampleLimit, func(st datasync.Stats) {
 			emitDataProgress(res.SyncID, p.table, "progress", st, "", "")
 		})
@@ -399,7 +410,10 @@ func executeDataSyncConns(ctx context.Context, srcConn, tgtConn, writeConn dbdri
 			continue
 		}
 		emitDataProgress(res.SyncID, p.table, "table-start", datasync.Stats{}, "", "")
-		ts := newTableSync(p, srcConn, tgtConn, srcDrv.Dialect(), tgtDrv.Dialect(), compareReq)
+		ts, err := newTableSync(ctx, p, srcConn, tgtConn, srcDrv.Dialect(), tgtDrv.Dialect(), compareReq)
+		if err != nil {
+			return empty, err
+		}
 		stats, xerr := ts.Execute(ctx, writeConn, req.AllowDelete, func(st datasync.Stats) {
 			emitDataProgress(res.SyncID, p.table, "progress", st, "", "")
 		})

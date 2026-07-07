@@ -13,12 +13,16 @@ import (
 
 // metadata implements dbdriver.Metadata against pg_catalog.
 //
-// A Postgres connection can only see its own database, so ListDatabases
-// returns just current_database() and every (db, schema, …) read ignores db —
-// the object tree stays consistent because it never learns about databases
-// this connection cannot serve.
+// Databases are isolation boundaries in Postgres, so every (db, schema, …)
+// read routes to the per-database pool via connection.poolFor — expanding a
+// sibling database in the object tree transparently opens its pool.
 type metadata struct {
-	pool *pgxpool.Pool
+	c *connection
+}
+
+// poolFor routes a metadata read to the pool of the database it addresses.
+func (m metadata) poolFor(ctx context.Context, db string) (*pgxpool.Pool, error) {
+	return m.c.poolFor(ctx, db)
 }
 
 // resolveSchema picks the namespace for a (db, schema) pair: the schema when
@@ -32,19 +36,30 @@ func resolveSchema(_, schema string) string {
 }
 
 func (m metadata) ListDatabases(ctx context.Context) ([]string, error) {
-	var db string
-	if err := m.pool.QueryRow(ctx, "SELECT current_database()").Scan(&db); err != nil {
-		return nil, fmt.Errorf("postgresdrv: current database: %w", err)
+	pool, err := m.poolFor(ctx, "")
+	if err != nil {
+		return nil, err
 	}
-	return []string{db}, nil
+	const q = `SELECT datname FROM pg_database
+	            WHERE NOT datistemplate AND datallowconn
+	            ORDER BY datname`
+	rows, err := pool.Query(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("postgresdrv: list databases: %w", err)
+	}
+	return scanStrings(rows)
 }
 
-func (m metadata) ListSchemas(ctx context.Context, _ string) ([]string, error) {
+func (m metadata) ListSchemas(ctx context.Context, db string) ([]string, error) {
+	pool, err := m.poolFor(ctx, db)
+	if err != nil {
+		return nil, err
+	}
 	const q = `SELECT nspname
 	             FROM pg_namespace
 	            WHERE nspname !~ '^pg_(toast|temp)' AND nspname <> 'pg_catalog' AND nspname <> 'information_schema'
 	            ORDER BY (nspname <> 'public'), nspname`
-	rows, err := m.pool.Query(ctx, q)
+	rows, err := pool.Query(ctx, q)
 	if err != nil {
 		return nil, fmt.Errorf("postgresdrv: list schemas: %w", err)
 	}
@@ -66,6 +81,10 @@ func scanStrings(rows pgx.Rows) ([]string, error) {
 
 func (m metadata) ListTables(ctx context.Context, db, schema string) ([]dbdriver.TableInfo, error) {
 	ns := resolveSchema(db, schema)
+	pool, err := m.poolFor(ctx, db)
+	if err != nil {
+		return nil, err
+	}
 	const q = `SELECT c.relname,
 	                  COALESCE(obj_description(c.oid, 'pg_class'), ''),
 	                  GREATEST(c.reltuples::bigint, 0),
@@ -74,7 +93,7 @@ func (m metadata) ListTables(ctx context.Context, db, schema string) ([]dbdriver
 	             JOIN pg_namespace n ON n.oid = c.relnamespace
 	            WHERE n.nspname = $1 AND c.relkind IN ('r', 'p')
 	            ORDER BY c.relname`
-	rows, err := m.pool.Query(ctx, q, ns)
+	rows, err := pool.Query(ctx, q, ns)
 	if err != nil {
 		return nil, fmt.Errorf("postgresdrv: list tables: %w", err)
 	}
@@ -93,12 +112,16 @@ func (m metadata) ListTables(ctx context.Context, db, schema string) ([]dbdriver
 
 func (m metadata) ListViews(ctx context.Context, db, schema string) ([]dbdriver.ViewInfo, error) {
 	ns := resolveSchema(db, schema)
+	pool, err := m.poolFor(ctx, db)
+	if err != nil {
+		return nil, err
+	}
 	const q = `SELECT c.relname, COALESCE(obj_description(c.oid, 'pg_class'), '')
 	             FROM pg_class c
 	             JOIN pg_namespace n ON n.oid = c.relnamespace
 	            WHERE n.nspname = $1 AND c.relkind IN ('v', 'm')
 	            ORDER BY c.relname`
-	rows, err := m.pool.Query(ctx, q, ns)
+	rows, err := pool.Query(ctx, q, ns)
 	if err != nil {
 		return nil, fmt.Errorf("postgresdrv: list views: %w", err)
 	}
@@ -117,11 +140,15 @@ func (m metadata) ListViews(ctx context.Context, db, schema string) ([]dbdriver.
 
 func (m metadata) ListViewDefinitions(ctx context.Context, db, schema string) (map[string]string, error) {
 	ns := resolveSchema(db, schema)
+	pool, err := m.poolFor(ctx, db)
+	if err != nil {
+		return nil, err
+	}
 	const q = `SELECT c.relname, pg_get_viewdef(c.oid, true)
 	             FROM pg_class c
 	             JOIN pg_namespace n ON n.oid = c.relnamespace
 	            WHERE n.nspname = $1 AND c.relkind IN ('v', 'm')`
-	rows, err := m.pool.Query(ctx, q, ns)
+	rows, err := pool.Query(ctx, q, ns)
 	if err != nil {
 		return nil, fmt.Errorf("postgresdrv: list view definitions: %w", err)
 	}
@@ -161,10 +188,14 @@ const columnsQuery = `SELECT c.relname,
 
 func (m metadata) ListColumns(ctx context.Context, db, schema, table string) ([]dbdriver.ColumnMeta, error) {
 	ns := resolveSchema(db, schema)
+	pool, err := m.poolFor(ctx, db)
+	if err != nil {
+		return nil, err
+	}
 	if table == "" {
 		return nil, fmt.Errorf("postgresdrv: ListColumns requires a table")
 	}
-	rows, err := m.pool.Query(ctx, columnsQuery+` AND c.relname = $2 ORDER BY a.attnum`, ns, table)
+	rows, err := pool.Query(ctx, columnsQuery+` AND c.relname = $2 ORDER BY a.attnum`, ns, table)
 	if err != nil {
 		return nil, fmt.Errorf("postgresdrv: list columns: %w", err)
 	}
@@ -225,10 +256,14 @@ const indexesQuery = `SELECT c.relname,
 
 func (m metadata) ListIndexes(ctx context.Context, db, schema, table string) ([]dbdriver.IndexInfo, error) {
 	ns := resolveSchema(db, schema)
+	pool, err := m.poolFor(ctx, db)
+	if err != nil {
+		return nil, err
+	}
 	if table == "" {
 		return nil, fmt.Errorf("postgresdrv: ListIndexes requires a table")
 	}
-	rows, err := m.pool.Query(ctx, indexesQuery+` AND c.relname = $2 ORDER BY i.relname, k.n`, ns, table)
+	rows, err := pool.Query(ctx, indexesQuery+` AND c.relname = $2 ORDER BY i.relname, k.n`, ns, table)
 	if err != nil {
 		return nil, fmt.Errorf("postgresdrv: list indexes: %w", err)
 	}
@@ -313,10 +348,14 @@ const foreignKeysQuery = `SELECT c.relname,
 
 func (m metadata) ListForeignKeys(ctx context.Context, db, schema, table string) ([]dbdriver.ForeignKeyInfo, error) {
 	ns := resolveSchema(db, schema)
+	pool, err := m.poolFor(ctx, db)
+	if err != nil {
+		return nil, err
+	}
 	if table == "" {
 		return nil, fmt.Errorf("postgresdrv: ListForeignKeys requires a table")
 	}
-	rows, err := m.pool.Query(ctx, foreignKeysQuery+` AND c.relname = $2 ORDER BY con.conname, u.ord`, ns, table)
+	rows, err := pool.Query(ctx, foreignKeysQuery+` AND c.relname = $2 ORDER BY con.conname, u.ord`, ns, table)
 	if err != nil {
 		return nil, fmt.Errorf("postgresdrv: list foreign keys: %w", err)
 	}
@@ -387,6 +426,10 @@ func fkAction(code string) string {
 
 func (m metadata) ListRoutines(ctx context.Context, db, schema string) ([]dbdriver.RoutineInfo, error) {
 	ns := resolveSchema(db, schema)
+	pool, err := m.poolFor(ctx, db)
+	if err != nil {
+		return nil, err
+	}
 	const q = `SELECT p.proname,
 	                  CASE p.prokind WHEN 'p' THEN 'PROCEDURE' ELSE 'FUNCTION' END,
 	                  pg_get_functiondef(p.oid),
@@ -395,7 +438,7 @@ func (m metadata) ListRoutines(ctx context.Context, db, schema string) ([]dbdriv
 	             JOIN pg_namespace n ON n.oid = p.pronamespace
 	            WHERE n.nspname = $1 AND p.prokind IN ('f', 'p')
 	            ORDER BY 2, 1`
-	rows, err := m.pool.Query(ctx, q, ns)
+	rows, err := pool.Query(ctx, q, ns)
 	if err != nil {
 		return nil, fmt.Errorf("postgresdrv: list routines: %w", err)
 	}
@@ -419,7 +462,7 @@ func (m metadata) ListRoutines(ctx context.Context, db, schema string) ([]dbdriv
 	              JOIN pg_namespace n ON n.oid = c.relnamespace
 	             WHERE n.nspname = $1 AND NOT t.tgisinternal
 	             ORDER BY t.tgname`
-	tRows, err := m.pool.Query(ctx, q2, ns)
+	tRows, err := pool.Query(ctx, q2, ns)
 	if err != nil {
 		return nil, fmt.Errorf("postgresdrv: list triggers: %w", err)
 	}
@@ -440,6 +483,10 @@ func (m metadata) ListRoutines(ctx context.Context, db, schema string) ([]dbdriv
 // PostgreSQL has no SHOW CREATE TABLE equivalent.
 func (m metadata) GetCreateTable(ctx context.Context, db, schema, table string) (string, error) {
 	ns := resolveSchema(db, schema)
+	pool, err := m.poolFor(ctx, db)
+	if err != nil {
+		return "", err
+	}
 	if table == "" {
 		return "", fmt.Errorf("postgresdrv: GetCreateTable requires a table")
 	}
@@ -463,7 +510,7 @@ func (m metadata) GetCreateTable(ctx context.Context, db, schema, table string) 
 	             FROM pg_class c
 	             JOIN pg_namespace n ON n.oid = c.relnamespace
 	            WHERE n.nspname = $1 AND c.relname = $2`
-	if err := m.pool.QueryRow(ctx, q, ns, table).Scan(&comment); err != nil {
+	if err := pool.QueryRow(ctx, q, ns, table).Scan(&comment); err != nil {
 		return "", fmt.Errorf("postgresdrv: table comment: %w", err)
 	}
 	return dialect{}.GenerateCreateTable(dbdriver.TableSchema{

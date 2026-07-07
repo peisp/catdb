@@ -12,19 +12,19 @@ import (
 // Use time.Time RFC3339 in JSON; the SQLite columns are stored as INTEGER
 // unix-epoch seconds for trivial portability.
 type ConnectionProfile struct {
-	ID        string             `json:"id"`
-	Name      string             `json:"name"`
-	Driver    string             `json:"driver"`
-	GroupID   string             `json:"groupId,omitempty"`
-	Host      string             `json:"host"`
-	Port      int                `json:"port"`
-	User      string             `json:"user"`
-	Database  string             `json:"database,omitempty"`
-	Params    map[string]string  `json:"params,omitempty"`
+	ID        string              `json:"id"`
+	Name      string              `json:"name"`
+	Driver    string              `json:"driver"`
+	GroupID   string              `json:"groupId,omitempty"`
+	Host      string              `json:"host"`
+	Port      int                 `json:"port"`
+	User      string              `json:"user"`
+	Database  string              `json:"database,omitempty"`
+	Params    map[string]string   `json:"params,omitempty"`
 	SSL       *dbdriver.SSLConfig `json:"ssl,omitempty"`
 	SSHTunnel *dbdriver.SSHConfig `json:"sshTunnel,omitempty"`
-	CreatedAt time.Time          `json:"createdAt"`
-	UpdatedAt time.Time          `json:"updatedAt"`
+	CreatedAt time.Time           `json:"createdAt"`
+	UpdatedAt time.Time           `json:"updatedAt"`
 }
 
 // Group is a logical folder for connections in the sidebar tree.
@@ -35,18 +35,20 @@ type Group struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-// SavedQuery is a named SQL snippet persisted under a connection's database
-// node in the object tree. Scoped by (ConnID, DBName); SQL text holds no
-// secrets so it lives in SQLite alongside the connection profile.
+// SavedQuery is a named SQL snippet shown under the object tree's 「查询」
+// group. Scoped by (ConnID, DBName, SchemaName) — SchemaName is "" for
+// drivers without a schema level (MySQL). SQL text holds no secrets so it
+// lives in SQLite alongside the connection profile.
 type SavedQuery struct {
-	ID        string    `json:"id"`
-	ConnID    string    `json:"connId"`
-	DBName    string    `json:"dbName"`
-	Name      string    `json:"name"`
-	SQLText   string    `json:"sqlText"`
-	SortOrder int       `json:"sortOrder"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID         string    `json:"id"`
+	ConnID     string    `json:"connId"`
+	DBName     string    `json:"dbName"`
+	SchemaName string    `json:"schemaName"`
+	Name       string    `json:"name"`
+	SQLText    string    `json:"sqlText"`
+	SortOrder  int       `json:"sortOrder"`
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
 // ToDBDriverConfig converts a stored profile + plaintext password into the

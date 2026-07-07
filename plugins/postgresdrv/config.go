@@ -1,7 +1,9 @@
 package postgresdrv
 
 import (
+	"context"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"catdb/internal/dbdriver"
+	"catdb/internal/tunnel"
 )
 
 const defaultDialTimeout = 15 * time.Second
@@ -88,6 +91,22 @@ func applyTLS(cc *pgconn.Config, cfg dbdriver.ConnConfig) error {
 		})
 	}
 	return nil
+}
+
+// applyTunnel wires the SSH tunnel's dial hooks into a pool config. Both are
+// required (ARCHITECTURE.md §6.2): DialFunc routes the TCP stream through the
+// jump host, LookupFunc keeps pgx from resolving the (possibly
+// jump-host-private) DB hostname on the local machine. nil tunnel = no-op.
+func applyTunnel(pc *pgxpool.Config, t *tunnel.Tunnel) {
+	if t == nil {
+		return
+	}
+	pc.ConnConfig.DialFunc = func(ctx context.Context, _, addr string) (net.Conn, error) {
+		return t.Dial(ctx, addr)
+	}
+	pc.ConnConfig.LookupFunc = func(_ context.Context, host string) ([]string, error) {
+		return []string{host}, nil
+	}
 }
 
 // quoteDSNValue renders a value for the keyword/value DSN form: single-quoted

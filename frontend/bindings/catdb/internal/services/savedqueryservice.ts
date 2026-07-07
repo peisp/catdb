@@ -24,10 +24,11 @@ export function Delete(id: string): $CancellablePromise<void> {
 }
 
 /**
- * List returns the saved queries scoped to a connection + database.
+ * List returns the saved queries scoped to a connection + database + schema
+ * ("" for schema-less databases).
  */
-export function List(connID: string, db: string): $CancellablePromise<storage$0.SavedQuery[]> {
-    return $Call.ByName("catdb/internal/services.SavedQueryService.List", connID, db).then(($result: any) => {
+export function List(connID: string, db: string, schema: string): $CancellablePromise<storage$0.SavedQuery[]> {
+    return $Call.ByName("catdb/internal/services.SavedQueryService.List", connID, db, schema).then(($result: any) => {
         return $$createType1($result);
     });
 }

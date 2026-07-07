@@ -65,25 +65,32 @@ export function getTableComment(connId: string, db: string, table: string, schem
 }
 // Database editor (optional per driver — rejects with
 // "database-editor-unsupported" when the driver has no support).
-export interface CharsetCatalog {
-  charsets: { name: string; defaultCollation?: string }[]
-  collations: { name: string; charset?: string }[]
+// The form is driver-described: each field is a select whose choices may
+// depend on another field's value (MySQL: collation depends on charset).
+export interface DatabaseOptionField {
+  key: string
+  label: string
+  options?: string[]
+  dependsOn?: string
+  optionsBy?: Record<string, string[]>
+  defaultBy?: Record<string, string>
+  default?: string
+  fixedOnAlter?: boolean
 }
-export interface DatabaseOptions {
-  charset?: string
-  collation?: string
+export type DatabaseOptionValues = Record<string, string>
+export function listDatabaseOptionFields(connId: string): Promise<DatabaseOptionField[]> {
+  return MetadataService.ListDatabaseOptionFields(connId) as unknown as Promise<DatabaseOptionField[]>
 }
-export function listCharsets(connId: string): Promise<CharsetCatalog> {
-  return MetadataService.ListCharsets(connId) as unknown as Promise<CharsetCatalog>
+export function getDatabaseOptions(connId: string, db: string): Promise<DatabaseOptionValues> {
+  return MetadataService.GetDatabaseOptions(connId, db) as unknown as Promise<DatabaseOptionValues>
 }
-export function getDatabaseOptions(connId: string, db: string): Promise<DatabaseOptions> {
-  return MetadataService.GetDatabaseOptions(connId, db) as unknown as Promise<DatabaseOptions>
+export function buildCreateDatabase(connId: string, name: string, opts: DatabaseOptionValues): Promise<string> {
+  return MetadataService.BuildCreateDatabase(connId, name, opts) as unknown as Promise<string>
 }
-export function buildCreateDatabase(connId: string, name: string, opts: DatabaseOptions): Promise<string> {
-  return MetadataService.BuildCreateDatabase(connId, name, opts as never) as unknown as Promise<string>
-}
-export function buildAlterDatabase(connId: string, name: string, opts: DatabaseOptions): Promise<string> {
-  return MetadataService.BuildAlterDatabase(connId, name, opts as never) as unknown as Promise<string>
+// opts must contain only the CHANGED options (the driver renders one ALTER
+// per alterable change and rejects immutable ones).
+export function buildAlterDatabase(connId: string, name: string, opts: DatabaseOptionValues): Promise<string> {
+  return MetadataService.BuildAlterDatabase(connId, name, opts) as unknown as Promise<string>
 }
 export function autocompleteFor(connId: string, db: string, schema = ''): Promise<AutocompleteSnapshot> {
   return MetadataService.AutocompleteFor(connId, db, schema) as unknown as Promise<AutocompleteSnapshot>

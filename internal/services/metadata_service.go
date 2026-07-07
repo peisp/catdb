@@ -46,12 +46,16 @@ func (s *MetadataService) resolveMeta(ctx context.Context, connID string) (dbdri
 	return m, nil
 }
 
-func (s *MetadataService) resolveDialect(ctx context.Context, connID string) (dbdriver.Dialect, error) {
+func (s *MetadataService) resolveDriver(ctx context.Context, connID string) (dbdriver.Driver, error) {
 	name, err := s.mgr.DriverName(ctx, connID)
 	if err != nil {
 		return nil, err
 	}
-	d, err := registry.Get(name)
+	return registry.Get(name)
+}
+
+func (s *MetadataService) resolveDialect(ctx context.Context, connID string) (dbdriver.Dialect, error) {
+	d, err := s.resolveDriver(ctx, connID)
 	if err != nil {
 		return nil, err
 	}
@@ -93,42 +97,28 @@ func (s *MetadataService) resolveDBEditor(ctx context.Context, connID string) (d
 	return ed, nil
 }
 
-// CharsetCatalog bundles the database editor's picker data in one call.
-type CharsetCatalog struct {
-	Charsets   []dbdriver.CharsetInfo   `json:"charsets"`
-	Collations []dbdriver.CollationInfo `json:"collations"`
-}
-
-// ListCharsets returns the server's charsets + collations for the database
-// editor. Errors with "database-editor-unsupported" when the driver has no
-// database editor support.
-func (s *MetadataService) ListCharsets(ctx context.Context, connID string) (CharsetCatalog, error) {
+// ListDatabaseOptionFields returns the driver's create/alter-database form
+// descriptor (choices resolved server-side). Errors with the stable
+// "database-editor-unsupported" slug when the driver has no editor support.
+func (s *MetadataService) ListDatabaseOptionFields(ctx context.Context, connID string) ([]dbdriver.DatabaseOptionField, error) {
 	ed, err := s.resolveDBEditor(ctx, connID)
 	if err != nil {
-		return CharsetCatalog{}, err
+		return nil, err
 	}
-	cs, err := ed.ListCharsets(ctx)
-	if err != nil {
-		return CharsetCatalog{}, err
-	}
-	co, err := ed.ListCollations(ctx)
-	if err != nil {
-		return CharsetCatalog{}, err
-	}
-	return CharsetCatalog{Charsets: cs, Collations: co}, nil
+	return ed.DatabaseOptionFields(ctx)
 }
 
 // GetDatabaseOptions returns db's current options (edit mode prefill).
-func (s *MetadataService) GetDatabaseOptions(ctx context.Context, connID, db string) (dbdriver.DatabaseOptions, error) {
+func (s *MetadataService) GetDatabaseOptions(ctx context.Context, connID, db string) (map[string]string, error) {
 	ed, err := s.resolveDBEditor(ctx, connID)
 	if err != nil {
-		return dbdriver.DatabaseOptions{}, err
+		return nil, err
 	}
 	return ed.GetDatabaseOptions(ctx, db)
 }
 
 // BuildCreateDatabase renders the CREATE DATABASE statement (preview + run).
-func (s *MetadataService) BuildCreateDatabase(ctx context.Context, connID, name string, opts dbdriver.DatabaseOptions) (string, error) {
+func (s *MetadataService) BuildCreateDatabase(ctx context.Context, connID, name string, opts map[string]string) (string, error) {
 	ed, err := s.resolveDBEditor(ctx, connID)
 	if err != nil {
 		return "", err
@@ -136,8 +126,9 @@ func (s *MetadataService) BuildCreateDatabase(ctx context.Context, connID, name 
 	return ed.CreateDatabaseSQL(name, opts)
 }
 
-// BuildAlterDatabase renders the ALTER DATABASE statement (preview + run).
-func (s *MetadataService) BuildAlterDatabase(ctx context.Context, connID, name string, opts dbdriver.DatabaseOptions) (string, error) {
+// BuildAlterDatabase renders the ALTER DATABASE statement(s) from the
+// CHANGED options only (preview + run).
+func (s *MetadataService) BuildAlterDatabase(ctx context.Context, connID, name string, opts map[string]string) (string, error) {
 	ed, err := s.resolveDBEditor(ctx, connID)
 	if err != nil {
 		return "", err
@@ -333,9 +324,15 @@ func (s *MetadataService) BuildCreateTable(ctx context.Context, connID string, r
 	if err != nil {
 		return "", err
 	}
+	// A missing schema falls back to the database name only for drivers where
+	// the two are the same concept (MySQL). Schema-ful databases (Postgres)
+	// must not get the db name as a schema qualifier — leave it empty and let
+	// the dialect render an unqualified name (resolved via the session default).
 	schemaName := req.Schema
 	if schemaName == "" {
-		schemaName = req.DB
+		if drv, derr := s.resolveDriver(ctx, connID); derr == nil && !drv.Capabilities().Schemas {
+			schemaName = req.DB
+		}
 	}
 	ts := req.Draft.ToTableSchema(req.Table, schemaName)
 	if ts.Name == "" || len(ts.Columns) == 0 {
@@ -469,9 +466,9 @@ func (s *MetadataService) BrowseTable(ctx context.Context, connID, db, schema, t
 	if err != nil {
 		return empty, err
 	}
-	q := conn.Querier()
-	if q == nil {
-		return empty, fmt.Errorf("MetadataService: connection has no querier")
+	q, err := dbdriver.RouteQuerier(ctx, conn, db)
+	if err != nil {
+		return empty, err
 	}
 	base := fmt.Sprintf("SELECT * FROM %s", dbdriver.QualifyTable(dia, db, schema, table))
 
@@ -567,9 +564,9 @@ func (s *MetadataService) CountTableRows(ctx context.Context, connID, db, schema
 	if err != nil {
 		return 0, err
 	}
-	q := conn.Querier()
-	if q == nil {
-		return 0, fmt.Errorf("MetadataService: connection has no querier")
+	q, err := dbdriver.RouteQuerier(ctx, conn, db)
+	if err != nil {
+		return 0, err
 	}
 	stmt := fmt.Sprintf("SELECT COUNT(*) FROM %s", dbdriver.QualifyTable(dia, db, schema, table))
 	if whereClause != "" {

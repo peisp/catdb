@@ -21,12 +21,13 @@ func NewSavedQueryService(store *storage.Store) *SavedQueryService {
 
 func (s *SavedQueryService) ServiceName() string { return "SavedQueryService" }
 
-// List returns the saved queries scoped to a connection + database.
-func (s *SavedQueryService) List(ctx context.Context, connID, db string) ([]storage.SavedQuery, error) {
+// List returns the saved queries scoped to a connection + database + schema
+// ("" for schema-less databases).
+func (s *SavedQueryService) List(ctx context.Context, connID, db, schema string) ([]storage.SavedQuery, error) {
 	if connID == "" {
 		return nil, fmt.Errorf("SavedQueryService: connID is required")
 	}
-	return s.store.ListSavedQueries(ctx, connID, db)
+	return s.store.ListSavedQueries(ctx, connID, db, schema)
 }
 
 // Save inserts (empty ID) or updates a saved query and returns the persisted row.

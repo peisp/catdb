@@ -536,9 +536,12 @@ func createViewStatement(fq, def string, req SchemaCompareRequest, dia dbdriver.
 // target, in order. StopOnError halts at the first failure; otherwise the
 // remaining statements still run and failures are reported per statement.
 type SchemaSyncExecRequest struct {
-	TargetConnID string   `json:"targetConnId"`
-	Statements   []string `json:"statements"`
-	StopOnError  bool     `json:"stopOnError"`
+	TargetConnID string `json:"targetConnId"`
+	// TargetDB routes the statements to the addressed database on drivers
+	// whose databases are isolation boundaries (Postgres).
+	TargetDB    string   `json:"targetDb,omitempty"`
+	Statements  []string `json:"statements"`
+	StopOnError bool     `json:"stopOnError"`
 }
 
 // SchemaSyncStatementResult reports one executed statement.
@@ -582,9 +585,9 @@ func (s *SyncService) ExecuteSchemaSync(ctx context.Context, req SchemaSyncExecR
 // executeSchemaStatements is the connection-level body of ExecuteSchemaSync.
 func executeSchemaStatements(ctx context.Context, conn dbdriver.Connection, req SchemaSyncExecRequest) (SchemaSyncExecResult, error) {
 	var empty SchemaSyncExecResult
-	q := conn.Querier()
-	if q == nil {
-		return empty, fmt.Errorf("SyncService: connection has no querier")
+	q, err := dbdriver.RouteQuerier(ctx, conn, req.TargetDB)
+	if err != nil {
+		return empty, err
 	}
 
 	res := SchemaSyncExecResult{SyncID: fmt.Sprintf("ss-%d", time.Now().UnixNano())}

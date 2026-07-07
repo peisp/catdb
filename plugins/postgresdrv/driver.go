@@ -4,10 +4,12 @@
 // internal/tunnel with BOTH DialFunc and LookupFunc overridden so DNS
 // resolution happens on the jump host (ARCHITECTURE.md §6.2).
 //
-// Scope note: a PostgreSQL connection is bound to ONE database — the server
-// does not support cross-database queries. Metadata therefore only serves the
-// connected database (ListDatabases returns just current_database()); to work
-// with another database the user creates another connection profile.
+// PostgreSQL databases are hard isolation boundaries — one session cannot
+// query a sibling database — so the connection implements the optional
+// dbdriver.DatabaseRouter extension: it lazily opens one pool per database
+// and generic layers route SQL through dbdriver.RouteQuerier/RouteBegin.
+// The object tree therefore lists every database and expands them
+// transparently, Navicat-style.
 //
 // Registration is automatic — main.go anonymously imports catdb/plugins,
 // which blank-imports this package (see plugins/plugins_postgres.go).
@@ -16,7 +18,7 @@ package postgresdrv
 import (
 	"context"
 	"fmt"
-	"net"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -79,45 +81,34 @@ func (driver) ConnectionSchema() []dbdriver.ConnParamField {
 	}
 }
 
-// Open builds the pgxpool config, wires TLS/SSH as required, and pings the
-// pool through ctx. On any error the partially-opened resources are cleaned up.
+// Open sets up the SSH tunnel when configured and dials the profile's
+// default database (further databases open lazily via poolFor). On any error
+// the partially-opened resources are cleaned up.
 func (driver) Open(ctx context.Context, cfg dbdriver.ConnConfig) (dbdriver.Connection, error) {
-	pc, err := buildPoolConfig(cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	var t *tunnel.Tunnel
+	var (
+		t   *tunnel.Tunnel
+		err error
+	)
 	if cfg.SSHTunnel != nil && cfg.SSHTunnel.Host != "" {
 		t, err = tunnel.Open(ctx, cfg.SSHTunnel)
 		if err != nil {
 			return nil, fmt.Errorf("postgresdrv: ssh tunnel: %w", err)
 		}
-		// Both hooks are required (ARCHITECTURE.md §6.2): DialFunc routes the
-		// TCP stream through the jump host, LookupFunc keeps pgx from resolving
-		// the (possibly jump-host-private) DB hostname on the local machine.
-		pc.ConnConfig.DialFunc = func(ctx context.Context, _, addr string) (net.Conn, error) {
-			return t.Dial(ctx, addr)
-		}
-		pc.ConnConfig.LookupFunc = func(_ context.Context, host string) ([]string, error) {
-			return []string{host}, nil
-		}
 	}
 
-	pool, err := pgxpool.NewWithConfig(ctx, pc)
-	if err != nil {
-		if t != nil {
-			_ = t.Close()
-		}
-		return nil, fmt.Errorf("postgresdrv: pool: %w", err)
+	defaultDB := strings.TrimSpace(cfg.Database)
+	if defaultDB == "" {
+		defaultDB = "postgres"
 	}
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		if t != nil {
-			_ = t.Close()
-		}
-		return nil, fmt.Errorf("postgresdrv: ping: %w", err)
+	c := &connection{
+		cfg:       cfg,
+		tunnel:    t,
+		pools:     map[string]*pgxpool.Pool{},
+		defaultDB: defaultDB,
 	}
-
-	return &connection{pool: pool, tunnel: t}, nil
+	if _, err := c.defaultPool(ctx); err != nil {
+		_ = c.Close()
+		return nil, err
+	}
+	return c, nil
 }

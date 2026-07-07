@@ -17,6 +17,30 @@ type pgxQuerier interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
+// lazyPool satisfies pgxQuerier by resolving the target database's pool at
+// call time — Connection.Querier()/QuerierFor carry no ctx, so the dial (for
+// a not-yet-opened database) must happen inside the first Exec/Query.
+type lazyPool struct {
+	c  *connection
+	db string
+}
+
+func (l lazyPool) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	pool, err := l.c.poolFor(ctx, l.db)
+	if err != nil {
+		return pgconn.CommandTag{}, err
+	}
+	return pool.Exec(ctx, sql, args...)
+}
+
+func (l lazyPool) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	pool, err := l.c.poolFor(ctx, l.db)
+	if err != nil {
+		return nil, err
+	}
+	return pool.Query(ctx, sql, args...)
+}
+
 type querier struct {
 	q pgxQuerier
 

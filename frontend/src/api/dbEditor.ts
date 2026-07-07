@@ -4,76 +4,46 @@
 // window opened via SystemService.OpenDatabaseEditor, mirroring the
 // new-connection flow). This module owns:
 //
-//   - charset / collation listing (cached per-connection)
+//   - the driver-described option-field catalog (cached per-connection)
 //   - per-database options lookup (used in edit mode)
 //   - CREATE / ALTER DATABASE DDL rendering
 //
 // All of it goes through MetadataService, which probes the driver's optional
 // DatabaseEditor extension — drivers without it reject with the stable
-// "database-editor-unsupported" slug and the window hides the option fields.
-// The charset list is small and stable per server, so we cache it
-// per-connection until the connection is invalidated.
+// "database-editor-unsupported" slug. The field catalog is small and stable
+// per server, so we cache it per-connection.
 import {
   buildAlterDatabase,
   buildCreateDatabase,
   getDatabaseOptions,
-  listCharsets,
-  type DatabaseOptions,
+  listDatabaseOptionFields,
+  type DatabaseOptionField,
+  type DatabaseOptionValues,
 } from './metadata'
 
-// ---- charset / collation metadata (per-connection cache) -------------------
+export type { DatabaseOptionField, DatabaseOptionValues }
 
-export interface CharsetInfo {
-  name: string
-  defaultCollation: string
-}
+// ---- option-field catalog (per-connection cache) ----------------------------
 
-export interface CollationInfo {
-  name: string
-  charset: string
-}
+const fieldCache: Record<string, DatabaseOptionField[]> = {}
 
-interface CharsetCacheEntry {
-  charsets: CharsetInfo[]
-  collations: CollationInfo[]
-}
-
-const charsetCache: Record<string, CharsetCacheEntry> = {}
-
-export async function loadCharsetsAndCollations(connId: string): Promise<CharsetCacheEntry> {
-  const cached = charsetCache[connId]
+export async function loadDbOptionFields(connId: string): Promise<DatabaseOptionField[]> {
+  const cached = fieldCache[connId]
   if (cached) return cached
-
-  const catalog = await listCharsets(connId)
-  const entry: CharsetCacheEntry = {
-    charsets: (catalog.charsets ?? []).map((c) => ({
-      name: c.name,
-      defaultCollation: c.defaultCollation ?? '',
-    })),
-    collations: (catalog.collations ?? []).map((c) => ({
-      name: c.name,
-      charset: c.charset ?? '',
-    })),
-  }
-  charsetCache[connId] = entry
-  return entry
+  const fields = (await listDatabaseOptionFields(connId)) ?? []
+  fieldCache[connId] = fields
+  return fields
 }
 
-export function invalidateCharsetCache(connId: string) {
-  delete charsetCache[connId]
+export function invalidateDbOptionFieldsCache(connId: string) {
+  delete fieldCache[connId]
 }
 
-// ---- per-db info (charset/collation) -- read for edit mode -----------------
+// ---- per-db option values — read for edit mode ------------------------------
 
-export interface DbInfo {
-  charset: string
-  collation: string
-}
-
-export async function loadDbInfo(connId: string, db: string): Promise<DbInfo | null> {
+export async function loadDbInfo(connId: string, db: string): Promise<DatabaseOptionValues | null> {
   try {
-    const opts = await getDatabaseOptions(connId, db)
-    return { charset: opts.charset ?? '', collation: opts.collation ?? '' }
+    return (await getDatabaseOptions(connId, db)) ?? {}
   } catch {
     return null
   }
@@ -81,10 +51,11 @@ export async function loadDbInfo(connId: string, db: string): Promise<DbInfo | n
 
 // ---- DDL rendering (driver-side) --------------------------------------------
 
-export function buildCreateDb(connId: string, name: string, charset: string, collation: string): Promise<string> {
-  return buildCreateDatabase(connId, name, { charset, collation } satisfies DatabaseOptions)
+export function buildCreateDb(connId: string, name: string, opts: DatabaseOptionValues): Promise<string> {
+  return buildCreateDatabase(connId, name, opts)
 }
 
-export function buildAlterDb(connId: string, name: string, charset: string, collation: string): Promise<string> {
-  return buildAlterDatabase(connId, name, { charset, collation } satisfies DatabaseOptions)
+/** opts must contain only the changed options. */
+export function buildAlterDb(connId: string, name: string, opts: DatabaseOptionValues): Promise<string> {
+  return buildAlterDatabase(connId, name, opts)
 }

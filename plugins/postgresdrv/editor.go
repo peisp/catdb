@@ -18,7 +18,7 @@ import (
 // and are treated read-only by the core layer. All Build* output is
 // parameterized with $n placeholders.
 type editor struct {
-	pool    *pgxpool.Pool
+	c       *connection
 	dialect dialect
 }
 
@@ -30,6 +30,10 @@ func (e editor) PrimaryKeys(ctx context.Context, db, schema, table string) ([]st
 	if table == "" {
 		return nil, fmt.Errorf("postgresdrv: PrimaryKeys requires a table")
 	}
+	pool, err := e.c.poolFor(ctx, db)
+	if err != nil {
+		return nil, err
+	}
 	const q = `SELECT a.attname
 	             FROM pg_index i
 	             JOIN pg_class c ON c.oid = i.indrelid
@@ -38,7 +42,7 @@ func (e editor) PrimaryKeys(ctx context.Context, db, schema, table string) ([]st
 	             JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.attnum
 	            WHERE n.nspname = $1 AND c.relname = $2 AND i.indisprimary
 	            ORDER BY k.ord`
-	rows, err := e.pool.Query(ctx, q, ns, table)
+	rows, err := pool.Query(ctx, q, ns, table)
 	if err != nil {
 		return nil, fmt.Errorf("postgresdrv: pk columns: %w", err)
 	}
@@ -49,13 +53,13 @@ func (e editor) PrimaryKeys(ctx context.Context, db, schema, table string) ([]st
 	if len(cols) > 0 {
 		return cols, nil
 	}
-	return e.firstUniqueIndex(ctx, ns, table)
+	return e.firstUniqueIndex(ctx, pool, ns, table)
 }
 
 // firstUniqueIndex picks one valid unique index whose key columns are all
 // NOT NULL plain columns. Partial (indpred) and expression (indexprs)
 // indexes are excluded — they don't identify a single row unconditionally.
-func (e editor) firstUniqueIndex(ctx context.Context, ns, table string) ([]string, error) {
+func (e editor) firstUniqueIndex(ctx context.Context, pool *pgxpool.Pool, ns, table string) ([]string, error) {
 	const q = `SELECT i.relname, a.attname, a.attnotnull
 	             FROM pg_index ix
 	             JOIN pg_class i ON i.oid = ix.indexrelid
@@ -67,7 +71,7 @@ func (e editor) firstUniqueIndex(ctx context.Context, ns, table string) ([]strin
 	              AND ix.indisunique AND NOT ix.indisprimary
 	              AND ix.indpred IS NULL AND ix.indexprs IS NULL AND ix.indisvalid
 	            ORDER BY i.relname, k.ord`
-	rows, err := e.pool.Query(ctx, q, ns, table)
+	rows, err := pool.Query(ctx, q, ns, table)
 	if err != nil {
 		return nil, fmt.Errorf("postgresdrv: unique index lookup: %w", err)
 	}
