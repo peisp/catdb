@@ -135,11 +135,14 @@ func TestSavedQueryCRUD(t *testing.T) {
 		t.Fatalf("id/timestamps should be set: %+v", q)
 	}
 
-	// Scope filtering: a different db sees nothing.
-	if list, err := s.ListSavedQueries(ctx, conn.ID, "other"); err != nil || len(list) != 0 {
+	// Scope filtering: a different db or schema sees nothing.
+	if list, err := s.ListSavedQueries(ctx, conn.ID, "other", ""); err != nil || len(list) != 0 {
 		t.Fatalf("expected empty for other db, got %d (err=%v)", len(list), err)
 	}
-	list, err := s.ListSavedQueries(ctx, conn.ID, "shop")
+	if list, err := s.ListSavedQueries(ctx, conn.ID, "shop", "public"); err != nil || len(list) != 0 {
+		t.Fatalf("expected empty for other schema, got %d (err=%v)", len(list), err)
+	}
+	list, err := s.ListSavedQueries(ctx, conn.ID, "shop", "")
 	if err != nil || len(list) != 1 || list[0].ID != q.ID {
 		t.Fatalf("ListSavedQueries: got %d (err=%v)", len(list), err)
 	}
@@ -151,7 +154,7 @@ func TestSavedQueryCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("update SaveSavedQuery: %v", err)
 	}
-	got, _ := s.ListSavedQueries(ctx, conn.ID, "shop")
+	got, _ := s.ListSavedQueries(ctx, conn.ID, "shop", "")
 	if len(got) != 1 || got[0].Name != "active users v2" || got[0].SQLText != "SELECT id FROM users" {
 		t.Fatalf("update mismatch: %+v", got)
 	}
@@ -176,7 +179,7 @@ func TestSavedQueryCascadeOnConnectionDelete(t *testing.T) {
 	if err := s.DeleteConnection(ctx, conn.ID); err != nil {
 		t.Fatalf("DeleteConnection: %v", err)
 	}
-	list, err := s.ListSavedQueries(ctx, conn.ID, "d")
+	list, err := s.ListSavedQueries(ctx, conn.ID, "d", "")
 	if err != nil || len(list) != 0 {
 		t.Fatalf("expected cascade delete, got %d (err=%v)", len(list), err)
 	}

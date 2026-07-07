@@ -3,11 +3,9 @@
 
 export {
     Capabilities,
-    CharsetInfo,
-    CollationInfo,
     ColumnMeta,
     ConnParamField,
-    DatabaseOptions,
+    DatabaseOptionField,
     ExecResult,
     ForeignKeyInfo,
     IndexColumn,

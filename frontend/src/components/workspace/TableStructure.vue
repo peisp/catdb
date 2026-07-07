@@ -277,8 +277,9 @@ async function applyStatements(stmts: string[]) {
     try {
       const created = newTableName.value.trim()
       await queryApi.runQuery(props.connId, stmts[0].trim().replace(/;$/, ''))
-      metaStore.invalidateTables(props.connId, props.db)
-      message.success(t('tableStructure.tableCreated', { name: `${props.db}.${created}` }))
+      metaStore.invalidateTables(props.connId, props.db, props.schema ?? '')
+      const qualified = [props.db, props.schema, created].filter(Boolean).join('.')
+      message.success(t('tableStructure.tableCreated', { name: qualified }))
       if (props.tabId) {
         queryStore.promoteNewTableTab(props.tabId, created)
       }

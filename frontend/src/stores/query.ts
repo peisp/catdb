@@ -13,6 +13,7 @@ import { computed, ref } from 'vue'
 import { query as queryApi } from '../api'
 import { savedQuery as savedQueryApi } from '../api'
 import { emit as emitEvent } from '../api/events'
+import { uiDialectForConnection } from '../api/dialect'
 import { openTextPrompt } from '../api/prompts'
 import { confirmCloseUnsaved } from '../api/dialogs'
 import { t as tr } from '../i18n' // aliased: `t` is the per-tab local var throughout this store
@@ -193,7 +194,10 @@ export const useQueryStore = defineStore('query', () => {
    * to the same saved_query id; otherwise opens a fresh query tab seeded with
    * the stored SQL and bound to its id (so 保存 overwrites it in place).
    */
-  function openSavedQuery(connId: string, sq: { id: string; name: string; sqlText: string; dbName: string }): QueryTab {
+  function openSavedQuery(
+    connId: string,
+    sq: { id: string; name: string; sqlText: string; dbName: string; schemaName?: string },
+  ): QueryTab {
     const existing = tabs.value.find((t) => t.connId === connId && t.kind === 'query' && t.savedQueryId === sq.id)
     if (existing) {
       setActive(connId, existing.id)
@@ -203,6 +207,7 @@ export const useQueryStore = defineStore('query', () => {
       kind: 'query',
       sql: sq.sqlText,
       db: sq.dbName,
+      schema: sq.schemaName,
       title: `📝 ${sq.name}`,
       savedQueryId: sq.id,
     })
@@ -227,32 +232,45 @@ export const useQueryStore = defineStore('query', () => {
     if (!t || t.kind !== 'query') return false
     if (!t.sql.trim()) return false
     const db = t.db ?? ''
+    // Schema-ful drivers file queries under a schema node — a tab opened
+    // outside any schema context falls back to the driver's default
+    // namespace (Postgres "public"; "" for schema-less drivers).
+    const schema = t.schema || (await uiDialectForConnection(t.connId)).defaultSchema || ''
     if (t.savedQueryId) {
       await savedQueryApi.save({
         id: t.savedQueryId,
         connId: t.connId,
         dbName: db,
+        schemaName: schema,
         name: t.title.replace(/^📝\s*/, ''),
         sqlText: t.sql,
       })
       t.savedSql = t.sql
-      void emitEvent('saved-query:changed', { connId: t.connId, db })
+      void emitEvent('saved-query:changed', { connId: t.connId, db, schema })
       return true
     }
+    const label = [db, schema].filter(Boolean).join('.')
     const name = await openTextPrompt({
       title: tr('queryStore.saveTitle'),
-      label: db ? tr('queryStore.saveToDb', { db }) : tr('queryStore.saveTitle'),
+      label: label ? tr('queryStore.saveToDb', { db: label }) : tr('queryStore.saveTitle'),
       initial: '',
       okText: tr('common.save'),
       validate: (v) => (v ? null : tr('common.nameEmpty')),
     })
     if (name === null) return false
-    const saved = await savedQueryApi.save({ connId: t.connId, dbName: db, name, sqlText: t.sql })
+    const saved = await savedQueryApi.save({
+      connId: t.connId,
+      dbName: db,
+      schemaName: schema,
+      name,
+      sqlText: t.sql,
+    })
     t.savedQueryId = saved.id
     t.db = db
+    t.schema = schema
     t.title = `📝 ${name}`
     t.savedSql = t.sql
-    void emitEvent('saved-query:changed', { connId: t.connId, db })
+    void emitEvent('saved-query:changed', { connId: t.connId, db, schema })
     return true
   }
 
@@ -324,15 +342,17 @@ export const useQueryStore = defineStore('query', () => {
   }
 
   /**
-   * Open a "new table" structure-editor tab anchored to `db`. The table name
-   * is decided by the user inside the tab; we don't reuse existing tabs here
-   * because each click should give a fresh blank draft.
+   * Open a "new table" structure-editor tab anchored to `db` (and `schema`
+   * for schema-ful databases). The table name is decided by the user inside
+   * the tab; we don't reuse existing tabs here because each click should give
+   * a fresh blank draft.
    */
-  function openNewTableTab(connId: string, db: string): QueryTab {
+  function openNewTableTab(connId: string, db: string, schema = ''): QueryTab {
     return addTab(connId, {
       kind: 'new-table',
       db,
-      title: tr('queryStore.newTableTitle', { db }),
+      schema,
+      title: tr('queryStore.newTableTitle', { db: [db, schema].filter(Boolean).join('.') }),
     })
   }
 
@@ -345,7 +365,7 @@ export const useQueryStore = defineStore('query', () => {
     if (!t || t.kind !== 'new-table') return
     t.kind = 'structure'
     t.table = table
-    t.title = `⚙ ${t.db}.${table}`
+    t.title = `⚙ ${[t.db, t.schema, table].filter(Boolean).join('.')}`
   }
 
   /**
@@ -580,7 +600,7 @@ export const useQueryStore = defineStore('query', () => {
         .countQuery(
           t.connId,
           t.lastRunSql,
-          { defaultSchema: options.defaultSchema, timeoutMs: options.timeoutMs },
+          { defaultSchema: options.defaultSchema, defaultDatabase: options.defaultDatabase, timeoutMs: options.timeoutMs },
           countCtrl.signal,
         )
         .then((n) => {

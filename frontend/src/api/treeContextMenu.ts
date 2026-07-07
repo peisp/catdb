@@ -35,6 +35,7 @@ interface ActiveCtx {
   querySql?: string
   onRefreshColumns?: () => Promise<void> | void
   onRefreshTables?: () => Promise<void> | void
+  onRefreshSchema?: () => Promise<void> | void
   onRefreshViews?: () => Promise<void> | void
   onRefreshDb?: () => Promise<void> | void
   onRefreshQueries?: () => Promise<void> | void
@@ -56,10 +57,16 @@ export function installTreeContextMenuListener(): void {
 
   const { message } = createDiscreteApi(['message'])
 
-  // 「查询」 group: 新建查询 → open a blank query tab anchored to the db.
+  // 「查询」 group: 新建查询 → open a blank query tab anchored to the
+  // db (and schema for schema-ful drivers).
   on('ctx:tree-new-query', () => {
     if (!active || !active.db) return
-    useQueryStore().addTab(active.connId, { kind: 'query', db: active.db, title: t('tree.query.tabTitle') })
+    useQueryStore().addTab(active.connId, {
+      kind: 'query',
+      db: active.db,
+      schema: active.schema,
+      title: t('tree.query.tabTitle'),
+    })
   })
 
   on('ctx:tree-refresh-queries', async () => {
@@ -74,6 +81,7 @@ export function installTreeContextMenuListener(): void {
       name: active.queryName ?? t('tree.query.tabTitle'),
       sqlText: active.querySql ?? '',
       dbName: active.db ?? '',
+      schemaName: active.schema ?? '',
     })
   })
 
@@ -94,6 +102,7 @@ export function installTreeContextMenuListener(): void {
         id: ctx.queryId,
         connId: ctx.connId,
         dbName: ctx.db ?? '',
+        schemaName: ctx.schema ?? '',
         name: newName,
         sqlText: ctx.querySql ?? '',
       })
@@ -138,7 +147,7 @@ export function installTreeContextMenuListener(): void {
 
   on('ctx:tree-new-table', () => {
     if (!active || !active.db) return
-    useQueryStore().openNewTableTab(active.connId, active.db)
+    useQueryStore().openNewTableTab(active.connId, active.db, active.schema ?? '')
   })
 
   on('ctx:tree-refresh-cols', async () => {
@@ -147,6 +156,10 @@ export function installTreeContextMenuListener(): void {
 
   on('ctx:tree-refresh-tables', async () => {
     await active?.onRefreshTables?.()
+  })
+
+  on('ctx:tree-refresh-schema', async () => {
+    await active?.onRefreshSchema?.()
   })
 
   on('ctx:tree-refresh-views', async () => {

@@ -289,16 +289,15 @@ watch(
 )
 
 // The Tables/Views/Queries group nodes under one namespace (db or db.schema).
-// Saved queries are stored per-database, so the queries group only appears at
-// the level that owns them: the database node (schema-less), or alongside the
-// schema nodes (schema-ful).
-function groupNodes(db: string, schema: string | undefined, withQueries: boolean): TreeOption[] {
-  const out = [
+// Saved queries are scoped the same way (connId + db + schema), so the
+// queries group lives at the namespace level: the database node for
+// schema-less drivers, each schema node for schema-ful ones.
+function groupNodes(db: string, schema: string | undefined): TreeOption[] {
+  return [
     mkNode(t('objectTree.tables'), { kind: 'tableGroup', db, schema }),
     mkNode(t('objectTree.views'), { kind: 'viewGroup', db, schema }),
+    mkNode(t('objectTree.queries'), { kind: 'queryGroup', db, schema }),
   ]
-  if (withQueries) out.push(mkNode(t('objectTree.queries'), { kind: 'queryGroup', db }))
-  return out
 }
 
 async function onLoad(node: TreeOption): Promise<boolean> {
@@ -306,25 +305,28 @@ async function onLoad(node: TreeOption): Promise<boolean> {
   try {
     if (meta.kind === 'database') {
       if (hasSchemas.value) {
-        // Schema-ful database: database → schema nodes (+ per-db queries).
+        // Schema-ful database: database → schema nodes.
         const schemaList = await store.ensureSchemas(props.connection.id, meta.db!)
-        node.children = [
-          ...(schemaList ?? []).map((s) => mkNode(s, { kind: 'schema', db: meta.db, schema: s })),
-          mkNode(t('objectTree.queries'), { kind: 'queryGroup', db: meta.db }),
-        ]
+        node.children = (schemaList ?? []).map((s) =>
+          mkNode(s, { kind: 'schema', db: meta.db, schema: s }),
+        )
         return true
       }
-      node.children = groupNodes(meta.db!, undefined, true)
+      node.children = groupNodes(meta.db!, undefined)
       return true
     }
     if (meta.kind === 'schema') {
-      node.children = groupNodes(meta.db!, meta.schema, false)
+      node.children = groupNodes(meta.db!, meta.schema)
       return true
     }
     if (meta.kind === 'queryGroup') {
-      const list = await savedQueryApi.list(props.connection.id, meta.db!)
+      const list = await savedQueryApi.list(props.connection.id, meta.db!, meta.schema ?? '')
       node.children = (list ?? []).map((q) =>
-        mkNode(q.name, { kind: 'query', db: meta.db, queryId: q.id, queryName: q.name, querySql: q.sqlText }, true),
+        mkNode(
+          q.name,
+          { kind: 'query', db: meta.db, schema: meta.schema, queryId: q.id, queryName: q.name, querySql: q.sqlText },
+          true,
+        ),
       )
       return true
     }
@@ -418,8 +420,8 @@ async function refreshViewGroup(db: string, schema?: string) {
   await onLoad(node)
 }
 
-async function refreshQueryGroup(db: string) {
-  const node = findNodeByKey(nodeKey({ kind: 'queryGroup', db }))
+async function refreshQueryGroup(db: string, schema?: string) {
+  const node = findNodeByKey(nodeKey({ kind: 'queryGroup', db, schema }))
   if (!node) return
   node.children = undefined
   // Only reload if currently expanded — otherwise it lazy-loads on next open.
@@ -510,12 +512,26 @@ function onContextMenu(event: MouseEvent, node: TreeOption) {
       })
       setMenu('catdb-tree-database')
       break
+    case 'schema':
+      if (!m.db) return
+      setActiveTreeContext({
+        connId,
+        db: m.db,
+        schema: m.schema,
+        onRefreshSchema: async () => {
+          await refreshTableGroup(m.db!, m.schema)
+          await refreshViewGroup(m.db!, m.schema)
+        },
+      })
+      setMenu('catdb-tree-schema')
+      break
     case 'queryGroup':
       if (!m.db) return
       setActiveTreeContext({
         connId,
         db: m.db,
-        onRefreshQueries: () => refreshQueryGroup(m.db!),
+        schema: m.schema,
+        onRefreshQueries: () => refreshQueryGroup(m.db!, m.schema),
       })
       setMenu('catdb-tree-query-group')
       break
@@ -524,10 +540,11 @@ function onContextMenu(event: MouseEvent, node: TreeOption) {
       setActiveTreeContext({
         connId,
         db: m.db,
+        schema: m.schema,
         queryId: m.queryId,
         queryName: m.queryName,
         querySql: m.querySql,
-        onRefreshQueries: () => refreshQueryGroup(m.db!),
+        onRefreshQueries: () => refreshQueryGroup(m.db!, m.schema),
       })
       setMenu('catdb-tree-query')
       break
@@ -553,6 +570,7 @@ function onDblclick(_: MouseEvent, node: TreeOption) {
         name: m.queryName ?? t('objectTree.queries'),
         sqlText: m.querySql ?? '',
         dbName: m.db ?? '',
+        schemaName: m.schema ?? '',
       })
     }
     return
@@ -632,12 +650,15 @@ onMounted(() => {
       }
     })()
   })
-  // QueryTab broadcasts this after saving a query; refresh the matching db's
+  // QueryTab broadcasts this after saving a query; refresh the matching
   // 「查询」 group so the new/renamed entry shows without a manual refresh.
-  offQuerySaved = onEvent<{ connId: string; db: string }>('saved-query:changed', ({ connId, db }) => {
-    if (connId !== props.connection.id) return
-    void refreshQueryGroup(db)
-  })
+  offQuerySaved = onEvent<{ connId: string; db: string; schema?: string }>(
+    'saved-query:changed',
+    ({ connId, db, schema }) => {
+      if (connId !== props.connection.id) return
+      void refreshQueryGroup(db, schema || undefined)
+    },
+  )
 })
 onBeforeUnmount(() => {
   offDbSaved?.()

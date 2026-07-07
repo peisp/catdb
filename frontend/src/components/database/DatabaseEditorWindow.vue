@@ -23,16 +23,16 @@ import { useThemeStore } from '../../stores/theme'
 import {
   buildAlterDb,
   buildCreateDb,
-  loadCharsetsAndCollations,
+  loadDbOptionFields,
   loadDbInfo,
-  type CharsetInfo,
-  type CollationInfo,
+  type DatabaseOptionField,
+  type DatabaseOptionValues,
 } from '../../api/dbEditor'
 import { genericUIDialect, uiDialectForConnection, type UIDialect } from '../../api/dialect'
 import { cmSqlDialect } from '../../editor/cmDialect'
 import { runQuery } from '../../api/query'
 import { system as systemApi } from '../../api'
-import { t } from '../../i18n'
+import { t, i18n } from '../../i18n'
 
 const message = useMessage()
 const themeStore = useThemeStore()
@@ -74,31 +74,74 @@ const title = computed(() =>
 const okText = computed(() => (mode.value === 'create' ? t('databaseEditor.create') : t('common.save')))
 
 // --- form state -------------------------------------------------------------
+//
+// The option form is driver-described (DatabaseOptionField[]): every field is
+// a select; choices may depend on another field's value (MySQL: collation
+// depends on charset). Values live in one flat map keyed by field key.
 
 const name = ref('')
-const charset = ref('')
-const collation = ref('')
 const loading = ref(true)
 const submitting = ref(false)
 const errorMessage = ref<string | null>(null)
 const loadError = ref<string | null>(null)
 
-const charsetList = ref<CharsetInfo[]>([])
-const collationList = ref<CollationInfo[]>([])
-const origCharset = ref('')
-const origCollation = ref('')
+const fields = ref<DatabaseOptionField[]>([])
+const values = ref<DatabaseOptionValues>({})
+const origValues = ref<DatabaseOptionValues>({})
 
 const dialect = ref<UIDialect>(genericUIDialect())
 
-const charsetOptions = computed(() =>
-  charsetList.value.map((c) => ({ label: c.name, value: c.name })),
+// Field labels localize by key (databaseEditor.field.*), falling back to the
+// driver's English baseline — same contract as the connection form.
+function fieldLabel(f: DatabaseOptionField): string {
+  const key = `databaseEditor.field.${f.key}`
+  return i18n.global.te(key) ? (i18n.global.t(key) as string) : f.label
+}
+
+function optionsFor(f: DatabaseOptionField) {
+  const list = f.dependsOn
+    ? (f.optionsBy?.[values.value[f.dependsOn] ?? ''] ?? [])
+    : (f.options ?? [])
+  return list.map((o) => ({ label: o, value: o }))
+}
+
+function fieldDisabled(f: DatabaseOptionField): boolean {
+  if (mode.value === 'edit' && f.fixedOnAlter) return true
+  if (f.dependsOn && !values.value[f.dependsOn]) return true
+  return false
+}
+
+// Keep dependent fields consistent: when the parent changes, snap the child
+// to the parent's default if the current pick no longer belongs (the MySQL
+// charset → default collation behavior, generalized).
+watch(
+  values,
+  () => {
+    for (const f of fields.value) {
+      if (!f.dependsOn) continue
+      const parent = values.value[f.dependsOn] ?? ''
+      const cur = values.value[f.key] ?? ''
+      if (!parent) {
+        if (cur) values.value[f.key] = ''
+        continue
+      }
+      const opts = f.optionsBy?.[parent] ?? []
+      if (cur && opts.includes(cur)) continue
+      const def = f.defaultBy?.[parent] ?? ''
+      if (cur !== def) values.value[f.key] = def
+    }
+  },
+  { deep: true },
 )
 
-const collationOptions = computed(() => {
-  if (!charset.value) return []
-  return collationList.value
-    .filter((c) => c.charset === charset.value)
-    .map((c) => ({ label: c.name, value: c.name }))
+// The changed subset (edit mode) — this is exactly what AlterDatabaseSQL gets.
+const changedValues = computed<DatabaseOptionValues>(() => {
+  const out: DatabaseOptionValues = {}
+  for (const f of fields.value) {
+    const cur = values.value[f.key] ?? ''
+    if (cur !== (origValues.value[f.key] ?? '')) out[f.key] = cur
+  }
+  return out
 })
 
 // DDL rendering happens driver-side (MetadataService.BuildCreate/AlterDatabase)
@@ -114,32 +157,35 @@ async function refreshDdlPreview() {
     ddlPreview.value = `-- ${t('databaseEditor.ddlEnterName')}`
     return
   }
-  if (mode.value === 'edit'
-      && charset.value === origCharset.value && collation.value === origCollation.value) {
+  if (mode.value === 'edit' && Object.keys(changedValues.value).length === 0) {
     ddlPreview.value = `-- ${t('databaseEditor.ddlUnchanged')}`
     return
   }
   try {
     const stmt = mode.value === 'create'
-      ? await buildCreateDb(connId.value, n, charset.value, collation.value)
-      : await buildAlterDb(connId.value, n, charset.value, collation.value)
-    if (seq === ddlSeq) ddlPreview.value = stmt + ';'
+      ? await buildCreateDb(connId.value, n, { ...values.value })
+      : await buildAlterDb(connId.value, n, changedValues.value)
+    if (seq === ddlSeq) ddlPreview.value = stmt.endsWith(';') ? stmt : stmt + ';'
   } catch (e) {
     if (seq === ddlSeq) ddlPreview.value = `-- ${String(e)}`
   }
 }
 
-watch([name, charset, collation, mode], () => {
-  if (ddlTimer) clearTimeout(ddlTimer)
-  ddlTimer = setTimeout(() => void refreshDdlPreview(), 150)
-})
+watch(
+  [name, values, mode],
+  () => {
+    if (ddlTimer) clearTimeout(ddlTimer)
+    ddlTimer = setTimeout(() => void refreshDdlPreview(), 150)
+  },
+  { deep: true },
+)
 
 const canSubmit = computed(() => {
   if (submitting.value || loading.value) return false
   const n = name.value.trim()
   if (!n) return false
   if (mode.value === 'edit') {
-    return charset.value !== origCharset.value || collation.value !== origCollation.value
+    return Object.keys(changedValues.value).length > 0
   }
   return true
 })
@@ -202,17 +248,6 @@ watch(
 )
 onBeforeUnmount(() => { cmView?.destroy(); cmView = null })
 
-// When charset changes, snap collation to the new charset's default if the
-// current pick doesn't belong to it — matches MySQL server behavior.
-watch(charset, (cs, prev) => {
-  if (cs === prev) return
-  if (!cs) { collation.value = ''; return }
-  const belongs = collationList.value.some((c) => c.charset === cs && c.name === collation.value)
-  if (belongs) return
-  const cInfo = charsetList.value.find((c) => c.name === cs)
-  collation.value = cInfo?.defaultCollation ?? ''
-})
-
 // --- lifecycle --------------------------------------------------------------
 
 onMounted(async () => {
@@ -232,27 +267,23 @@ onMounted(async () => {
   }
   try {
     dialect.value = await uiDialectForConnection(cid)
-    const cs = await loadCharsetsAndCollations(cid)
-    charsetList.value = cs.charsets
-    collationList.value = cs.collations
+    fields.value = await loadDbOptionFields(cid)
     if (mode.value === 'edit') {
       const info = await loadDbInfo(cid, db!)
       if (info) {
-        origCharset.value = info.charset
-        origCollation.value = info.collation
-        charset.value = info.charset
-        collation.value = info.collation
+        origValues.value = { ...info }
+        values.value = { ...info }
       }
-    } else if (dialect.value.defaultCharset) {
-      const def = cs.charsets.find((c) => c.name === dialect.value.defaultCharset)
-      if (def) {
-        charset.value = def.name
-        collation.value = def.defaultCollation
+    } else {
+      const init: DatabaseOptionValues = {}
+      for (const f of fields.value) {
+        init[f.key] = f.default ?? ''
       }
+      values.value = init
     }
     void refreshDdlPreview()
   } catch (e: any) {
-    loadError.value = t('databaseEditor.loadCharsetsFailed', { error: e?.message ?? e })
+    loadError.value = t('databaseEditor.loadOptionsFailed', { error: e?.message ?? e })
   } finally {
     loading.value = false
   }
@@ -279,8 +310,8 @@ async function onConfirm() {
   errorMessage.value = null
   try {
     const sql = mode.value === 'create'
-      ? await buildCreateDb(connId.value, n, charset.value, collation.value)
-      : await buildAlterDb(connId.value, n, charset.value, collation.value)
+      ? await buildCreateDb(connId.value, n, { ...values.value })
+      : await buildAlterDb(connId.value, n, changedValues.value)
     await runQuery(connId.value, sql)
     try {
       await systemApi.broadcastDatabaseSaved(connId.value, n)
@@ -343,27 +374,17 @@ async function onConfirm() {
               :placeholder="$t('databaseEditor.dbNamePlaceholder')"
             />
           </div>
-          <div class="row">
-            <label class="lbl">{{ $t('databaseEditor.charset') }}</label>
+          <div v-for="f in fields" :key="f.key" class="row">
+            <label class="lbl">{{ fieldLabel(f) }}</label>
             <n-select
-              v-model:value="charset"
+              :value="values[f.key] || null"
               size="small"
               filterable
               clearable
-              :options="charsetOptions"
-              :placeholder="$t('databaseEditor.charsetPlaceholder')"
-            />
-          </div>
-          <div class="row">
-            <label class="lbl">{{ $t('databaseEditor.collation') }}</label>
-            <n-select
-              v-model:value="collation"
-              size="small"
-              filterable
-              clearable
-              :options="collationOptions"
-              :disabled="!charset"
-              :placeholder="$t('databaseEditor.collationPlaceholder')"
+              :options="optionsFor(f)"
+              :disabled="fieldDisabled(f)"
+              :placeholder="$t('databaseEditor.optionPlaceholder')"
+              @update:value="values[f.key] = $event ?? ''"
             />
           </div>
         </div>

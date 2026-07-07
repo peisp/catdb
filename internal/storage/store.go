@@ -25,9 +25,9 @@ var ErrGroupNotEmpty = errors.New("storage: group is not empty")
 // Store is the SQLite-backed repository. Safe for concurrent use; SQLite's
 // single-writer model is fine for the volume we ever expect here.
 type Store struct {
-	db    *sql.DB
-	path  string
-	mu    sync.Mutex // serializes writes for SQLite
+	db   *sql.DB
+	path string
+	mu   sync.Mutex // serializes writes for SQLite
 }
 
 // Open opens (or creates) the SQLite database at path and runs schema
@@ -104,6 +104,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			id TEXT PRIMARY KEY,
 			conn_id TEXT NOT NULL,
 			db_name TEXT NOT NULL DEFAULT '',
+			schema_name TEXT NOT NULL DEFAULT '',
 			name TEXT NOT NULL,
 			sql_text TEXT NOT NULL,
 			sort_order INTEGER NOT NULL DEFAULT 0,
@@ -115,6 +116,21 @@ func (s *Store) migrate(ctx context.Context) error {
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("storage: migrate: %w", err)
+		}
+	}
+	// Additive column for databases created before schema_name existed.
+	// SQLite has no ADD COLUMN IF NOT EXISTS — probe the schema instead.
+	var hasSchemaCol int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pragma_table_info('saved_query') WHERE name='schema_name'`,
+	).Scan(&hasSchemaCol); err != nil {
+		return fmt.Errorf("storage: migrate: %w", err)
+	}
+	if hasSchemaCol == 0 {
+		if _, err := s.db.ExecContext(ctx,
+			`ALTER TABLE saved_query ADD COLUMN schema_name TEXT NOT NULL DEFAULT ''`,
+		); err != nil {
 			return fmt.Errorf("storage: migrate: %w", err)
 		}
 	}
@@ -356,12 +372,14 @@ func (s *Store) DeleteConnection(ctx context.Context, id string) error {
 
 // --- saved queries ---
 
-// ListSavedQueries returns the saved queries scoped to a connection + database,
-// ordered by sort_order then name.
-func (s *Store) ListSavedQueries(ctx context.Context, connID, db string) ([]SavedQuery, error) {
+// ListSavedQueries returns the saved queries scoped to a connection +
+// database + schema ("" for schema-less databases), ordered by sort_order
+// then name.
+func (s *Store) ListSavedQueries(ctx context.Context, connID, db, schema string) ([]SavedQuery, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, conn_id, db_name, name, sql_text, sort_order, created_at, updated_at
-		FROM saved_query WHERE conn_id=? AND db_name=? ORDER BY sort_order, name`, connID, db)
+		SELECT id, conn_id, db_name, schema_name, name, sql_text, sort_order, created_at, updated_at
+		FROM saved_query WHERE conn_id=? AND db_name=? AND schema_name=? ORDER BY sort_order, name`,
+		connID, db, schema)
 	if err != nil {
 		return nil, err
 	}
@@ -370,7 +388,7 @@ func (s *Store) ListSavedQueries(ctx context.Context, connID, db string) ([]Save
 	for rows.Next() {
 		var q SavedQuery
 		var created, updated int64
-		if err := rows.Scan(&q.ID, &q.ConnID, &q.DBName, &q.Name, &q.SQLText, &q.SortOrder, &created, &updated); err != nil {
+		if err := rows.Scan(&q.ID, &q.ConnID, &q.DBName, &q.SchemaName, &q.Name, &q.SQLText, &q.SortOrder, &created, &updated); err != nil {
 			return nil, err
 		}
 		q.CreatedAt = time.Unix(created, 0)
@@ -382,7 +400,8 @@ func (s *Store) ListSavedQueries(ctx context.Context, connID, db string) ([]Save
 
 // SaveSavedQuery inserts or updates a saved query. If q.ID is empty a fresh
 // UUID is assigned; CreatedAt/UpdatedAt are managed here. On update only
-// name/sql_text/sort_order/updated_at change — conn_id/db_name are immutable.
+// name/sql_text/sort_order/updated_at change — conn_id/db_name/schema_name
+// are immutable.
 func (s *Store) SaveSavedQuery(ctx context.Context, q SavedQuery) (SavedQuery, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -398,9 +417,9 @@ func (s *Store) SaveSavedQuery(ctx context.Context, q SavedQuery) (SavedQuery, e
 		q.CreatedAt = now
 		q.UpdatedAt = now
 		_, err := s.db.ExecContext(ctx, `
-			INSERT INTO saved_query(id, conn_id, db_name, name, sql_text, sort_order, created_at, updated_at)
-			VALUES (?,?,?,?,?,?,?,?)`,
-			q.ID, q.ConnID, q.DBName, q.Name, q.SQLText, q.SortOrder,
+			INSERT INTO saved_query(id, conn_id, db_name, schema_name, name, sql_text, sort_order, created_at, updated_at)
+			VALUES (?,?,?,?,?,?,?,?,?)`,
+			q.ID, q.ConnID, q.DBName, q.SchemaName, q.Name, q.SQLText, q.SortOrder,
 			q.CreatedAt.Unix(), q.UpdatedAt.Unix())
 		if err != nil {
 			return SavedQuery{}, err

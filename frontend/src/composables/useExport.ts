@@ -7,8 +7,8 @@ import { exportQuery, exportTable, onProgress } from '../api/transfer'
 import type { ExportOptions } from '../api/transfer'
 
 export type ExportSource =
-  | { kind: 'query'; connId: string; sql: string; defaultName?: string }
-  | { kind: 'table'; connId: string; db: string; table: string; defaultName?: string }
+  | { kind: 'query'; connId: string; sql: string; db?: string; defaultName?: string }
+  | { kind: 'table'; connId: string; db: string; schema?: string; table: string; defaultName?: string }
 
 export interface FormatOption {
   label: string
@@ -50,6 +50,7 @@ export async function startExport(source: ExportSource, format: TransferFormat):
     includeHeader: format === TransferFormat.FormatCSV || format === TransferFormat.FormatXLSX,
     includeDDL: format === TransferFormat.FormatSQL,
     tableName: source.kind === 'table' ? source.table : '',
+    db: source.db ?? '',
   }
 
   let done = false
@@ -61,7 +62,7 @@ export async function startExport(source: ExportSource, format: TransferFormat):
   try {
     const result =
       source.kind === 'table'
-        ? await exportTable(source.connId, source.db, source.table, opts)
+        ? await exportTable(source.connId, source.db, source.table, opts, undefined, source.schema ?? '')
         : await exportQuery(source.connId, source.sql, opts)
 
     await new Promise((r) => setTimeout(r, 100))

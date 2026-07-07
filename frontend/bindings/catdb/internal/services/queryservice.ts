@@ -25,8 +25,8 @@ import * as $models from "./models.js";
  * transaction ID the front-end passes to RunQuery (via QueryOptions.TxnID),
  * CommitTransaction, or RollbackTransaction.
  */
-export function BeginTransaction(connID: string, $1: string): $CancellablePromise<string> {
-    return $Call.ByName("catdb/internal/services.QueryService.BeginTransaction", connID, $1);
+export function BeginTransaction(connID: string, db: string): $CancellablePromise<string> {
+    return $Call.ByName("catdb/internal/services.QueryService.BeginTransaction", connID, db);
 }
 
 /**

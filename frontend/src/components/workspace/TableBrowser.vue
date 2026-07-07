@@ -123,7 +123,7 @@ const dirtyRows = computed(() => {
 function onExportSelect(ev: Event) {
   const val = (ev.target as HTMLSelectElement).value
   if (!val) return
-  startExport({ kind: 'table', connId: props.connId, db: props.db, table: props.table, defaultName: `${props.db}.${props.table}` }, val as any)
+  startExport({ kind: 'table', connId: props.connId, db: props.db, schema: props.schema ?? '', table: props.table, defaultName: `${props.db}.${props.table}` }, val as any)
   // Reset so the same format can be re-selected next time.
   ;(ev.target as HTMLSelectElement).value = ''
 }

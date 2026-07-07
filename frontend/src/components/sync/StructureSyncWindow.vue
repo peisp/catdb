@@ -285,6 +285,7 @@ async function runExecute() {
   try {
     const res = await syncApi.executeSchemaSync({
       targetConnId: tgtConnId.value,
+      targetDb: tgtDb.value,
       statements: selectedStatements.value,
       stopOnError: stopOnError.value,
     }, ac.signal)

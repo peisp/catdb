@@ -29,6 +29,10 @@ type UIDialect struct {
 	// completion until the user types a matching prefix.
 	SystemSchemas []string `json:"systemSchemas,omitempty"`
 
+	// DefaultSchema is the namespace new objects land in when the user gives
+	// none (Postgres "public"). Empty for drivers without a schema level.
+	DefaultSchema string `json:"defaultSchema,omitempty"`
+
 	// Keywords are dialect-specific keywords/phrases offered by completion in
 	// addition to the front-end's generic ANSI set.
 	Keywords []string `json:"keywords,omitempty"`
@@ -124,36 +128,61 @@ type UIAutoIncrement struct {
 	MaxPerTable int `json:"maxPerTable,omitempty"`
 }
 
-// CharsetInfo is one server character set (DatabaseEditor).
-type CharsetInfo struct {
-	Name             string `json:"name"`
-	DefaultCollation string `json:"defaultCollation,omitempty"`
-}
+// DatabaseOptionField describes one field of the create/alter-database form.
+// Like ConnParamField, the front-end renders the form dynamically from this
+// list, so each driver exposes its own native concepts (MySQL:
+// charset/collation; Postgres: owner/template/encoding/lc_collate/lc_ctype/
+// tablespace) without front-end changes. Every field is a select; choices
+// are server-derived at DatabaseOptionFields time.
+type DatabaseOptionField struct {
+	// Key is the stable identifier used in the options map and for front-end
+	// label localization (databaseEditor.field.*), with Label as fallback.
+	Key   string `json:"key"`
+	Label string `json:"label"` // English baseline
 
-// CollationInfo is one server collation (DatabaseEditor).
-type CollationInfo struct {
-	Name    string `json:"name"`
-	Charset string `json:"charset,omitempty"`
-}
+	// Options are the selectable values. When DependsOn is set, use OptionsBy
+	// keyed by the parent field's current value instead.
+	Options []string `json:"options,omitempty"`
 
-// DatabaseOptions are the create/alter-database form values. Drivers map
-// them onto their native concepts (MySQL: charset/collation; a Postgres
-// driver may map Charset to encoding).
-type DatabaseOptions struct {
-	Charset   string `json:"charset,omitempty"`
-	Collation string `json:"collation,omitempty"`
+	// DependsOn narrows the choices by another field's value (MySQL:
+	// collation depends on charset). OptionsBy maps parent value → choices;
+	// DefaultBy maps parent value → the value to snap to when the parent
+	// changes and the current pick no longer belongs.
+	DependsOn string              `json:"dependsOn,omitempty"`
+	OptionsBy map[string][]string `json:"optionsBy,omitempty"`
+	DefaultBy map[string]string   `json:"defaultBy,omitempty"`
+
+	// Default preselects the field in create mode. Empty = leave blank
+	// (server/template default applies).
+	Default string `json:"default,omitempty"`
+
+	// FixedOnAlter marks fields the database cannot change after creation
+	// (Postgres: encoding/collation/template). The editor disables them in
+	// edit mode and never passes them to AlterDatabaseSQL.
+	FixedOnAlter bool `json:"fixedOnAlter,omitempty"`
 }
 
 // DatabaseEditor is an OPTIONAL extension a driver's Metadata may implement
 // when the database supports creating/altering databases with options from
 // the UI. The service layer probes for it via type assertion; drivers
-// without it make the front-end hide the database editor's option fields.
+// without it make the front-end report the feature as unsupported.
+//
+// The options map is keyed by DatabaseOptionField.Key; empty/absent values
+// mean "omit the clause" (server default applies).
 type DatabaseEditor interface {
-	ListCharsets(ctx context.Context) ([]CharsetInfo, error)
-	ListCollations(ctx context.Context) ([]CollationInfo, error)
-	GetDatabaseOptions(ctx context.Context, db string) (DatabaseOptions, error)
-	// CreateDatabaseSQL/AlterDatabaseSQL render the DDL; opts fields the
-	// dialect doesn't support are ignored.
-	CreateDatabaseSQL(name string, opts DatabaseOptions) (string, error)
-	AlterDatabaseSQL(name string, opts DatabaseOptions) (string, error)
+	// DatabaseOptionFields returns the form descriptor with server-derived
+	// choices resolved (charset/collation lists, roles, tablespaces, …).
+	DatabaseOptionFields(ctx context.Context) ([]DatabaseOptionField, error)
+
+	// GetDatabaseOptions returns db's current option values (edit prefill).
+	GetDatabaseOptions(ctx context.Context, db string) (map[string]string, error)
+
+	// CreateDatabaseSQL renders the CREATE DATABASE DDL from the full form
+	// values; keys the dialect doesn't recognize are ignored.
+	CreateDatabaseSQL(name string, opts map[string]string) (string, error)
+
+	// AlterDatabaseSQL renders ALTER DDL from the CHANGED options only (the
+	// front-end diffs against GetDatabaseOptions). Statements may be
+	// newline-joined. Errors when a changed option cannot be altered.
+	AlterDatabaseSQL(name string, opts map[string]string) (string, error)
 }

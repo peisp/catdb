@@ -139,6 +139,13 @@ func RegisterContextMenus(app *application.App) {
 	treeDb.Add(tr("ctx.refresh")).OnClick(emitContextEvent("ctx:tree-refresh-db"))
 	treeDb.Update()
 
+	// Schema node (schema-ful drivers, e.g. Postgres) — create a table inside
+	// the schema, or refresh its Tables/Views groups.
+	treeSchema := application.NewContextMenu("catdb-tree-schema")
+	treeSchema.Add(tr("ctx.tree.newTable")).OnClick(emitContextEvent("ctx:tree-new-table"))
+	treeSchema.Add(tr("ctx.refresh")).OnClick(emitContextEvent("ctx:tree-refresh-schema"))
+	treeSchema.Update()
+
 	// Saved-query group + leaf menus. The group lives under each database node
 	// alongside Tables/Views; leaves are individual saved SQL snippets.
 	treeQueryGroup := application.NewContextMenu("catdb-tree-query-group")

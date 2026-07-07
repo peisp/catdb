@@ -77,9 +77,9 @@ func (s *TransferService) ImportFile(ctx context.Context, connID string, opts Im
 			return empty, err
 		}
 	}
-	q := conn.Querier()
-	if q == nil {
-		return empty, fmt.Errorf("TransferService: connection has no querier")
+	q, err := dbdriver.RouteQuerier(ctx, conn, opts.DB)
+	if err != nil {
+		return empty, err
 	}
 
 	transferID := "i-" + uuid.NewString()

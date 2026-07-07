@@ -50,56 +50,6 @@ export class Capabilities {
 }
 
 /**
- * CharsetInfo is one server character set (DatabaseEditor).
- */
-export class CharsetInfo {
-    "name": string;
-    "defaultCollation"?: string;
-
-    /** Creates a new CharsetInfo instance. */
-    constructor($$source: Partial<CharsetInfo> = {}) {
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new CharsetInfo instance from a string or object.
-     */
-    static createFrom($$source: any = {}): CharsetInfo {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new CharsetInfo($$parsedSource as Partial<CharsetInfo>);
-    }
-}
-
-/**
- * CollationInfo is one server collation (DatabaseEditor).
- */
-export class CollationInfo {
-    "name": string;
-    "charset"?: string;
-
-    /** Creates a new CollationInfo instance. */
-    constructor($$source: Partial<CollationInfo> = {}) {
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new CollationInfo instance from a string or object.
-     */
-    static createFrom($$source: any = {}): CollationInfo {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new CollationInfo($$parsedSource as Partial<CollationInfo>);
-    }
-}
-
-/**
  * ColumnMeta is the column descriptor returned by a ResultSet — sent to the
  * front-end once per query (NOT per row) to keep IPC payloads small.
  */
@@ -199,26 +149,84 @@ export class ConnParamField {
 }
 
 /**
- * DatabaseOptions are the create/alter-database form values. Drivers map
- * them onto their native concepts (MySQL: charset/collation; a Postgres
- * driver may map Charset to encoding).
+ * DatabaseOptionField describes one field of the create/alter-database form.
+ * Like ConnParamField, the front-end renders the form dynamically from this
+ * list, so each driver exposes its own native concepts (MySQL:
+ * charset/collation; Postgres: owner/template/encoding/lc_collate/lc_ctype/
+ * tablespace) without front-end changes. Every field is a select; choices
+ * are server-derived at DatabaseOptionFields time.
  */
-export class DatabaseOptions {
-    "charset"?: string;
-    "collation"?: string;
+export class DatabaseOptionField {
+    /**
+     * Key is the stable identifier used in the options map and for front-end
+     * label localization (databaseEditor.field.*), with Label as fallback.
+     */
+    "key": string;
 
-    /** Creates a new DatabaseOptions instance. */
-    constructor($$source: Partial<DatabaseOptions> = {}) {
+    /**
+     * English baseline
+     */
+    "label": string;
+
+    /**
+     * Options are the selectable values. When DependsOn is set, use OptionsBy
+     * keyed by the parent field's current value instead.
+     */
+    "options"?: string[];
+
+    /**
+     * DependsOn narrows the choices by another field's value (MySQL:
+     * collation depends on charset). OptionsBy maps parent value → choices;
+     * DefaultBy maps parent value → the value to snap to when the parent
+     * changes and the current pick no longer belongs.
+     */
+    "dependsOn"?: string;
+    "optionsBy"?: { [_ in string]?: string[] };
+    "defaultBy"?: { [_ in string]?: string };
+
+    /**
+     * Default preselects the field in create mode. Empty = leave blank
+     * (server/template default applies).
+     */
+    "default"?: string;
+
+    /**
+     * FixedOnAlter marks fields the database cannot change after creation
+     * (Postgres: encoding/collation/template). The editor disables them in
+     * edit mode and never passes them to AlterDatabaseSQL.
+     */
+    "fixedOnAlter"?: boolean;
+
+    /** Creates a new DatabaseOptionField instance. */
+    constructor($$source: Partial<DatabaseOptionField> = {}) {
+        if (!("key" in $$source)) {
+            this["key"] = "";
+        }
+        if (!("label" in $$source)) {
+            this["label"] = "";
+        }
 
         Object.assign(this, $$source);
     }
 
     /**
-     * Creates a new DatabaseOptions instance from a string or object.
+     * Creates a new DatabaseOptionField instance from a string or object.
      */
-    static createFrom($$source: any = {}): DatabaseOptions {
+    static createFrom($$source: any = {}): DatabaseOptionField {
+        const $$createField2_0 = $$createType0;
+        const $$createField4_0 = $$createType1;
+        const $$createField5_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new DatabaseOptions($$parsedSource as Partial<DatabaseOptions>);
+        if ("options" in $$parsedSource) {
+            $$parsedSource["options"] = $$createField2_0($$parsedSource["options"]);
+        }
+        if ("optionsBy" in $$parsedSource) {
+            $$parsedSource["optionsBy"] = $$createField4_0($$parsedSource["optionsBy"]);
+        }
+        if ("defaultBy" in $$parsedSource) {
+            $$parsedSource["defaultBy"] = $$createField5_0($$parsedSource["defaultBy"]);
+        }
+        return new DatabaseOptionField($$parsedSource as Partial<DatabaseOptionField>);
     }
 }
 
@@ -367,7 +375,7 @@ export class IndexInfo {
      * Creates a new IndexInfo instance from a string or object.
      */
     static createFrom($$source: any = {}): IndexInfo {
-        const $$createField1_0 = $$createType2;
+        const $$createField1_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
             $$parsedSource["columns"] = $$createField1_0($$parsedSource["columns"]);
@@ -587,7 +595,7 @@ export class TableInfo {
      * Creates a new TableInfo instance from a string or object.
      */
     static createFrom($$source: any = {}): TableInfo {
-        const $$createField7_0 = $$createType3;
+        const $$createField7_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("options" in $$parsedSource) {
             $$parsedSource["options"] = $$createField7_0($$parsedSource["options"]);
@@ -670,6 +678,12 @@ export class UIDialect {
      * completion until the user types a matching prefix.
      */
     "systemSchemas"?: string[];
+
+    /**
+     * DefaultSchema is the namespace new objects land in when the user gives
+     * none (Postgres "public"). Empty for drivers without a schema level.
+     */
+    "defaultSchema"?: string;
 
     /**
      * Keywords are dialect-specific keywords/phrases offered by completion in
@@ -756,37 +770,37 @@ export class UIDialect {
      */
     static createFrom($$source: any = {}): UIDialect {
         const $$createField3_0 = $$createType0;
-        const $$createField4_0 = $$createType0;
-        const $$createField5_0 = $$createType5;
-        const $$createField6_0 = $$createType7;
-        const $$createField7_0 = $$createType9;
-        const $$createField8_0 = $$createType11;
-        const $$createField12_0 = $$createType12;
-        const $$createField14_0 = $$createType0;
+        const $$createField5_0 = $$createType0;
+        const $$createField6_0 = $$createType6;
+        const $$createField7_0 = $$createType8;
+        const $$createField8_0 = $$createType10;
+        const $$createField9_0 = $$createType12;
+        const $$createField13_0 = $$createType13;
+        const $$createField15_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("systemSchemas" in $$parsedSource) {
             $$parsedSource["systemSchemas"] = $$createField3_0($$parsedSource["systemSchemas"]);
         }
         if ("keywords" in $$parsedSource) {
-            $$parsedSource["keywords"] = $$createField4_0($$parsedSource["keywords"]);
+            $$parsedSource["keywords"] = $$createField5_0($$parsedSource["keywords"]);
         }
         if ("functions" in $$parsedSource) {
-            $$parsedSource["functions"] = $$createField5_0($$parsedSource["functions"]);
+            $$parsedSource["functions"] = $$createField6_0($$parsedSource["functions"]);
         }
         if ("snippets" in $$parsedSource) {
-            $$parsedSource["snippets"] = $$createField6_0($$parsedSource["snippets"]);
+            $$parsedSource["snippets"] = $$createField7_0($$parsedSource["snippets"]);
         }
         if ("typeGroups" in $$parsedSource) {
-            $$parsedSource["typeGroups"] = $$createField7_0($$parsedSource["typeGroups"]);
+            $$parsedSource["typeGroups"] = $$createField8_0($$parsedSource["typeGroups"]);
         }
         if ("typeFormats" in $$parsedSource) {
-            $$parsedSource["typeFormats"] = $$createField8_0($$parsedSource["typeFormats"]);
+            $$parsedSource["typeFormats"] = $$createField9_0($$parsedSource["typeFormats"]);
         }
         if ("autoIncrement" in $$parsedSource) {
-            $$parsedSource["autoIncrement"] = $$createField12_0($$parsedSource["autoIncrement"]);
+            $$parsedSource["autoIncrement"] = $$createField13_0($$parsedSource["autoIncrement"]);
         }
         if ("indexTypes" in $$parsedSource) {
-            $$parsedSource["indexTypes"] = $$createField14_0($$parsedSource["indexTypes"]);
+            $$parsedSource["indexTypes"] = $$createField15_0($$parsedSource["indexTypes"]);
         }
         return new UIDialect($$parsedSource as Partial<UIDialect>);
     }
@@ -971,15 +985,16 @@ export class ViewInfo {
 
 // Private type creation functions
 const $$createType0 = $Create.Array($Create.Any);
-const $$createType1 = IndexColumn.createFrom;
-const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = $Create.Map($Create.Any, $Create.Any);
-const $$createType4 = UIFunction.createFrom;
-const $$createType5 = $Create.Array($$createType4);
-const $$createType6 = UISnippet.createFrom;
-const $$createType7 = $Create.Array($$createType6);
-const $$createType8 = UITypeGroup.createFrom;
-const $$createType9 = $Create.Array($$createType8);
-const $$createType10 = UITypeFormat.createFrom;
-const $$createType11 = $Create.Map($Create.Any, $$createType10);
-const $$createType12 = UIAutoIncrement.createFrom;
+const $$createType1 = $Create.Map($Create.Any, $$createType0);
+const $$createType2 = $Create.Map($Create.Any, $Create.Any);
+const $$createType3 = IndexColumn.createFrom;
+const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = UIFunction.createFrom;
+const $$createType6 = $Create.Array($$createType5);
+const $$createType7 = UISnippet.createFrom;
+const $$createType8 = $Create.Array($$createType7);
+const $$createType9 = UITypeGroup.createFrom;
+const $$createType10 = $Create.Array($$createType9);
+const $$createType11 = UITypeFormat.createFrom;
+const $$createType12 = $Create.Map($Create.Any, $$createType11);
+const $$createType13 = UIAutoIncrement.createFrom;

@@ -120,7 +120,11 @@ type QueryOptions struct {
 	MaxRows       int    `json:"maxRows,omitempty"`       // hard cap for the open handle (0 = unlimited)
 	DefaultSchema string `json:"defaultSchema,omitempty"` // when non-empty, the SQL is run with this database
 	// "selected" (e.g. MySQL `USE db`) so unqualified tables resolve to it.
-	TxnID string `json:"txnId,omitempty"` // when non-empty, the query runs inside the referenced transaction
+	// DefaultDatabase routes the SQL to this database's session on drivers
+	// whose databases are isolation boundaries (Postgres). Empty = the
+	// connection's default database.
+	DefaultDatabase string `json:"defaultDatabase,omitempty"`
+	TxnID           string `json:"txnId,omitempty"` // when non-empty, the query runs inside the referenced transaction
 }
 
 // QueryRunResult is what RunQuery / Explain return to the front-end.
@@ -223,7 +227,7 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 		runCancel()
 	}
 
-	q, tx, err := s.acquireQuerier(runCtx, context.Background(), conn, connID, opts.DefaultSchema, opts.TxnID)
+	q, tx, err := s.acquireQuerier(runCtx, context.Background(), conn, connID, opts.DefaultDatabase, opts.DefaultSchema, opts.TxnID)
 	if err != nil {
 		cerr := classifyErr(err, timeoutCtx)
 		teardown()
@@ -463,7 +467,7 @@ func (s *QueryService) Explain(ctx context.Context, connID, sqlText string, opts
 	tctx, cancel := context.WithTimeout(ctx, DefaultQueryTimeout)
 	defer cancel()
 
-	q, tx, err := s.acquireQuerier(tctx, context.Background(), conn, connID, opts.DefaultSchema, opts.TxnID)
+	q, tx, err := s.acquireQuerier(tctx, context.Background(), conn, connID, opts.DefaultDatabase, opts.DefaultSchema, opts.TxnID)
 	if err != nil {
 		return empty, classifyErr(err, tctx)
 	}
@@ -532,7 +536,7 @@ func (s *QueryService) CountQuery(ctx context.Context, connID, sqlText string, o
 	tctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	q, tx, err := s.acquireQuerier(tctx, tctx, conn, connID, opts.DefaultSchema, "")
+	q, tx, err := s.acquireQuerier(tctx, tctx, conn, connID, opts.DefaultDatabase, opts.DefaultSchema, "")
 	if err != nil {
 		return 0, err
 	}
@@ -631,7 +635,7 @@ func (s *QueryService) CapabilitiesFor(_ context.Context, driverName string) (db
 // BeginTransaction opens a new transaction on the connection. Returns a
 // transaction ID the front-end passes to RunQuery (via QueryOptions.TxnID),
 // CommitTransaction, or RollbackTransaction.
-func (s *QueryService) BeginTransaction(ctx context.Context, connID string, _ string) (string, error) {
+func (s *QueryService) BeginTransaction(ctx context.Context, connID string, db string) (string, error) {
 	conn, err := s.mgr.Get(connID)
 	if err != nil {
 		conn, err = s.mgr.Open(ctx, connID)
@@ -639,7 +643,9 @@ func (s *QueryService) BeginTransaction(ctx context.Context, connID string, _ st
 			return "", err
 		}
 	}
-	tx, err := conn.Begin(context.Background(), nil)
+	// db routes the transaction to the addressed database on drivers whose
+	// databases are isolation boundaries (Postgres); "" = connection default.
+	tx, err := dbdriver.RouteBegin(context.Background(), conn, db, nil)
 	if err != nil {
 		return "", fmt.Errorf("QueryService: begin tx: %w", err)
 	}
@@ -691,11 +697,14 @@ func (s *QueryService) IsTransactionActive(_ context.Context, txnID string) (boo
 // --- internals ---
 
 // acquireQuerier returns the Querier the caller should run their SQL through.
-// If schema is empty it is just the pool-level Querier. Otherwise we open a
-// transaction so we hold a single physical connection, run `USE schema` on it,
-// and return the Tx as the Querier — that way unqualified table names in the
-// caller's SQL resolve against `schema`, and streaming ResultSets continue to
-// see the same default-database for the life of the handle.
+// db routes to the addressed database's session on drivers whose databases
+// are isolation boundaries (dbdriver.DatabaseRouter); "" = the connection's
+// default. If schema is empty the result is just the (routed) pool-level
+// Querier. Otherwise we open a transaction so we hold a single physical
+// connection, run the dialect's default-namespace statement on it, and return
+// the Tx as the Querier — that way unqualified table names in the caller's
+// SQL resolve against `schema`, and streaming ResultSets continue to see the
+// same default namespace for the life of the handle.
 //
 // The returned Tx is nil when schema is empty. Callers MUST eventually call
 // releaseTx on it (with either nil err for commit, or non-nil for rollback)
@@ -709,7 +718,7 @@ func (s *QueryService) IsTransactionActive(_ context.Context, txnID string) (boo
 func (s *QueryService) acquireQuerier(
 	ctx, beginCtx context.Context,
 	conn dbdriver.Connection,
-	connID, schema, txnID string,
+	connID, db, schema, txnID string,
 ) (dbdriver.Querier, dbdriver.Tx, error) {
 	// If a transaction is specified, use its Querier directly (no tx to release).
 	if txnID != "" {
@@ -735,9 +744,9 @@ func (s *QueryService) acquireQuerier(
 	}
 
 	if schema == "" {
-		q := conn.Querier()
-		if q == nil {
-			return nil, nil, fmt.Errorf("QueryService: connection has no querier")
+		q, err := dbdriver.RouteQuerier(ctx, conn, db)
+		if err != nil {
+			return nil, nil, err
 		}
 		return q, nil, nil
 	}
@@ -749,14 +758,14 @@ func (s *QueryService) acquireQuerier(
 	stmt := d.Dialect().DefaultNamespaceSQL(schema)
 	if stmt == "" {
 		// The database has no session-default statement; callers must qualify.
-		q := conn.Querier()
-		if q == nil {
-			return nil, nil, fmt.Errorf("QueryService: connection has no querier")
+		q, err := dbdriver.RouteQuerier(ctx, conn, db)
+		if err != nil {
+			return nil, nil, err
 		}
 		return q, nil, nil
 	}
 
-	tx, err := conn.Begin(beginCtx, nil)
+	tx, err := dbdriver.RouteBegin(beginCtx, conn, db, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("QueryService: begin tx for default schema: %w", err)
 	}
