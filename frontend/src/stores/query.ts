@@ -548,6 +548,28 @@ export const useQueryStore = defineStore('query', () => {
 
     const ctrl = new AbortController()
     t.controller = ctrl
+
+    // Exact total: wrap the statement in SELECT COUNT(*) and race it WITH the
+    // query itself — fired after the first batch it would usually lose to the
+    // drain (2000 rows/batch) and never get displayed. Multi-statement
+    // scripts still wait for the first batch: earlier statements may mutate
+    // what the final SELECT reads. Skipped in manual transactions — the count
+    // runs on the pooled connection and wouldn't see uncommitted rows.
+    const fireCount = () => {
+      if (t.txnId) return
+      const sqlAtRun = t.lastRunSql
+      void queryApi
+        .countQuery(t.connId, sqlAtRun, { defaultSchema: options.defaultSchema }, ctrl.signal)
+        .then((n) => {
+          if (t.lastRunSql === sqlAtRun && !t.done) t.exactTotal = n
+        })
+        .catch(() => { /* not countable / count failed — total stays unknown */ })
+    }
+    // Crude ';' scan (a ';' inside a string literal just means we fall back
+    // to the safe late fire).
+    const isMultiStatement = /;/.test(t.sql.trim().replace(/;+\s*$/, ''))
+    if (!isMultiStatement) fireCount()
+
     try {
       const res = await queryApi.runQuery(t.connId, t.sql, opts, ctrl.signal)
       if (ctrl.signal.aborted) {
@@ -556,19 +578,7 @@ export const useQueryStore = defineStore('query', () => {
         return
       }
       applyRun(t, res)
-      // Exact total while draining: wrap the query in SELECT COUNT(*) and run
-      // it in parallel so the grid shows "N / total" long before the drain
-      // finishes. Skipped inside manual transactions — the count runs on the
-      // pooled connection and wouldn't see uncommitted rows.
-      if (t.isResultSet && !t.done && !t.txnId) {
-        const sqlAtRun = t.lastRunSql
-        void queryApi
-          .countQuery(t.connId, sqlAtRun, { defaultSchema: options.defaultSchema })
-          .then((n) => {
-            if (t.lastRunSql === sqlAtRun) t.exactTotal = n
-          })
-          .catch(() => { /* not countable / count failed — total stays unknown */ })
-      }
+      if (isMultiStatement && t.isResultSet && !t.done) fireCount()
       // Load the whole result set up front — the SQL editor shows full data
       // with no manual scroll-paging. Fetch stays batched so each IPC payload
       // stays bounded (铁律 #5); fetching blocks scroll-triggered fetchMore.

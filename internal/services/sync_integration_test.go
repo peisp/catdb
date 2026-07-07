@@ -185,6 +185,43 @@ func TestStructureSyncE2E(t *testing.T) {
 	}
 }
 
+// TestCountQueryWrap verifies the exact SELECT COUNT(*) wrap CountQuery
+// builds is accepted by a real MySQL for representative statement shapes.
+func TestCountQueryWrap(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	env := newSyncEnv(t, ctx)
+
+	mustExecSQL(t, ctx, env.srcConn, "CREATE TABLE src_db.c1 (id INT NOT NULL PRIMARY KEY, v VARCHAR(16) NULL)")
+	for i := 0; i < 3; i++ {
+		mustExecSQL(t, ctx, env.srcConn, fmt.Sprintf("INSERT INTO src_db.c1 VALUES (%d,'x')", i))
+	}
+
+	cases := map[string]int64{
+		"SELECT * FROM src_db.c1":                              3,
+		"SELECT * FROM src_db.c1 ORDER BY id DESC LIMIT 2":     2,
+		"WITH w AS (SELECT id FROM src_db.c1) SELECT * FROM w": 3,
+		"SELECT v, COUNT(*) FROM src_db.c1 GROUP BY v":         1,
+	}
+	for sqlText, want := range cases {
+		if !isCountableQuery(sqlText) {
+			t.Fatalf("%q must be countable", sqlText)
+		}
+		wrapped := "SELECT COUNT(*) FROM (\n" + sqlText + "\n) AS `__catdb_count`"
+		rows := fetchRows(t, ctx, env.srcConn, wrapped)
+		if len(rows) != 1 {
+			t.Fatalf("%q: want 1 row, got %d", sqlText, len(rows))
+		}
+		got, err := scalarToInt64(rows[0][0])
+		if err != nil {
+			t.Fatalf("%q: parse count: %v", sqlText, err)
+		}
+		if got != want {
+			t.Fatalf("%q: count = %d, want %d", sqlText, got, want)
+		}
+	}
+}
+
 func TestDataSyncE2E(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
