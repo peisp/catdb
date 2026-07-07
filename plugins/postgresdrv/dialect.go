@@ -3,6 +3,7 @@ package postgresdrv
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"catdb/internal/dbdriver"
@@ -28,6 +29,8 @@ func (dialect) ScriptRules() dbdriver.ScriptRules {
 		DollarQuoting: true,
 	}
 }
+
+func (dialect) Placeholder(i int) string { return "$" + strconv.Itoa(i) }
 
 func (dialect) Paginate(baseSQL string, limit, offset int) string {
 	if limit <= 0 {

@@ -15,7 +15,9 @@ package services
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/csv"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -26,6 +28,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/xuri/excelize/v2"
 
+	"catdb/internal/core/scanner"
 	"catdb/internal/core/session"
 	"catdb/internal/dbdriver"
 	"catdb/internal/registry"
@@ -148,7 +151,12 @@ func (s *TransferService) exportStreaming(ctx context.Context, connID, sqlText s
 	case FormatJSON:
 		writer, err = newJSONLWriter(opts.Path, cols)
 	case FormatSQL:
-		writer, err = newSQLWriter(opts.Path, cols, opts, ddlPrefix)
+		var dia dbdriver.Dialect
+		dia, err = s.dialect(ctx, connID)
+		if err != nil {
+			return empty, err
+		}
+		writer, err = newSQLWriter(opts.Path, cols, opts, ddlPrefix, dia)
 	case FormatXLSX:
 		writer, err = newXLSXWriter(opts.Path, cols)
 	default:
@@ -359,26 +367,35 @@ func (j *jsonlWriter) Close() error {
 // --- SQL dump writer ------------------------------------------------------
 
 type sqlWriter struct {
-	f       *os.File
-	cols    []string
-	tblName string
-	prefix  string
+	f      *os.File
+	prefix string
+	// insertPrefix is the constant "INSERT INTO <tbl> (<cols>) VALUES ("
+	// head, rendered once with the source dialect's identifier quoting.
+	insertPrefix string
+	rules        dbdriver.ScriptRules
 }
 
-func newSQLWriter(path string, cols []dbdriver.ColumnMeta, opts ExportOptions, ddlPrefix string) (*sqlWriter, error) {
+func newSQLWriter(path string, cols []dbdriver.ColumnMeta, opts ExportOptions, ddlPrefix string, dia dbdriver.Dialect) (*sqlWriter, error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return nil, fmt.Errorf("TransferService: create %s: %w", path, err)
-	}
-	names := make([]string, len(cols))
-	for i, c := range cols {
-		names[i] = c.Name
 	}
 	tbl := opts.TableName
 	if tbl == "" {
 		tbl = "exported"
 	}
-	w := &sqlWriter{f: f, cols: names, tblName: tbl, prefix: ddlPrefix}
+	var b strings.Builder
+	b.WriteString("INSERT INTO ")
+	b.WriteString(dia.QuoteIdentifier(tbl))
+	b.WriteString(" (")
+	for i, c := range cols {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(dia.QuoteIdentifier(c.Name))
+	}
+	b.WriteString(") VALUES (")
+	w := &sqlWriter{f: f, prefix: ddlPrefix, insertPrefix: b.String(), rules: dia.ScriptRules()}
 	if w.prefix != "" {
 		if _, err := f.WriteString(w.prefix); err != nil {
 			_ = f.Close()
@@ -390,23 +407,12 @@ func newSQLWriter(path string, cols []dbdriver.ColumnMeta, opts ExportOptions, d
 
 func (w *sqlWriter) WriteRow(row []any) error {
 	var b strings.Builder
-	b.WriteString("INSERT INTO `")
-	b.WriteString(w.tblName)
-	b.WriteString("` (")
-	for i, c := range w.cols {
-		if i > 0 {
-			b.WriteString(", ")
-		}
-		b.WriteString("`")
-		b.WriteString(strings.ReplaceAll(c, "`", "``"))
-		b.WriteString("`")
-	}
-	b.WriteString(") VALUES (")
+	b.WriteString(w.insertPrefix)
 	for i, v := range row {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.WriteString(sqlLiteral(v))
+		b.WriteString(sqlLiteral(v, w.rules))
 	}
 	b.WriteString(");\n")
 	_, err := w.f.WriteString(b.String())
@@ -422,27 +428,47 @@ func (w *sqlWriter) Close() error {
 	return err
 }
 
-func sqlLiteral(v any) string {
+// sqlLiteral renders v as a SQL literal for a dump file — dump output is
+// inherently literal-encoded (a .sql file has no bind parameters). The
+// dialect's ScriptRules select the escaping family: BackslashEscapes ⇒
+// MySQL-style strings and X'…' byte literals, otherwise standard-conforming
+// strings and Postgres '\x…' bytea literals.
+func sqlLiteral(v any, rules dbdriver.ScriptRules) string {
 	if v == nil {
 		return "NULL"
 	}
 	switch x := v.(type) {
 	case bool:
 		if x {
-			return "1"
+			return "TRUE"
 		}
-		return "0"
+		return "FALSE"
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
 		return fmt.Sprintf("%v", x)
+	case scanner.BigIntString:
+		return x.Value
+	case scanner.BytesValue:
+		raw, err := base64.StdEncoding.DecodeString(x.Base64)
+		if err != nil {
+			return quoteSQLString(x.Base64, rules)
+		}
+		if rules.BackslashEscapes {
+			return "X'" + hex.EncodeToString(raw) + "'"
+		}
+		return `'\x` + hex.EncodeToString(raw) + "'"
 	case string:
-		return "'" + strings.ReplaceAll(x, "'", "''") + "'"
+		return quoteSQLString(x, rules)
 	default:
-		// Fall back to JSON for marker types (bytes / bigint markers).
 		raw, _ := json.Marshal(x)
-		s := string(raw)
-		s = strings.ReplaceAll(s, "'", "''")
-		return "'" + s + "'"
+		return quoteSQLString(string(raw), rules)
 	}
+}
+
+func quoteSQLString(s string, rules dbdriver.ScriptRules) string {
+	if rules.BackslashEscapes {
+		s = strings.ReplaceAll(s, `\`, `\\`)
+	}
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }
 
 // --- XLSX writer (streaming) ---------------------------------------------
@@ -572,11 +598,12 @@ func (s *TransferService) StartTransfer(ctx context.Context, req DataTransferReq
 		return empty, fmt.Errorf("TransferService: target: %w", err)
 	}
 
-	// Drivers / dialects for identifier quoting.
-	srcD, tgtD, err := s.dialects(ctx, req.SourceConnID, req.TargetConnID)
+	// Drivers / dialects for identifier quoting and DDL rendering.
+	srcName, tgtName, srcD, tgtD, err := s.dialects(ctx, req.SourceConnID, req.TargetConnID)
 	if err != nil {
 		return empty, err
 	}
+	sameDriver := srcName == tgtName
 
 	for _, tableName := range req.Tables {
 		if err := ctx.Err(); err != nil {
@@ -589,18 +616,15 @@ func (s *TransferService) StartTransfer(ctx context.Context, req DataTransferReq
 
 		// --- create target table if needed ----------------------------------
 		if req.CreateTable {
-			// Set target database context so unqualified DDL works.
-			if _, err := tgtQ.Exec(ctx, "USE "+tgtD.QuoteIdentifier(req.TargetDB)); err != nil {
-				tr.Error = fmt.Sprintf("use database: %v", err)
-				continue
-			}
-			ddl, err := srcConn.Metadata().GetCreateTable(ctx, req.SourceDB, req.SourceSchema, tableName)
+			// Same driver → source-native DDL (full fidelity); cross-driver →
+			// re-rendered through the target dialect. Cross-driver column types
+			// are carried over verbatim for now (see docs/异构数据库同步与传输方案.md).
+			ddl, err := createTableDDL(ctx, srcConn.Metadata(), tgtD, sameDriver,
+				req.SourceDB, req.SourceSchema, req.TargetDB, req.TargetSchema, tableName)
 			if err != nil {
 				tr.Error = fmt.Sprintf("get DDL: %v", err)
 				continue
 			}
-			// ponytail: works MySQL→MySQL; cross-DB DDL translation needs
-			// the target driver's GenerateCreateTable + column-type mapping.
 			createSQL := strings.Replace(ddl, "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
 			if _, err := tgtQ.Exec(ctx, createSQL); err != nil {
 				tr.Error = fmt.Sprintf("create table: %v", err)
@@ -663,8 +687,34 @@ func (s *TransferService) StartTransfer(ctx context.Context, req DataTransferReq
 	return result, nil
 }
 
-// transferBatch builds and executes one multi-row INSERT for the given rows.
+// maxInsertParams caps placeholders per statement — MySQL prepared statements
+// hard-limit at 65535, so wide tables get chunked into several INSERTs.
+const maxInsertParams = 60000
+
+// transferBatch inserts rows through multi-value parameterized INSERTs
+// (CLAUDE.md #4): values cross drivers as bind parameters, never as literals,
+// so each driver applies its own escaping and type coercion.
 func (s *TransferService) transferBatch(ctx context.Context, q dbdriver.Querier, qualifiedTable string, colNames []string, rows [][]any, d dbdriver.Dialect) error {
+	if len(rows) == 0 || len(colNames) == 0 {
+		return nil
+	}
+	perStmt := maxInsertParams / len(colNames)
+	if perStmt < 1 {
+		perStmt = 1
+	}
+	for start := 0; start < len(rows); start += perStmt {
+		end := min(start+perStmt, len(rows))
+		sqlText, args := buildBatchInsert(d, qualifiedTable, colNames, rows[start:end])
+		if _, err := q.Exec(ctx, sqlText, args...); err != nil {
+			return fmt.Errorf("insert batch: %w", err)
+		}
+	}
+	return nil
+}
+
+// buildBatchInsert renders one multi-value parameterized INSERT plus its
+// flattened argument list.
+func buildBatchInsert(d dbdriver.Dialect, qualifiedTable string, colNames []string, rows [][]any) (string, []any) {
 	var b strings.Builder
 	b.Grow(4096)
 	b.WriteString("INSERT INTO ")
@@ -677,6 +727,8 @@ func (s *TransferService) transferBatch(ctx context.Context, q dbdriver.Querier,
 		b.WriteString(d.QuoteIdentifier(name))
 	}
 	b.WriteString(") VALUES ")
+	args := make([]any, 0, len(rows)*len(colNames))
+	n := 0
 	for ri, row := range rows {
 		if ri > 0 {
 			b.WriteString(", ")
@@ -686,35 +738,52 @@ func (s *TransferService) transferBatch(ctx context.Context, q dbdriver.Querier,
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			b.WriteString(sqlLiteral(v))
+			n++
+			b.WriteString(d.Placeholder(n))
+			args = append(args, bindArg(v))
 		}
 		b.WriteString(")")
 	}
-	if _, err := q.Exec(ctx, b.String()); err != nil {
-		return fmt.Errorf("insert batch: %w", err)
-	}
-	return nil
+	return b.String(), args
 }
 
-// dialects resolves both driver instances to get their Dialect.
-func (s *TransferService) dialects(ctx context.Context, srcID, tgtID string) (src, tgt dbdriver.Dialect, err error) {
-	name, err := s.mgr.DriverName(ctx, srcID)
-	if err != nil {
-		return nil, nil, err
+// bindArg unwraps the scanner's front-end marker types into values drivers
+// can bind: BytesValue → raw []byte, BigIntString → digit string (both
+// servers coerce it to the column's integer type).
+func bindArg(v any) any {
+	switch x := v.(type) {
+	case scanner.BytesValue:
+		raw, err := base64.StdEncoding.DecodeString(x.Base64)
+		if err != nil {
+			return x.Base64
+		}
+		return raw
+	case scanner.BigIntString:
+		return x.Value
+	default:
+		return v
 	}
-	d, err := registry.Get(name)
+}
+
+// dialects resolves both driver names and their Dialect.
+func (s *TransferService) dialects(ctx context.Context, srcID, tgtID string) (srcName, tgtName string, src, tgt dbdriver.Dialect, err error) {
+	srcName, err = s.mgr.DriverName(ctx, srcID)
 	if err != nil {
-		return nil, nil, err
+		return "", "", nil, nil, err
+	}
+	d, err := registry.Get(srcName)
+	if err != nil {
+		return "", "", nil, nil, err
 	}
 	src = d.Dialect()
 
-	name, err = s.mgr.DriverName(ctx, tgtID)
+	tgtName, err = s.mgr.DriverName(ctx, tgtID)
 	if err != nil {
-		return nil, nil, err
+		return "", "", nil, nil, err
 	}
-	d, err = registry.Get(name)
+	d, err = registry.Get(tgtName)
 	if err != nil {
-		return nil, nil, err
+		return "", "", nil, nil, err
 	}
 	tgt = d.Dialect()
 	return
@@ -736,6 +805,10 @@ func cellToString(v any) string {
 		return "false"
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
 		return fmt.Sprintf("%v", x)
+	case scanner.BigIntString:
+		return x.Value
+	case scanner.BytesValue:
+		return x.Base64
 	default:
 		raw, _ := json.Marshal(x)
 		return string(raw)
@@ -751,6 +824,10 @@ func cellExcelValue(v any) any {
 	switch x := v.(type) {
 	case bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, string:
 		return x
+	case scanner.BigIntString:
+		return x.Value
+	case scanner.BytesValue:
+		return x.Base64
 	default:
 		raw, _ := json.Marshal(x)
 		return string(raw)

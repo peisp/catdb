@@ -73,16 +73,16 @@ func TestDefaultNamespaceSQL(t *testing.T) {
 func TestMapType(t *testing.T) {
 	d := dialect{}
 	cases := map[string]dbdriver.LogicalType{
-		"INT":         dbdriver.TypeInt,
-		"BIGINT":      dbdriver.TypeBigInt,
-		"VARCHAR(64)": dbdriver.TypeString,
-		"TEXT":        dbdriver.TypeText,
-		"DATETIME(6)": dbdriver.TypeDateTime,
-		"JSON":        dbdriver.TypeJSON,
-		"BLOB":        dbdriver.TypeBytes,
+		"INT":           dbdriver.TypeInt,
+		"BIGINT":        dbdriver.TypeBigInt,
+		"VARCHAR(64)":   dbdriver.TypeString,
+		"TEXT":          dbdriver.TypeText,
+		"DATETIME(6)":   dbdriver.TypeDateTime,
+		"JSON":          dbdriver.TypeJSON,
+		"BLOB":          dbdriver.TypeBytes,
 		"DECIMAL(10,2)": dbdriver.TypeDecimal,
 		"int unsigned":  dbdriver.TypeInt,
-		"random":      dbdriver.TypeUnknown,
+		"random":        dbdriver.TypeUnknown,
 	}
 	for in, want := range cases {
 		if got := d.MapType(in); got != want {
@@ -93,12 +93,12 @@ func TestMapType(t *testing.T) {
 
 func TestBuildDSNDefaults(t *testing.T) {
 	cfg := dbdriver.ConnConfig{
-		Host: "127.0.0.1",
-		Port: 3306,
-		User: "root",
+		Host:     "127.0.0.1",
+		Port:     3306,
+		User:     "root",
 		Password: "secret",
 		Database: "mydb",
-		Params: map[string]string{"timeout": "10s"},
+		Params:   map[string]string{"timeout": "10s"},
 	}
 	dsn := buildDSN(cfg, "tcp", "")
 	// Format: user:pass@tcp(host:port)/db?...
@@ -140,4 +140,14 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+func TestPlaceholder(t *testing.T) {
+	d := dialect{}
+	if got := d.Placeholder(1); got != "?" {
+		t.Errorf("Placeholder(1) = %q, want ?", got)
+	}
+	if got := d.Placeholder(37); got != "?" {
+		t.Errorf("Placeholder(37) = %q, want ?", got)
+	}
 }

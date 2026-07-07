@@ -74,6 +74,8 @@ func (dialect) ScriptRules() dbdriver.ScriptRules {
 	}
 }
 
+func (dialect) Placeholder(int) string { return "?" }
+
 func (d dialect) DefaultNamespaceSQL(name string) string {
 	if strings.TrimSpace(name) == "" {
 		return ""

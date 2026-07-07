@@ -172,6 +172,12 @@ type Dialect interface {
 	// SQL scripts into statements (see core/sqlscript).
 	ScriptRules() ScriptRules
 
+	// Placeholder returns the parameter placeholder for the i-th argument
+	// (1-based) of a parameterized statement — "?" for MySQL, "$1"…"$n" for
+	// Postgres. Generic layers use it to build multi-value parameterized SQL
+	// (e.g. batch INSERTs) without literal-encoding values themselves.
+	Placeholder(i int) string
+
 	// Paginate wraps baseSQL with a database-appropriate LIMIT/OFFSET clause.
 	Paginate(baseSQL string, limit, offset int) string
 

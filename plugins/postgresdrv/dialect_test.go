@@ -277,3 +277,13 @@ func TestConvertText(t *testing.T) {
 		t.Errorf("bytea must decode to a 5-byte BytesValue, got %#v", bytes)
 	}
 }
+
+func TestPlaceholder(t *testing.T) {
+	d := dialect{}
+	if got := d.Placeholder(1); got != "$1" {
+		t.Errorf("Placeholder(1) = %q, want $1", got)
+	}
+	if got := d.Placeholder(37); got != "$37" {
+		t.Errorf("Placeholder(37) = %q, want $37", got)
+	}
+}

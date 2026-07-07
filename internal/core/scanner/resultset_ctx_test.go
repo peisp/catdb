@@ -93,6 +93,7 @@ type sqliteDialect struct{}
 func (sqliteDialect) QuoteIdentifier(s string) string          { return s }
 func (sqliteDialect) DefaultNamespaceSQL(string) string        { return "" }
 func (sqliteDialect) ScriptRules() dbdriver.ScriptRules        { return dbdriver.ScriptRules{} }
+func (sqliteDialect) Placeholder(int) string                   { return "?" }
 func (sqliteDialect) NormalizeType(s string) string            { return s }
 func (sqliteDialect) Paginate(q string, limit, off int) string { return q }
 func (sqliteDialect) MapType(string) dbdriver.LogicalType      { return dbdriver.TypeUnknown }

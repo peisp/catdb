@@ -153,6 +153,9 @@ type Dialect interface {
 	DefaultNamespaceSQL(name string) string
 	// SQL 脚本分割的词法规则（反引号/反斜杠转义/#注释/DELIMITER/dollar-quoting）
 	ScriptRules() ScriptRules
+	// 第 i 个参数（1-based）的占位符：MySQL "?"、PG "$i"。
+	// 通用层用它拼多值参数化 INSERT（如批量传输），值走绑定参数不走字面量
+	Placeholder(i int) string
 	Paginate(baseSQL string, limit, offset int) string // LIMIT/OFFSET vs OFFSET FETCH
 	MapType(nativeType string) LogicalType
 	// 类型串归一化（schemadiff 比较用；折叠 UNSIGNED 位置、ZEROFILL 等方言噪音）
@@ -227,7 +230,7 @@ import _ "yourapp/plugins/mysqldrv"
 | SQL Server | microsoft/go-mssqldb | `*sql.DB` | 分页 `OFFSET..FETCH` |
 | Redis/Mongo | go-redis / mongo-driver | 独立 `KVDriver`/`DocDriver` | 不套 SQL 接口，前端独立 UI |
 
-> **已知边界**：结构同步 / 数据传输的建表路径走源库 `GetCreateTable`（原生 DDL 原文在目标库执行），因此**只支持同构库之间**的同步/传输。异构（如 MySQL→PG）需改走 `TableSchema` + 目标库 `Dialect.GenerateCreateTable` 的类型映射管道，暂未实现。
+> **已知边界**：结构同步 / 数据传输的建表路径按同构/异构分叉（`createTableDDL`）：同构走源库 `GetCreateTable` 原生 DDL（保真度最高）；异构走 `TableSchema` + 目标库 `Dialect.GenerateCreateTable` 重新渲染，但**列类型暂原样传递**（无跨方言类型映射），MySQL 特有类型在 PG 上仍会建表失败。行数据传输/数据同步已异构可用（多值参数化 INSERT / Editor 参数化语句）。完整异构方案与路线图见 `docs/异构数据库同步与传输方案.md`。
 
 ---
 

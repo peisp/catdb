@@ -236,7 +236,7 @@ func compareSchemasConns(ctx context.Context, srcConn, tgtConn dbdriver.Connecti
 		switch {
 		case inSrc && !inTgt:
 			diff.Status = "create"
-			stmt, cerr := createTableDDL(ctx, srcMeta, dia, sameDriver, req, name)
+			stmt, cerr := createTableDDL(ctx, srcMeta, dia, sameDriver, req.SourceDB, req.SourceSchema, req.TargetDB, req.TargetSchema, name)
 			if cerr != nil {
 				diff.Error = cerr.Error()
 			} else {
@@ -317,7 +317,7 @@ func prefetchCreateDDLs(ctx context.Context, srcMeta dbdriver.Metadata, dia dbdr
 			}
 			emitSchemaCompareProgress(syncID, "object-start", name, "table", nil)
 			diff := SchemaObjectDiff{Name: name, Kind: "table", Status: "create"}
-			stmt, err := createTableDDL(ctx, srcMeta, dia, sameDriver, req, name)
+			stmt, err := createTableDDL(ctx, srcMeta, dia, sameDriver, req.SourceDB, req.SourceSchema, req.TargetDB, req.TargetSchema, name)
 			if err != nil {
 				if ctx.Err() != nil {
 					return
@@ -340,28 +340,28 @@ func prefetchCreateDDLs(ctx context.Context, srcMeta dbdriver.Metadata, dia dbdr
 // driver → the source's native DDL text (full fidelity: collation,
 // auto-increment, …). Cross-driver → regenerate from the read schema through
 // the target dialect.
-func createTableDDL(ctx context.Context, srcMeta dbdriver.Metadata, dia dbdriver.Dialect, sameDriver bool, req SchemaCompareRequest, name string) (string, error) {
+func createTableDDL(ctx context.Context, srcMeta dbdriver.Metadata, dia dbdriver.Dialect, sameDriver bool, srcDB, srcSchema, tgtDB, tgtSchema, name string) (string, error) {
 	if sameDriver {
-		ddl, err := srcMeta.GetCreateTable(ctx, req.SourceDB, req.SourceSchema, name)
+		ddl, err := srcMeta.GetCreateTable(ctx, srcDB, srcSchema, name)
 		if err != nil {
 			return "", err
 		}
 		// The native DDL text names the table unqualified; qualify it so the
 		// statement lands in the target database regardless of the target
 		// connection's default database.
-		qualified := dbdriver.QualifyTable(dia, req.TargetDB, req.TargetSchema, name)
+		qualified := dbdriver.QualifyTable(dia, tgtDB, tgtSchema, name)
 		ddl = strings.Replace(ddl, "CREATE TABLE "+dia.QuoteIdentifier(name), "CREATE TABLE "+qualified, 1)
 		if !strings.HasSuffix(strings.TrimSpace(ddl), ";") {
 			ddl += ";"
 		}
 		return ddl, nil
 	}
-	src, err := readTableSchema(ctx, srcMeta, req.SourceDB, req.SourceSchema, name, "")
+	src, err := readTableSchema(ctx, srcMeta, srcDB, srcSchema, name, "")
 	if err != nil {
 		return "", err
 	}
 	src.Name = name
-	src.Schema = firstNonEmptyStr(req.TargetSchema, req.TargetDB)
+	src.Schema = firstNonEmptyStr(tgtSchema, tgtDB)
 	return dia.GenerateCreateTable(src)
 }
 
