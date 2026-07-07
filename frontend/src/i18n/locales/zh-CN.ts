@@ -471,12 +471,15 @@ export default {
     publishedAt: '发布于 {date}',
     noAsset: '未找到适配当前系统的安装包。可点击下方链接前往 GitHub 手动下载。',
     downloading: '正在下载 {name} ({downloaded} / {total} MB)',
+    downloadedReady: '下载完成，点击"重启并更新"完成安装。',
     preparingInstall: '正在准备安装…',
     exitingToUpdate: '应用即将退出以完成更新…',
     updateFailed: '更新失败',
     viewOnGitHub: '在 GitHub 查看',
     skipVersion: '跳过该版本',
     installNow: '立即更新',
+    restartAndInstall: '重启并更新',
+    later: '稍后',
   },
   // 表结构容器（components/workspace/TableStructure.vue）。
   tableStructure: {
@@ -516,6 +519,7 @@ export default {
       'no-asset': '未找到适配当前系统的安装包',
       'download-failed': '下载失败',
       'install-failed': '启动安装器失败',
+      'no-download': '未找到已下载的更新包，请重新下载',
     },
   },
   // 结果网格右键模块（api/gridContextMenu.ts）。

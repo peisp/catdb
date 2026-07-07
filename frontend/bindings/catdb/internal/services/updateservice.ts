@@ -7,9 +7,10 @@
  * 	CheckForUpdate     — talk to GitHub Releases, compare to currentVersion
  * 	GetSkippedVersion  — what version the user has chosen to ignore
  * 	SkipVersion        — persist a skip decision
- * 	StartInstall       — download the matched asset and hand off to the
- * 	                     platform installer; the app quits when control
- * 	                     returns from the installer spawn.
+ * 	DownloadUpdate     — download the matched asset and stage it locally;
+ * 	                     the install waits for the user's explicit go-ahead
+ * 	RestartAndInstall  — hand the staged asset to the platform installer
+ * 	                     (silent) and quit so the swap can complete
  * 
  * The repo is hard-coded to updater.DefaultRepo ("peisp/catdb") — there is
  * no per-user override yet.
@@ -36,7 +37,17 @@ export function CheckForUpdate(currentVersion: string): $CancellablePromise<$mod
 }
 
 /**
- * GetLastCheckDate returns the date (YYYY-MM-DD) of the last successful
+ * DownloadUpdate downloads the matched asset for currentVersion→latest and
+ * stages it locally. It emits update:progress events while running and ends
+ * in phase "downloaded" — installing/restarting waits for the user to call
+ * RestartAndInstall explicitly.
+ */
+export function DownloadUpdate(currentVersion: string): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.UpdateService.DownloadUpdate", currentVersion);
+}
+
+/**
+ * GetLastCheckDate returns the timestamp (ISO 8601) of the last successful
  * update check, or "" if none.
  */
 export function GetLastCheckDate(): $CancellablePromise<string> {
@@ -52,7 +63,16 @@ export function GetSkippedVersion(): $CancellablePromise<string> {
 }
 
 /**
- * SetLastCheckDate persists the date string after a successful check.
+ * RestartAndInstall hands the staged asset from the last DownloadUpdate to
+ * the OS-specific installer (silent — no installer UI) and then quits the
+ * app so the swap can complete; the installer relaunches the app afterwards.
+ */
+export function RestartAndInstall(): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.UpdateService.RestartAndInstall");
+}
+
+/**
+ * SetLastCheckDate persists the timestamp string after a successful check.
  */
 export function SetLastCheckDate(date: string): $CancellablePromise<void> {
     return $Call.ByName("catdb/internal/services.UpdateService.SetLastCheckDate", date);
@@ -63,18 +83,6 @@ export function SetLastCheckDate(date: string): $CancellablePromise<void> {
  */
 export function SkipVersion(version: string): $CancellablePromise<void> {
     return $Call.ByName("catdb/internal/services.UpdateService.SkipVersion", version);
-}
-
-/**
- * StartInstall downloads the matched asset for currentVersion→latest and
- * then hands off to the OS-specific installer. It emits update:progress
- * events while running and finally quits the app so the swap can complete.
- * 
- * Returns once the installer has been spawned (or an error before that). The
- * caller (front-end) should already have shown a confirm dialog by this point.
- */
-export function StartInstall(currentVersion: string): $CancellablePromise<void> {
-    return $Call.ByName("catdb/internal/services.UpdateService.StartInstall", currentVersion);
 }
 
 // Private type creation functions

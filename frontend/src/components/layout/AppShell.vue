@@ -89,18 +89,13 @@ onMounted(() => {
     void store.refreshAll()
   }))
 
-  // Auto-check for updates 10s after the shell mounts (production only). The
-  // store keeps the badge state; the user can also trigger a check manually
-  // by clicking the version in the StatusBar. We deliberately do NOT auto-open
-  // the dialog — the badge dot is the non-intrusive signal; opening waits for
-  // a click.
-  const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string) || 'dev'
-  if (APP_VERSION !== 'dev') {
-    const checkTimer = window.setTimeout(() => {
-      void updates.check()
-    }, 10_000)
-    offHandlers.push(() => window.clearTimeout(checkTimer))
-  }
+  // Auto-check for updates: once shortly after the shell mounts, then every
+  // 8 hours in the background (production only — the store no-ops in dev).
+  // The store keeps the badge state; the user can also trigger a check
+  // manually by clicking the version in the StatusBar. We deliberately do NOT
+  // auto-open the dialog — the badge dot is the non-intrusive signal; opening
+  // waits for a click.
+  offHandlers.push(updates.startAutoCheck())
 })
 
 onBeforeUnmount(() => {

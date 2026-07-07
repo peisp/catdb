@@ -1,13 +1,15 @@
 <script setup lang="ts">
 // UpdateDialog — sits at the AppShell root, visibility driven by the updates
-// store. Shows the release notes (markdown) and offers three actions:
+// store. Shows the release notes (markdown) and offers the actions:
 //   - 取消        : close dialog, no state change
 //   - 跳过该版本  : persist a "ignore <latestVersion>" marker in app_settings
-//   - 立即更新    : kick off the download → install flow
+//   - 立即更新    : download the release asset (app keeps running)
+//   - 重启并更新  : after the download lands, the user explicitly triggers the
+//                   silent install + relaunch (the app quits at this point)
 //
-// During install the buttons swap out for a progress / status line. We never
-// auto-close on success because the app is about to quit — the panel rendering
-// "应用即将退出以完成更新" is the last thing the user sees.
+// During download/install the buttons swap out for a progress / status line.
+// We never auto-close on success because the app is about to quit — the panel
+// rendering "应用即将退出以完成更新" is the last thing the user sees.
 import { computed, watch } from 'vue'
 import { NModal, NButton, NProgress, NSpace, NAlert } from 'naive-ui'
 import MarkdownIt from 'markdown-it'
@@ -17,8 +19,9 @@ import { t } from '../../i18n'
 
 const updates = useUpdatesStore()
 
-// Known update error slugs Go can emit (see UpdateService.StartInstall).
-const UPDATE_ERROR_CODES = ['fetch-failed', 'up-to-date', 'no-asset', 'download-failed', 'install-failed']
+// Known update error slugs Go can emit (see UpdateService.DownloadUpdate /
+// RestartAndInstall).
+const UPDATE_ERROR_CODES = ['fetch-failed', 'up-to-date', 'no-asset', 'download-failed', 'install-failed', 'no-download']
 
 // Localized error line: friendly message from the Go error code, with the raw
 // technical detail appended when present; falls back to the generic message.
@@ -88,7 +91,11 @@ async function onSkip() {
 }
 
 async function onInstall() {
-  await updates.install()
+  await updates.download()
+}
+
+async function onRestart() {
+  await updates.restartAndInstall()
 }
 
 function openReleasePage(e: Event) {
@@ -140,7 +147,7 @@ function onNotesClick(e: MouseEvent) {
       {{ $t('update.noAsset') }}
     </n-alert>
 
-    <div v-if="isInstalling || updates.phase === 'ready' || updates.phase === 'error'" class="install-status">
+    <div v-if="isInstalling || updates.phase === 'downloaded' || updates.phase === 'ready' || updates.phase === 'error'" class="install-status">
       <div v-if="updates.phase === 'downloading'" class="status-row">
         <div class="status-text">
           {{ $t('update.downloading', { name: updates.assetName, downloaded: downloadedMB, total: totalMB }) }}
@@ -151,6 +158,9 @@ function onNotesClick(e: MouseEvent) {
           :show-indicator="true"
           :height="6"
         />
+      </div>
+      <div v-else-if="updates.phase === 'downloaded'" class="status-row">
+        <div class="status-text ready">{{ $t('update.downloadedReady') }}</div>
       </div>
       <div v-else-if="updates.phase === 'installing'" class="status-row">
         <div class="status-text">{{ $t('update.preparingInstall') }}</div>
@@ -182,10 +192,10 @@ function onNotesClick(e: MouseEvent) {
             :disabled="isInstalling"
             @click="onCancel"
           >
-            {{ $t('common.cancel') }}
+            {{ updates.phase === 'downloaded' ? $t('update.later') : $t('common.cancel') }}
           </n-button>
           <n-button
-            v-if="updates.phase !== 'ready'"
+            v-if="updates.phase !== 'ready' && updates.phase !== 'downloaded'"
             quaternary
             :disabled="isInstalling"
             @click="onSkip"
@@ -193,7 +203,14 @@ function onNotesClick(e: MouseEvent) {
             {{ $t('update.skipVersion') }}
           </n-button>
           <n-button
-            v-if="updates.phase !== 'ready'"
+            v-if="updates.phase === 'downloaded'"
+            type="primary"
+            @click="onRestart"
+          >
+            {{ $t('update.restartAndInstall') }}
+          </n-button>
+          <n-button
+            v-else-if="updates.phase !== 'ready'"
             type="primary"
             :disabled="!updates.hasAsset || isInstalling"
             :loading="isInstalling"

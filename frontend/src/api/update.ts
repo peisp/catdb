@@ -19,7 +19,7 @@ export type UpdateCheckResult = {
   skipped: boolean
 }
 
-export type UpdateProgressPhase = 'downloading' | 'installing' | 'ready' | 'error'
+export type UpdateProgressPhase = 'downloading' | 'downloaded' | 'installing' | 'ready' | 'error'
 
 export type UpdateProgress = {
   phase: UpdateProgressPhase
@@ -52,8 +52,12 @@ export function setLastCheckDate(date: string): Promise<void> {
   return UpdateService.SetLastCheckDate(date) as unknown as Promise<void>
 }
 
-export function startInstall(currentVersion: string): Promise<void> {
-  return UpdateService.StartInstall(currentVersion) as unknown as Promise<void>
+export function downloadUpdate(currentVersion: string): Promise<void> {
+  return UpdateService.DownloadUpdate(currentVersion) as unknown as Promise<void>
+}
+
+export function restartAndInstall(): Promise<void> {
+  return UpdateService.RestartAndInstall() as unknown as Promise<void>
 }
 
 export function onUpdateProgress(cb: (p: UpdateProgress) => void): () => void {

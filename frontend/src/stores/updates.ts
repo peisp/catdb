@@ -5,9 +5,16 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { update as updateApi } from '../api'
 
-export type UpdatePhase = 'idle' | 'downloading' | 'installing' | 'ready' | 'error'
+export type UpdatePhase = 'idle' | 'downloading' | 'downloaded' | 'installing' | 'ready' | 'error'
 
 const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string) || 'dev'
+
+// Auto-check cadence: once shortly after startup, then every 8 hours in the
+// background. The persisted min-interval gate sits just under the timer
+// period so a periodic firing is never skipped by its own previous run.
+const STARTUP_DELAY_MS = 10_000
+const CHECK_INTERVAL_MS = 8 * 60 * 60 * 1000
+const MIN_RECHECK_MS = CHECK_INTERVAL_MS - 10 * 60 * 1000
 
 export const useUpdatesStore = defineStore('updates', () => {
   const currentVersion = ref(APP_VERSION)
@@ -47,29 +54,22 @@ export const useUpdatesStore = defineStore('updates', () => {
     })
   }
 
-  /** Today's date as YYYY-MM-DD, used for the once-per-day gate. */
-  function today(): string {
-    const d = new Date()
-    const y = d.getFullYear()
-    const m = String(d.getMonth() + 1).padStart(2, '0')
-    const day = String(d.getDate()).padStart(2, '0')
-    return `${y}-${m}-${day}`
-  }
-
   // force=true performs a real check unconditionally — used by the manual
-  // "check for updates" click. The default (false) keeps the once-per-day
-  // throttle for the automatic background check on startup.
+  // "check for updates" click. The default (false) keeps the min-interval
+  // throttle for the automatic checks (startup + 8h background timer).
   async function check(force = false): Promise<boolean> {
     // Development builds (VITE_APP_VERSION unset → "dev") should never
     // call the GitHub API — no rate limit to waste, no false badges.
     if (currentVersion.value === 'dev') return false
 
-    // Once-per-day gate: skip if we already checked today. A manual click
-    // (force) bypasses this so the user always gets a fresh result.
+    // Min-interval gate: skip if the last successful check was recent.
+    // The persisted value is an ISO timestamp (older builds stored a plain
+    // YYYY-MM-DD — Date.parse still handles it; unparseable → treat as stale).
+    // A manual click (force) bypasses this for a fresh result.
     if (!force) {
       try {
-        const lastDate = await updateApi.getLastCheckDate()
-        if (lastDate === today()) return false
+        const last = Date.parse(await updateApi.getLastCheckDate())
+        if (!Number.isNaN(last) && Date.now() - last < MIN_RECHECK_MS) return false
       } catch {
         // Swallow — stale/missing setting is non-fatal; just proceed.
       }
@@ -78,8 +78,8 @@ export const useUpdatesStore = defineStore('updates', () => {
     lastError.value = ''
     try {
       const res = await updateApi.checkForUpdate(currentVersion.value)
-      // Persist today's date after a successful check.
-      await updateApi.setLastCheckDate(today()).catch(() => {})
+      // Persist the check time after a successful check.
+      await updateApi.setLastCheckDate(new Date().toISOString()).catch(() => {})
       latestVersion.value = res.latestVersion
       releaseNotes.value = res.releaseNotes
       releaseUrl.value = res.releaseUrl
@@ -104,7 +104,10 @@ export const useUpdatesStore = defineStore('updates', () => {
     dialogOpen.value = false
   }
 
-  async function install(): Promise<void> {
+  // download fetches the release asset and stages it — the app keeps running.
+  // Ends in phase 'downloaded'; the actual install waits for the user to
+  // trigger restartAndInstall (重启并更新).
+  async function download(): Promise<void> {
     attachProgress()
     phase.value = 'downloading'
     downloaded.value = 0
@@ -112,10 +115,39 @@ export const useUpdatesStore = defineStore('updates', () => {
     errorCode.value = ''
     lastError.value = ''
     try {
-      await updateApi.startInstall(currentVersion.value)
+      await updateApi.downloadUpdate(currentVersion.value)
     } catch (e) {
       phase.value = 'error'
       lastError.value = e instanceof Error ? e.message : String(e)
+    }
+  }
+
+  // restartAndInstall hands the staged download to the platform installer
+  // (silent) and quits the app — only call from an explicit user action.
+  async function restartAndInstall(): Promise<void> {
+    attachProgress()
+    phase.value = 'installing'
+    errorCode.value = ''
+    lastError.value = ''
+    try {
+      await updateApi.restartAndInstall()
+    } catch (e) {
+      phase.value = 'error'
+      lastError.value = e instanceof Error ? e.message : String(e)
+    }
+  }
+
+  // startAutoCheck wires the automatic cadence: one check shortly after
+  // startup (throttled by the persisted min-interval gate), then a background
+  // re-check every 8 hours. Returns a cleanup function for the caller's
+  // unmount hook. No-op in dev builds.
+  function startAutoCheck(): () => void {
+    if (currentVersion.value === 'dev') return () => {}
+    const startupTimer = window.setTimeout(() => { void check() }, STARTUP_DELAY_MS)
+    const intervalTimer = window.setInterval(() => { void check() }, CHECK_INTERVAL_MS)
+    return () => {
+      window.clearTimeout(startupTimer)
+      window.clearInterval(intervalTimer)
     }
   }
 
@@ -148,8 +180,10 @@ export const useUpdatesStore = defineStore('updates', () => {
     errorCode,
     hasBadge,
     check,
+    startAutoCheck,
     skipCurrent,
-    install,
+    download,
+    restartAndInstall,
     openDialog,
     closeDialog,
   }

@@ -479,12 +479,15 @@ export default {
     publishedAt: 'Published {date}',
     noAsset: 'No installer matching your system was found. Click the link below to download manually from GitHub.',
     downloading: 'Downloading {name} ({downloaded} / {total} MB)',
+    downloadedReady: 'Download complete. Click "Restart & Update" to finish installing.',
     preparingInstall: 'Preparing to install…',
     exitingToUpdate: 'App will quit shortly to complete the update…',
     updateFailed: 'Update failed',
     viewOnGitHub: 'View on GitHub',
     skipVersion: 'Skip this version',
     installNow: 'Update now',
+    restartAndInstall: 'Restart & Update',
+    later: 'Later',
   },
   // Table structure container (components/workspace/TableStructure.vue).
   tableStructure: {
@@ -525,6 +528,7 @@ export default {
       'no-asset': 'No installer matching your system was found',
       'download-failed': 'Download failed',
       'install-failed': 'Failed to launch the installer',
+      'no-download': 'No downloaded update package found — please download again',
     },
   },
   // Result-grid right-click module (api/gridContextMenu.ts).

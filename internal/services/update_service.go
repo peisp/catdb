@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"catdb/internal/storage"
@@ -14,12 +15,13 @@ import (
 // version is stored in app_settings.
 const settingsKeySkippedVersion = "updater.skipped_version"
 
-// settingsKeyLastCheckDate stores the date (YYYY-MM-DD) of the last
-// successful check so we skip re-checking on the same calendar day.
+// settingsKeyLastCheckDate stores the timestamp (ISO 8601) of the last
+// successful check; the frontend gates automatic re-checks on a minimum
+// interval (older builds stored a plain YYYY-MM-DD, still parseable).
 const settingsKeyLastCheckDate = "updater.last_check_date"
 
 // Update progress event sent over the bridge while a download is in flight.
-// Phase is one of: "downloading", "installing", "ready", "error".
+// Phase is one of: "downloading", "downloaded", "installing", "ready", "error".
 const eventUpdateProgress = "update:progress"
 
 // UpdateService exposes the auto-updater to the front-end:
@@ -27,15 +29,21 @@ const eventUpdateProgress = "update:progress"
 //	CheckForUpdate     — talk to GitHub Releases, compare to currentVersion
 //	GetSkippedVersion  — what version the user has chosen to ignore
 //	SkipVersion        — persist a skip decision
-//	StartInstall       — download the matched asset and hand off to the
-//	                     platform installer; the app quits when control
-//	                     returns from the installer spawn.
+//	DownloadUpdate     — download the matched asset and stage it locally;
+//	                     the install waits for the user's explicit go-ahead
+//	RestartAndInstall  — hand the staged asset to the platform installer
+//	                     (silent) and quit so the swap can complete
 //
 // The repo is hard-coded to updater.DefaultRepo ("peisp/catdb") — there is
 // no per-user override yet.
 type UpdateService struct {
 	store *storage.Store
 	repo  string
+
+	// downloadedPath is the staged installer/DMG from the last successful
+	// DownloadUpdate — consumed by RestartAndInstall.
+	mu             sync.Mutex
+	downloadedPath string
 }
 
 // NewUpdateService constructs the service. Pass an empty repo to use the default.
@@ -120,78 +128,96 @@ func (s *UpdateService) SkipVersion(ctx context.Context, version string) error {
 	return s.store.SetSetting(ctx, settingsKeySkippedVersion, version)
 }
 
-// GetLastCheckDate returns the date (YYYY-MM-DD) of the last successful
+// GetLastCheckDate returns the timestamp (ISO 8601) of the last successful
 // update check, or "" if none.
 func (s *UpdateService) GetLastCheckDate(ctx context.Context) (string, error) {
 	return s.store.GetSetting(ctx, settingsKeyLastCheckDate)
 }
 
-// SetLastCheckDate persists the date string after a successful check.
+// SetLastCheckDate persists the timestamp string after a successful check.
 func (s *UpdateService) SetLastCheckDate(ctx context.Context, date string) error {
 	return s.store.SetSetting(ctx, settingsKeyLastCheckDate, date)
 }
 
-// StartInstall downloads the matched asset for currentVersion→latest and
-// then hands off to the OS-specific installer. It emits update:progress
-// events while running and finally quits the app so the swap can complete.
-//
-// Returns once the installer has been spawned (or an error before that). The
-// caller (front-end) should already have shown a confirm dialog by this point.
-func (s *UpdateService) StartInstall(ctx context.Context, currentVersion string) error {
-	// emit sends a progress event. `code` is a stable, locale-independent slug
-	// (e.g. "fetch-failed"); the front-end maps it to a localized message
-	// (stores/updates → error.update.* / update.*). The raw technical detail,
-	// when present, rides along under extra["error"].
-	emit := func(phase, code string, extra map[string]any) {
-		payload := map[string]any{
-			"phase": phase,
-			"code":  code,
-		}
-		for k, v := range extra {
-			payload[k] = v
-		}
-		wailsbridge.Emit(eventUpdateProgress, payload)
+// emitProgress sends an update:progress event. `code` is a stable,
+// locale-independent slug (e.g. "fetch-failed"); the front-end maps it to a
+// localized message (stores/updates → error.update.* / update.*). The raw
+// technical detail, when present, rides along under extra["error"].
+func (s *UpdateService) emitProgress(phase, code string, extra map[string]any) {
+	payload := map[string]any{
+		"phase": phase,
+		"code":  code,
 	}
+	for k, v := range extra {
+		payload[k] = v
+	}
+	wailsbridge.Emit(eventUpdateProgress, payload)
+}
 
+// DownloadUpdate downloads the matched asset for currentVersion→latest and
+// stages it locally. It emits update:progress events while running and ends
+// in phase "downloaded" — installing/restarting waits for the user to call
+// RestartAndInstall explicitly.
+func (s *UpdateService) DownloadUpdate(ctx context.Context, currentVersion string) error {
 	rel, err := updater.FetchLatest(ctx, s.repo)
 	if err != nil {
-		emit("error", "fetch-failed", map[string]any{"error": err.Error()})
+		s.emitProgress("error", "fetch-failed", map[string]any{"error": err.Error()})
 		return err
 	}
 	if updater.CompareVersions(rel.Version(), currentVersion) <= 0 {
-		emit("error", "up-to-date", nil)
+		s.emitProgress("error", "up-to-date", nil)
 		return fmt.Errorf("updater: no newer release (current=%s latest=%s)", currentVersion, rel.Version())
 	}
 	asset, err := updater.PickAsset(rel)
 	if err != nil {
-		emit("error", "no-asset", map[string]any{"error": err.Error()})
+		s.emitProgress("error", "no-asset", map[string]any{"error": err.Error()})
 		return err
 	}
 
-	emit("downloading", "", map[string]any{
+	s.emitProgress("downloading", "", map[string]any{
 		"downloaded": int64(0),
 		"total":      asset.Size,
 	})
 
 	path, err := updater.DownloadAsset(ctx, asset, func(downloaded, total int64) {
-		emit("downloading", "", map[string]any{
+		s.emitProgress("downloading", "", map[string]any{
 			"downloaded": downloaded,
 			"total":      total,
 		})
 	})
 	if err != nil {
-		emit("error", "download-failed", map[string]any{"error": err.Error()})
+		s.emitProgress("error", "download-failed", map[string]any{"error": err.Error()})
 		return err
 	}
 
-	emit("installing", "", map[string]any{"path": path})
+	s.mu.Lock()
+	s.downloadedPath = path
+	s.mu.Unlock()
+
+	s.emitProgress("downloaded", "", map[string]any{"path": path})
+	return nil
+}
+
+// RestartAndInstall hands the staged asset from the last DownloadUpdate to
+// the OS-specific installer (silent — no installer UI) and then quits the
+// app so the swap can complete; the installer relaunches the app afterwards.
+func (s *UpdateService) RestartAndInstall(ctx context.Context) error {
+	s.mu.Lock()
+	path := s.downloadedPath
+	s.mu.Unlock()
+	if path == "" {
+		s.emitProgress("error", "no-download", nil)
+		return fmt.Errorf("updater: no staged download — call DownloadUpdate first")
+	}
+
+	s.emitProgress("installing", "", map[string]any{"path": path})
 
 	if err := updater.Install(ctx, path); err != nil {
-		emit("error", "install-failed", map[string]any{"error": err.Error()})
+		s.emitProgress("error", "install-failed", map[string]any{"error": err.Error()})
 		return err
 	}
 
-	emit("ready", "", nil)
+	s.emitProgress("ready", "", nil)
 
 	// Give the front-end a beat to render the "ready" state before we yank
 	// the process out from under it. The installer is already detached.
