@@ -172,27 +172,54 @@ func compareSchemasConns(ctx context.Context, srcConn, tgtConn dbdriver.Connecti
 		}
 	}
 
-	// Whole-schema prefetch via the optional BulkMetadata extension: 3 queries
-	// per side instead of 3 per table — the difference between seconds and
-	// minutes on remote connections. Nil = extension absent, per-table reads.
-	srcBulk := prefetchSchemaBulk(ctx, srcMeta, req.SourceDB, req.SourceSchema)
-	tgtBulk := prefetchSchemaBulk(ctx, tgtMeta, req.TargetDB, req.TargetSchema)
-
 	out := SchemaCompareResult{SyncID: fmt.Sprintf("sc-%d", time.Now().UnixNano())}
 
-	// Source-only tables need one SHOW CREATE TABLE each and MySQL has no
-	// bulk form — fetch them concurrently (the query is latency-bound, not
+	// Source-only tables need one native CREATE TABLE read each with no bulk
+	// form — fetched concurrently (the query is latency-bound, not
 	// server-bound). Their diffs land in a map the sorted loop below drains.
 	var createOnly []string
+	createSet := map[string]bool{}
 	for name := range srcByName {
 		if _, ok := tgtByName[name]; !ok {
 			createOnly = append(createOnly, name)
+			createSet[name] = true
 		}
 	}
 	sort.Strings(createOnly)
-	createDiffs := prefetchCreateDDLs(ctx, srcMeta, dia, sameDriver, req, createOnly, out.SyncID)
-
 	names := sortedKeys(srcByName, tgtByName)
+
+	// Fill the UI's live list immediately: one object-start per table BEFORE
+	// the (potentially slow) metadata prefetch below, so the compare never
+	// looks frozen. Create-only tables get theirs from the DDL prefetch
+	// workers as each one starts.
+	for _, name := range names {
+		if !createSet[name] {
+			emitSchemaCompareProgress(out.SyncID, "object-start", name, "table", nil)
+		}
+	}
+
+	// The three network-bound prefetches are independent — run them
+	// concurrently so the silent window before per-object results is
+	// max(src, tgt, ddl) instead of their sum:
+	//   - whole-schema bulk prefetch per side via the optional BulkMetadata
+	//     extension (3 queries per side instead of 3 per table — the
+	//     difference between seconds and minutes on remote connections;
+	//     nil = extension absent, per-table reads)
+	//   - CREATE TABLE DDL of source-only tables (streams its object-done
+	//     events while the bulk prefetches are still loading)
+	var (
+		srcBulk, tgtBulk *schemaBulk
+		createDiffs      map[string]SchemaObjectDiff
+		pf               sync.WaitGroup
+	)
+	pf.Add(3)
+	go func() { defer pf.Done(); srcBulk = prefetchSchemaBulk(ctx, srcMeta, req.SourceDB, req.SourceSchema) }()
+	go func() { defer pf.Done(); tgtBulk = prefetchSchemaBulk(ctx, tgtMeta, req.TargetDB, req.TargetSchema) }()
+	go func() {
+		defer pf.Done()
+		createDiffs = prefetchCreateDDLs(ctx, srcMeta, dia, sameDriver, req, createOnly, out.SyncID)
+	}()
+	pf.Wait()
 	for _, name := range names {
 		if err := ctx.Err(); err != nil {
 			return empty, err
