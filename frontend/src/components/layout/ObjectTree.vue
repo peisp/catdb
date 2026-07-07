@@ -39,6 +39,7 @@ import tableOfContentsIcon from '../../assets/icons/table-of-contents.svg?raw'
 // column leaf keeps n-tree's default switcher-only look.
 const KIND_ICONS: Partial<Record<TreeMeta['kind'], string>> = {
   database: databaseIcon,
+  schema: databaseIcon,
   tableGroup: table2Icon,
   viewGroup: scanEyeIcon,
   queryGroup: fileCodeCornerFromIcon,
@@ -62,15 +63,22 @@ function renderPrefix({ option }: { option: TreeOption }) {
 
 const props = defineProps<{ connection: ConnectionProfile }>()
 const emit = defineEmits<{
-  (e: 'open-data', payload: { db: string; table: string }): void
-  (e: 'open-structure', payload: { db: string; table: string }): void
-  (e: 'open-tables-overview', payload: { db: string }): void
+  (e: 'open-data', payload: { db: string; schema?: string; table: string }): void
+  (e: 'open-structure', payload: { db: string; schema?: string; table: string }): void
+  (e: 'open-tables-overview', payload: { db: string; schema?: string }): void
 }>()
 
 const store = useMetadataStore()
 const connStore = useConnectionsStore()
 const queryStore = useQueryStore()
 const message = useMessage()
+
+// Whether this connection's database has a schema level between database and
+// table (Capabilities.schemas — Postgres yes, MySQL no). Declared by the
+// driver; the tree inserts schema nodes when true.
+const hasSchemas = computed(
+  () => !!connStore.driverByName.get(props.connection.driver)?.capabilities?.schemas,
+)
 
 // allRootNodes holds the database node objects for every schema on the
 // server; `treeData` (bound to n-tree) filters them by `selectedSchemas`.
@@ -209,8 +217,11 @@ async function onRefreshSchemas() {
 }
 
 interface TreeMeta {
-  kind: 'database' | 'tableGroup' | 'viewGroup' | 'queryGroup' | 'table' | 'view' | 'column' | 'query'
+  kind: 'database' | 'schema' | 'tableGroup' | 'viewGroup' | 'queryGroup' | 'table' | 'view' | 'column' | 'query'
   db?: string
+  // Schema between db and table for schema-ful databases; '' / undefined for
+  // databases without the level (MySQL).
+  schema?: string
   table?: string
   // for kind === 'column': whether the column is part of the primary key.
   pk?: boolean
@@ -221,14 +232,16 @@ interface TreeMeta {
 }
 
 function nodeKey(meta: TreeMeta): string {
+  const ns = meta.schema ? `${meta.db}:${meta.schema}` : meta.db
   switch (meta.kind) {
     case 'database': return `db:${meta.db}`
-    case 'tableGroup': return `dbtables:${meta.db}`
-    case 'viewGroup': return `dbviews:${meta.db}`
-    case 'queryGroup': return `dbqueries:${meta.db}`
-    case 'table': return `tbl:${meta.db}:${meta.table}`
-    case 'view': return `vw:${meta.db}:${meta.table}`
-    case 'column': return `col:${meta.db}:${meta.table}:${meta.table}`
+    case 'schema': return `schema:${ns}`
+    case 'tableGroup': return `dbtables:${ns}`
+    case 'viewGroup': return `dbviews:${ns}`
+    case 'queryGroup': return `dbqueries:${ns}`
+    case 'table': return `tbl:${ns}:${meta.table}`
+    case 'view': return `vw:${ns}:${meta.table}`
+    case 'column': return `col:${ns}:${meta.table}:${meta.table}`
     case 'query': return `q:${meta.db}:${meta.queryId}`
   }
 }
@@ -275,16 +288,37 @@ watch(
   { immediate: true },
 )
 
+// The Tables/Views/Queries group nodes under one namespace (db or db.schema).
+// Saved queries are stored per-database, so the queries group only appears at
+// the level that owns them: the database node (schema-less), or alongside the
+// schema nodes (schema-ful).
+function groupNodes(db: string, schema: string | undefined, withQueries: boolean): TreeOption[] {
+  const out = [
+    mkNode(t('objectTree.tables'), { kind: 'tableGroup', db, schema }),
+    mkNode(t('objectTree.views'), { kind: 'viewGroup', db, schema }),
+  ]
+  if (withQueries) out.push(mkNode(t('objectTree.queries'), { kind: 'queryGroup', db }))
+  return out
+}
+
 async function onLoad(node: TreeOption): Promise<boolean> {
   const meta = (node as any).extra as TreeMeta
   try {
     if (meta.kind === 'database') {
-      // Show Tables + Views + saved-queries groups under the database.
-      node.children = [
-        mkNode(t('objectTree.tables'), { kind: 'tableGroup', db: meta.db }),
-        mkNode(t('objectTree.views'), { kind: 'viewGroup', db: meta.db }),
-        mkNode(t('objectTree.queries'), { kind: 'queryGroup', db: meta.db }),
-      ]
+      if (hasSchemas.value) {
+        // Schema-ful database: database → schema nodes (+ per-db queries).
+        const schemaList = await store.ensureSchemas(props.connection.id, meta.db!)
+        node.children = [
+          ...(schemaList ?? []).map((s) => mkNode(s, { kind: 'schema', db: meta.db, schema: s })),
+          mkNode(t('objectTree.queries'), { kind: 'queryGroup', db: meta.db }),
+        ]
+        return true
+      }
+      node.children = groupNodes(meta.db!, undefined, true)
+      return true
+    }
+    if (meta.kind === 'schema') {
+      node.children = groupNodes(meta.db!, meta.schema, false)
       return true
     }
     if (meta.kind === 'queryGroup') {
@@ -295,9 +329,9 @@ async function onLoad(node: TreeOption): Promise<boolean> {
       return true
     }
     if (meta.kind === 'tableGroup') {
-      const tables = await store.ensureTables(props.connection.id, meta.db!)
+      const tables = await store.ensureTables(props.connection.id, meta.db!, false, meta.schema ?? '')
       node.children = tables.map((t) => {
-        const child = mkNode(t.name, { kind: 'table', db: meta.db, table: t.name })
+        const child = mkNode(t.name, { kind: 'table', db: meta.db, schema: meta.schema, table: t.name })
         child.isLeaf = false
         return child
       })
@@ -306,16 +340,18 @@ async function onLoad(node: TreeOption): Promise<boolean> {
     if (meta.kind === 'viewGroup') {
       // Views are lighter — we expose them as leaves for now (M3 doesn't
       // need columns under a view to satisfy MVP acceptance).
-      const views = await metaApi.listViews(props.connection.id, meta.db!)
-      node.children = (views ?? []).map((v) => mkNode(v.name, { kind: 'view', db: meta.db, table: v.name }, true))
+      const views = await metaApi.listViews(props.connection.id, meta.db!, meta.schema ?? '')
+      node.children = (views ?? []).map((v) =>
+        mkNode(v.name, { kind: 'view', db: meta.db, schema: meta.schema, table: v.name }, true),
+      )
       return true
     }
     if (meta.kind === 'table') {
-      const cols = await store.ensureColumns(props.connection.id, meta.db!, meta.table!)
+      const cols = await store.ensureColumns(props.connection.id, meta.db!, meta.table!, false, meta.schema ?? '')
       node.children = cols.map((c) =>
         mkNode(
           `${c.name}  ${c.nativeType}`,
-          { kind: 'column', db: meta.db, table: meta.table, pk: c.isPrimaryKey },
+          { kind: 'column', db: meta.db, schema: meta.schema, table: meta.table, pk: c.isPrimaryKey },
           true,
         ),
       )
@@ -367,16 +403,16 @@ function findNodeByKey(key: string): TreeOption | null {
   return null
 }
 
-async function refreshTableGroup(db: string) {
-  await store.ensureTables(props.connection.id, db, true)
-  const node = findNodeByKey(nodeKey({ kind: 'tableGroup', db }))
+async function refreshTableGroup(db: string, schema?: string) {
+  await store.ensureTables(props.connection.id, db, true, schema ?? '')
+  const node = findNodeByKey(nodeKey({ kind: 'tableGroup', db, schema }))
   if (!node) return
   node.children = undefined
   await onLoad(node)
 }
 
-async function refreshViewGroup(db: string) {
-  const node = findNodeByKey(nodeKey({ kind: 'viewGroup', db }))
+async function refreshViewGroup(db: string, schema?: string) {
+  const node = findNodeByKey(nodeKey({ kind: 'viewGroup', db, schema }))
   if (!node) return
   node.children = undefined
   await onLoad(node)
@@ -392,9 +428,9 @@ async function refreshQueryGroup(db: string) {
   }
 }
 
-async function refreshColumns(db: string, table: string) {
-  await store.ensureColumns(props.connection.id, db, table, true)
-  const node = findNodeByKey(nodeKey({ kind: 'table', db, table }))
+async function refreshColumns(db: string, table: string, schema?: string) {
+  await store.ensureColumns(props.connection.id, db, table, true, schema ?? '')
+  const node = findNodeByKey(nodeKey({ kind: 'table', db, schema, table }))
   if (!node) return
   node.children = undefined
   if (expandedKeys.value.includes(node.key as string)) {
@@ -421,14 +457,16 @@ function onContextMenu(event: MouseEvent, node: TreeOption) {
       setActiveTableContext({
         connId,
         db: m.db,
+        schema: m.schema,
         table: m.table,
-        onAfterMutate: () => refreshTableGroup(m.db!),
+        onAfterMutate: () => refreshTableGroup(m.db!, m.schema),
       })
       setActiveTreeContext({
         connId,
         db: m.db,
+        schema: m.schema,
         table: m.table,
-        onRefreshColumns: () => refreshColumns(m.db!, m.table!),
+        onRefreshColumns: () => refreshColumns(m.db!, m.table!, m.schema),
       })
       setMenu('catdb-tree-table')
       break
@@ -438,6 +476,7 @@ function onContextMenu(event: MouseEvent, node: TreeOption) {
       setActiveTableContext({
         connId,
         db: m.db,
+        schema: m.schema,
         table: m.table,
       })
       setMenu('catdb-tree-view')
@@ -447,7 +486,8 @@ function onContextMenu(event: MouseEvent, node: TreeOption) {
       setActiveTreeContext({
         connId,
         db: m.db,
-        onRefreshTables: () => refreshTableGroup(m.db!),
+        schema: m.schema,
+        onRefreshTables: () => refreshTableGroup(m.db!, m.schema),
       })
       setMenu('catdb-tree-table-group')
       break
@@ -456,7 +496,8 @@ function onContextMenu(event: MouseEvent, node: TreeOption) {
       setActiveTreeContext({
         connId,
         db: m.db,
-        onRefreshViews: () => refreshViewGroup(m.db!),
+        schema: m.schema,
+        onRefreshViews: () => refreshViewGroup(m.db!, m.schema),
       })
       setMenu('catdb-tree-view-group')
       break
@@ -501,7 +542,7 @@ function onDblclick(_: MouseEvent, node: TreeOption) {
   const m = (node as any).extra as TreeMeta
   // 表/视图 → 打开数据浏览
   if (m.kind === 'table' || m.kind === 'view') {
-    if (m.db && m.table) emit('open-data', { db: m.db, table: m.table })
+    if (m.db && m.table) emit('open-data', { db: m.db, schema: m.schema, table: m.table })
     return
   }
   // 保存的查询 → 打开查询 tab（带 SQL）
@@ -532,9 +573,16 @@ function onDblclick(_: MouseEvent, node: TreeOption) {
 
 function onClick(_: MouseEvent, node: TreeOption) {
   const m = (node as any).extra as TreeMeta
-  if (m.kind === 'database') {
+  // Schema-less database → the overview lists its tables directly. With a
+  // schema level, the database node only expands; the overview belongs to
+  // the schema nodes.
+  if (m.kind === 'database' && !hasSchemas.value) {
     queryStore.setSelectedDb(props.connection.id, m.db!)
     emit('open-tables-overview', { db: m.db! })
+  }
+  if (m.kind === 'schema') {
+    queryStore.setSelectedDb(props.connection.id, m.db!)
+    emit('open-tables-overview', { db: m.db!, schema: m.schema })
   }
 }
 

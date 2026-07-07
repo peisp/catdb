@@ -4,7 +4,14 @@ import (
 	"testing"
 
 	"catdb/internal/dbdriver"
+	"catdb/internal/dbdriver/contract"
 )
+
+// TestUIDialectDescriptor runs the shared static validation (no live DB) so
+// descriptor mistakes surface in plain unit tests, not just integration runs.
+func TestUIDialectDescriptor(t *testing.T) {
+	contract.TestUIDialect(t, driver{})
+}
 
 func TestQuoteIdentifier(t *testing.T) {
 	d := dialect{}
@@ -30,6 +37,36 @@ func TestPaginate(t *testing.T) {
 	}
 	if got := d.Paginate("SELECT 1", 5, -10); got != "SELECT 1 LIMIT 5 OFFSET 0" {
 		t.Errorf("negative offset should clamp to 0: got %q", got)
+	}
+}
+
+func TestNormalizeType(t *testing.T) {
+	d := dialect{}
+	cases := map[string]string{
+		"varchar(255)":           "VARCHAR(255)",
+		"decimal(10, 2)":         "DECIMAL(10,2)",
+		"int(10) unsigned":       "INT(10) UNSIGNED",
+		"int unsigned zerofill":  "INT UNSIGNED",
+		"enum('a','b')":          "ENUM('a','b')",
+		"datetime(6)":            "DATETIME(6)",
+		"text":                   "TEXT",
+		"":                       "",
+		"DECIMAL(10,2) UNSIGNED": "DECIMAL(10,2) UNSIGNED",
+	}
+	for in, want := range cases {
+		if got := d.NormalizeType(in); got != want {
+			t.Errorf("NormalizeType(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestDefaultNamespaceSQL(t *testing.T) {
+	d := dialect{}
+	if got := d.DefaultNamespaceSQL("app"); got != "USE `app`" {
+		t.Errorf("DefaultNamespaceSQL: got %q", got)
+	}
+	if got := d.DefaultNamespaceSQL("  "); got != "" {
+		t.Errorf("blank name should yield empty statement, got %q", got)
 	}
 }
 

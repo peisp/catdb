@@ -2,7 +2,6 @@ package dbdriver
 
 import (
 	"context"
-	"database/sql"
 )
 
 // Driver is the entry point for one database type (e.g. "mysql", "postgres").
@@ -24,6 +23,11 @@ type Driver interface {
 	// Capabilities lets the UI hide unsupported features (e.g. transactions on
 	// ClickHouse, schemas on MySQL).
 	Capabilities() Capabilities
+
+	// UIDialect is the declarative UI descriptor (identifier quoting, editor
+	// dialect, type system, completion catalogs). Like ConnectionSchema, it is
+	// consumed by the front-end so new databases need no front-end changes.
+	UIDialect() UIDialect
 
 	// Dialect returns the per-database SQL quirks (identifier quoting,
 	// pagination syntax, type mapping, CREATE TABLE generation).
@@ -50,8 +54,8 @@ type Connection interface {
 
 	// Begin starts a transaction. The returned Tx is also a Querier so all
 	// query/exec ops route through the same physical connection while the
-	// transaction is in flight.
-	Begin(ctx context.Context, opts *sql.TxOptions) (Tx, error)
+	// transaction is in flight. opts may be nil (driver defaults).
+	Begin(ctx context.Context, opts *TxOptions) (Tx, error)
 }
 
 // Querier runs SQL on a Connection or Tx.
@@ -87,6 +91,11 @@ type Metadata interface {
 	ListSchemas(ctx context.Context, db string) ([]string, error)
 	ListTables(ctx context.Context, db, schema string) ([]TableInfo, error)
 	ListViews(ctx context.Context, db, schema string) ([]ViewInfo, error)
+
+	// ListViewDefinitions returns the definition body of every view in
+	// (db, schema), keyed by view name. Used by structure sync to compare
+	// views in one round-trip. Drivers without views return an empty map.
+	ListViewDefinitions(ctx context.Context, db, schema string) (map[string]string, error)
 	ListColumns(ctx context.Context, db, schema, table string) ([]ColumnMeta, error)
 	ListIndexes(ctx context.Context, db, schema, table string) ([]IndexInfo, error)
 	ListForeignKeys(ctx context.Context, db, schema, table string) ([]ForeignKeyInfo, error)
@@ -116,12 +125,29 @@ type Dialect interface {
 	// database (MySQL `name`, Postgres "name", SQL Server [name], …).
 	QuoteIdentifier(name string) string
 
+	// DefaultNamespaceSQL returns the statement that makes name the session's
+	// default namespace, so unqualified identifiers in subsequent statements
+	// resolve against it — the database for MySQL ("USE `x`"), the schema for
+	// Postgres ("SET search_path TO \"x\""). The dialect quotes name itself.
+	// An empty return means the database has no such statement.
+	DefaultNamespaceSQL(name string) string
+
+	// ScriptRules returns the lexical rules for splitting this database's
+	// SQL scripts into statements (see core/sqlscript).
+	ScriptRules() ScriptRules
+
 	// Paginate wraps baseSQL with a database-appropriate LIMIT/OFFSET clause.
 	Paginate(baseSQL string, limit, offset int) string
 
 	// MapType maps a native database type name to the logical type used by
 	// the front-end.
 	MapType(nativeType string) LogicalType
+
+	// NormalizeType canonicalizes a native type string for equality
+	// comparison in schema diffing, folding this database's cosmetic
+	// variations (case, param whitespace, MySQL's UNSIGNED position /
+	// ZEROFILL noise, …) so equivalent types compare equal.
+	NormalizeType(nativeType string) string
 
 	// GenerateCreateTable emits a CREATE TABLE statement for the given schema.
 	GenerateCreateTable(t TableSchema) (string, error)

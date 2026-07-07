@@ -226,11 +226,11 @@ func (d dialect) GenerateCreateTable(t dbdriver.TableSchema) (string, error) {
 	}
 
 	tail := ""
-	if t.Engine != "" {
-		tail += " ENGINE=" + t.Engine
+	if engine := t.Options["engine"]; engine != "" {
+		tail += " ENGINE=" + engine
 	}
-	if t.Charset != "" {
-		tail += " DEFAULT CHARSET=" + t.Charset
+	if charset := t.Options["charset"]; charset != "" {
+		tail += " DEFAULT CHARSET=" + charset
 	}
 	if t.Comment != "" {
 		tail += " COMMENT=" + quoteString(t.Comment)

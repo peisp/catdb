@@ -89,14 +89,33 @@ func (c *connection) Editor() dbdriver.Editor {
 	return editor{db: c.db, dialect: dialect{}}
 }
 
-func (c *connection) Begin(ctx context.Context, opts *sql.TxOptions) (dbdriver.Tx, error) {
+func (c *connection) Begin(ctx context.Context, opts *dbdriver.TxOptions) (dbdriver.Tx, error) {
 	if c == nil || c.db == nil {
 		return nil, fmt.Errorf("mysqldrv: connection is closed")
 	}
-	t, err := c.db.BeginTx(ctx, opts)
+	t, err := c.db.BeginTx(ctx, sqlTxOptions(opts))
 	if err != nil {
 		return nil, err
 	}
 	return newTx(t), nil
+}
+
+// sqlTxOptions maps the framework-agnostic TxOptions onto database/sql.
+func sqlTxOptions(opts *dbdriver.TxOptions) *sql.TxOptions {
+	if opts == nil {
+		return nil
+	}
+	iso := sql.LevelDefault
+	switch opts.Isolation {
+	case dbdriver.IsolationReadUncommitted:
+		iso = sql.LevelReadUncommitted
+	case dbdriver.IsolationReadCommitted:
+		iso = sql.LevelReadCommitted
+	case dbdriver.IsolationRepeatableRead:
+		iso = sql.LevelRepeatableRead
+	case dbdriver.IsolationSerializable:
+		iso = sql.LevelSerializable
+	}
+	return &sql.TxOptions{Isolation: iso, ReadOnly: opts.ReadOnly}
 }
 

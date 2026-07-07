@@ -12,6 +12,7 @@ import (
 
 	"catdb/internal/core/sqlscript"
 	"catdb/internal/dbdriver"
+	"catdb/internal/registry"
 )
 
 // ImportFormat enumerates the supported import file types. Same string values
@@ -88,7 +89,15 @@ func (s *TransferService) ImportFile(ctx context.Context, connID string, opts Im
 	case ImportCSV:
 		return s.importCSV(ctx, conn, q, opts, transferID, start)
 	case ImportSQL:
-		return s.importSQL(ctx, q, opts, transferID, start)
+		name, err := s.mgr.DriverName(ctx, connID)
+		if err != nil {
+			return empty, fmt.Errorf("TransferService: resolve driver: %w", err)
+		}
+		d, err := registry.Get(name)
+		if err != nil {
+			return empty, fmt.Errorf("TransferService: resolve driver: %w", err)
+		}
+		return s.importSQL(ctx, q, d.Dialect().ScriptRules(), opts, transferID, start)
 	default:
 		return empty, fmt.Errorf("TransferService: unsupported import format %q", opts.Format)
 	}
@@ -183,6 +192,7 @@ func (s *TransferService) importCSV(
 func (s *TransferService) importSQL(
 	ctx context.Context,
 	q dbdriver.Querier,
+	rules dbdriver.ScriptRules,
 	opts ImportOptions,
 	transferID string,
 	start time.Time,
@@ -199,7 +209,7 @@ func (s *TransferService) importSQL(
 	// Stream the file through the shared splitter: it honors quotes, comments,
 	// and the DELIMITER directive (so routine/trigger dumps import correctly),
 	// while holding at most one statement in memory at a time.
-	err = sqlscript.SplitStream(f, func(stmt string) error {
+	err = sqlscript.SplitStream(f, rules, func(stmt string) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}

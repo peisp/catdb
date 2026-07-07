@@ -50,6 +50,56 @@ export class Capabilities {
 }
 
 /**
+ * CharsetInfo is one server character set (DatabaseEditor).
+ */
+export class CharsetInfo {
+    "name": string;
+    "defaultCollation"?: string;
+
+    /** Creates a new CharsetInfo instance. */
+    constructor($$source: Partial<CharsetInfo> = {}) {
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CharsetInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): CharsetInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new CharsetInfo($$parsedSource as Partial<CharsetInfo>);
+    }
+}
+
+/**
+ * CollationInfo is one server collation (DatabaseEditor).
+ */
+export class CollationInfo {
+    "name": string;
+    "charset"?: string;
+
+    /** Creates a new CollationInfo instance. */
+    constructor($$source: Partial<CollationInfo> = {}) {
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CollationInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): CollationInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new CollationInfo($$parsedSource as Partial<CollationInfo>);
+    }
+}
+
+/**
  * ColumnMeta is the column descriptor returned by a ResultSet — sent to the
  * front-end once per query (NOT per row) to keep IPC payloads small.
  */
@@ -145,6 +195,30 @@ export class ConnParamField {
             $$parsedSource["options"] = $$createField5_0($$parsedSource["options"]);
         }
         return new ConnParamField($$parsedSource as Partial<ConnParamField>);
+    }
+}
+
+/**
+ * DatabaseOptions are the create/alter-database form values. Drivers map
+ * them onto their native concepts (MySQL: charset/collation; a Postgres
+ * driver may map Charset to encoding).
+ */
+export class DatabaseOptions {
+    "charset"?: string;
+    "collation"?: string;
+
+    /** Creates a new DatabaseOptions instance. */
+    constructor($$source: Partial<DatabaseOptions> = {}) {
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DatabaseOptions instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DatabaseOptions {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DatabaseOptions($$parsedSource as Partial<DatabaseOptions>);
     }
 }
 
@@ -476,17 +550,20 @@ export class ServerInfo {
 
 /**
  * TableInfo is a row in the object tree at the table level.
+ * 
+ * Options carries driver-specific display attributes (MySQL: "engine",
+ * "collation"). Generic layers must not interpret the keys; the driver's UI
+ * dialect descriptor tells the front-end which ones to show.
  */
 export class TableInfo {
     "name": string;
     "schema"?: string;
-    "engine"?: string;
     "comment"?: string;
     "rows"?: number;
     "dataLength": number;
     "createTime": string;
     "updateTime": string;
-    "collation": string;
+    "options"?: { [_ in string]?: string };
 
     /** Creates a new TableInfo instance. */
     constructor($$source: Partial<TableInfo> = {}) {
@@ -502,9 +579,6 @@ export class TableInfo {
         if (!("updateTime" in $$source)) {
             this["updateTime"] = "";
         }
-        if (!("collation" in $$source)) {
-            this["collation"] = "";
-        }
 
         Object.assign(this, $$source);
     }
@@ -513,8 +587,359 @@ export class TableInfo {
      * Creates a new TableInfo instance from a string or object.
      */
     static createFrom($$source: any = {}): TableInfo {
+        const $$createField7_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("options" in $$parsedSource) {
+            $$parsedSource["options"] = $$createField7_0($$parsedSource["options"]);
+        }
         return new TableInfo($$parsedSource as Partial<TableInfo>);
+    }
+}
+
+/**
+ * UIAutoIncrement describes auto-increment column rules for the editor.
+ */
+export class UIAutoIncrement {
+    /**
+     * Supported: the dialect has an auto-increment column flag at all.
+     */
+    "supported"?: boolean;
+
+    /**
+     * BaseTypes restricts the flag to these base types (empty = any).
+     */
+    "baseTypes"?: string[];
+
+    /**
+     * MaxPerTable caps flagged columns per table (0 = unlimited).
+     */
+    "maxPerTable"?: number;
+
+    /** Creates a new UIAutoIncrement instance. */
+    constructor($$source: Partial<UIAutoIncrement> = {}) {
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new UIAutoIncrement instance from a string or object.
+     */
+    static createFrom($$source: any = {}): UIAutoIncrement {
+        const $$createField1_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("baseTypes" in $$parsedSource) {
+            $$parsedSource["baseTypes"] = $$createField1_0($$parsedSource["baseTypes"]);
+        }
+        return new UIAutoIncrement($$parsedSource as Partial<UIAutoIncrement>);
+    }
+}
+
+/**
+ * UIDialect is the driver's declarative UI descriptor: everything the
+ * front-end must know about this database's SQL surface that is not runtime
+ * metadata — identifier quoting, editor dialect, the structure editor's type
+ * system, completion catalogs. Shipped once per driver via
+ * ConnectionService.ListDrivers, so adding a database never means editing
+ * front-end components.
+ * 
+ * i18n rule: all Key fields are stable identifiers the front-end translates
+ * (with the raw key as fallback); free-text fields (Info, Detail) are English
+ * technical reference text shown as-is.
+ */
+export class UIDialect {
+    /**
+     * EditorDialect selects the CodeMirror SQL dialect by id:
+     * "mysql" | "mariadb" | "postgresql" | "sqlite" | "mssql" | "standard".
+     * Unknown ids fall back to "standard".
+     */
+    "editorDialect": string;
+
+    /**
+     * IdentQuote is the identifier quote character ("`", "\"", "[").
+     */
+    "identQuote": string;
+
+    /**
+     * StringBackslashEscapes: backslash escapes inside '…' string literals
+     * (MySQL). Off for ANSI-conforming databases — a backslash is literal.
+     */
+    "stringBackslashEscapes"?: boolean;
+
+    /**
+     * SystemSchemas are catalog/system namespaces hidden from casual
+     * completion until the user types a matching prefix.
+     */
+    "systemSchemas"?: string[];
+
+    /**
+     * Keywords are dialect-specific keywords/phrases offered by completion in
+     * addition to the front-end's generic ANSI set.
+     */
+    "keywords"?: string[];
+
+    /**
+     * Functions is the completion catalog of built-in functions.
+     */
+    "functions"?: UIFunction[];
+
+    /**
+     * Snippets are dialect-specific completion snippets. Body uses CodeMirror
+     * snippet syntax (${placeholder}).
+     */
+    "snippets"?: UISnippet[];
+
+    /**
+     * TypeGroups is the grouped catalog of column base types for the
+     * structure editor's type dropdown. The first type of the first group is
+     * the default for newly-added columns.
+     */
+    "typeGroups"?: UITypeGroup[];
+
+    /**
+     * TypeFormats describes, per base type (uppercase), how its params field
+     * behaves. Types absent from the map take {Kind:"none"}.
+     */
+    "typeFormats"?: { [_ in string]?: UITypeFormat };
+
+    /**
+     * DefaultColumnType/Params seed a newly-added column row
+     * (MySQL: VARCHAR / 255).
+     */
+    "defaultColumnType"?: string;
+    "defaultColumnParams"?: string;
+
+    /**
+     * HasUnsigned reports whether the dialect has an UNSIGNED column modifier
+     * at all (drives the column-editor toggle column visibility).
+     */
+    "hasUnsigned"?: boolean;
+
+    /**
+     * AutoIncrement describes the dialect's auto-increment column rules.
+     */
+    "autoIncrement": UIAutoIncrement;
+
+    /**
+     * PrimaryKeyForcesNotNull: ticking PK forces NOT NULL in the editor.
+     */
+    "primaryKeyForcesNotNull"?: boolean;
+
+    /**
+     * IndexTypes are the selectable index methods (MySQL: BTREE/HASH/FULLTEXT;
+     * Postgres: btree/hash/gin/gist). Empty hides the selector.
+     */
+    "indexTypes"?: string[];
+
+    /**
+     * DefaultCharset preselects the database editor's charset picker
+     * (MySQL: utf8mb4). Empty leaves the picker blank.
+     */
+    "defaultCharset"?: string;
+
+    /** Creates a new UIDialect instance. */
+    constructor($$source: Partial<UIDialect> = {}) {
+        if (!("editorDialect" in $$source)) {
+            this["editorDialect"] = "";
+        }
+        if (!("identQuote" in $$source)) {
+            this["identQuote"] = "";
+        }
+        if (!("autoIncrement" in $$source)) {
+            this["autoIncrement"] = (new UIAutoIncrement());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new UIDialect instance from a string or object.
+     */
+    static createFrom($$source: any = {}): UIDialect {
+        const $$createField3_0 = $$createType0;
+        const $$createField4_0 = $$createType0;
+        const $$createField5_0 = $$createType5;
+        const $$createField6_0 = $$createType7;
+        const $$createField7_0 = $$createType9;
+        const $$createField8_0 = $$createType11;
+        const $$createField12_0 = $$createType12;
+        const $$createField14_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("systemSchemas" in $$parsedSource) {
+            $$parsedSource["systemSchemas"] = $$createField3_0($$parsedSource["systemSchemas"]);
+        }
+        if ("keywords" in $$parsedSource) {
+            $$parsedSource["keywords"] = $$createField4_0($$parsedSource["keywords"]);
+        }
+        if ("functions" in $$parsedSource) {
+            $$parsedSource["functions"] = $$createField5_0($$parsedSource["functions"]);
+        }
+        if ("snippets" in $$parsedSource) {
+            $$parsedSource["snippets"] = $$createField6_0($$parsedSource["snippets"]);
+        }
+        if ("typeGroups" in $$parsedSource) {
+            $$parsedSource["typeGroups"] = $$createField7_0($$parsedSource["typeGroups"]);
+        }
+        if ("typeFormats" in $$parsedSource) {
+            $$parsedSource["typeFormats"] = $$createField8_0($$parsedSource["typeFormats"]);
+        }
+        if ("autoIncrement" in $$parsedSource) {
+            $$parsedSource["autoIncrement"] = $$createField12_0($$parsedSource["autoIncrement"]);
+        }
+        if ("indexTypes" in $$parsedSource) {
+            $$parsedSource["indexTypes"] = $$createField14_0($$parsedSource["indexTypes"]);
+        }
+        return new UIDialect($$parsedSource as Partial<UIDialect>);
+    }
+}
+
+/**
+ * UIFunction is one completion catalog entry.
+ */
+export class UIFunction {
+    "name": string;
+
+    /**
+     * Category is a stable key ("aggregate", "string", "numeric", "datetime",
+     * "control", "json", "cast", "system") shown as the completion detail.
+     */
+    "category"?: string;
+
+    /**
+     * Info is an optional English one-liner (signature/summary).
+     */
+    "info"?: string;
+
+    /**
+     * Params are the snippet placeholders; "…" marks variadic tails and is
+     * skipped on insert. Nil with NoArgs=false inserts "fn(${})".
+     */
+    "params"?: string[];
+
+    /**
+     * NoArgs functions insert as "fn()".
+     */
+    "noArgs"?: boolean;
+
+    /** Creates a new UIFunction instance. */
+    constructor($$source: Partial<UIFunction> = {}) {
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new UIFunction instance from a string or object.
+     */
+    static createFrom($$source: any = {}): UIFunction {
+        const $$createField3_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("params" in $$parsedSource) {
+            $$parsedSource["params"] = $$createField3_0($$parsedSource["params"]);
+        }
+        return new UIFunction($$parsedSource as Partial<UIFunction>);
+    }
+}
+
+/**
+ * UISnippet is one completion snippet.
+ */
+export class UISnippet {
+    "label": string;
+    "detail"?: string;
+    "body": string;
+
+    /** Creates a new UISnippet instance. */
+    constructor($$source: Partial<UISnippet> = {}) {
+        if (!("label" in $$source)) {
+            this["label"] = "";
+        }
+        if (!("body" in $$source)) {
+            this["body"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new UISnippet instance from a string or object.
+     */
+    static createFrom($$source: any = {}): UISnippet {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new UISnippet($$parsedSource as Partial<UISnippet>);
+    }
+}
+
+/**
+ * UITypeFormat describes the params field behavior for one base type.
+ */
+export class UITypeFormat {
+    /**
+     * Kind is one of "length", "displayWidth", "precisionScale",
+     * "fractionalSeconds", "enumValues", "none".
+     */
+    "kind": string;
+
+    /**
+     * SupportsUnsigned enables the UNSIGNED toggle for this type.
+     */
+    "supportsUnsigned"?: boolean;
+
+    /**
+     * ParamsRequired marks the params field mandatory (e.g. VARCHAR length).
+     */
+    "paramsRequired"?: boolean;
+
+    /** Creates a new UITypeFormat instance. */
+    constructor($$source: Partial<UITypeFormat> = {}) {
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new UITypeFormat instance from a string or object.
+     */
+    static createFrom($$source: any = {}): UITypeFormat {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new UITypeFormat($$parsedSource as Partial<UITypeFormat>);
+    }
+}
+
+/**
+ * UITypeGroup is one group in the structure editor's type dropdown. Key is a
+ * stable identifier ("string", "integer", "decimal", "datetime", "binary",
+ * "boolean", "other") the front-end localizes.
+ */
+export class UITypeGroup {
+    "key": string;
+    "types": string[];
+
+    /** Creates a new UITypeGroup instance. */
+    constructor($$source: Partial<UITypeGroup> = {}) {
+        if (!("key" in $$source)) {
+            this["key"] = "";
+        }
+        if (!("types" in $$source)) {
+            this["types"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new UITypeGroup instance from a string or object.
+     */
+    static createFrom($$source: any = {}): UITypeGroup {
+        const $$createField1_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("types" in $$parsedSource) {
+            $$parsedSource["types"] = $$createField1_0($$parsedSource["types"]);
+        }
+        return new UITypeGroup($$parsedSource as Partial<UITypeGroup>);
     }
 }
 
@@ -548,3 +973,13 @@ export class ViewInfo {
 const $$createType0 = $Create.Array($Create.Any);
 const $$createType1 = IndexColumn.createFrom;
 const $$createType2 = $Create.Array($$createType1);
+const $$createType3 = $Create.Map($Create.Any, $Create.Any);
+const $$createType4 = UIFunction.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = UISnippet.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = UITypeGroup.createFrom;
+const $$createType9 = $Create.Array($$createType8);
+const $$createType10 = UITypeFormat.createFrom;
+const $$createType11 = $Create.Map($Create.Any, $$createType10);
+const $$createType12 = UIAutoIncrement.createFrom;

@@ -1,10 +1,16 @@
 // editor/sqlContext — cursor-context analysis for SQL completion.
 //
 // A port of the dbx completion engine's context detection (regex/string-scan
-// based, no AST), trimmed to MySQL. Answers: where is the cursor inside the
-// statement (table position? column position? INSERT column list? JOIN ON?…),
-// what identifier is being typed (with dotted qualifier), and which tables the
-// statement references (FROM/JOIN + aliases + CTEs + subquery aliases).
+// based, no AST). Answers: where is the cursor inside the statement (table
+// position? column position? INSERT column list? JOIN ON?…), what identifier
+// is being typed (with dotted qualifier), and which tables the statement
+// references (FROM/JOIN + aliases + CTEs + subquery aliases).
+//
+// The identifier-quote character is dialect-configurable: getSqlContext takes
+// it as a parameter (backtick for MySQL, double quote for Postgres/ANSI) and
+// installs it module-wide for the duration of the call — all helpers run
+// synchronously inside it. When the quote is `"`, double quotes are lexed as
+// identifiers instead of strings, matching ANSI semantics.
 //
 // Pure string functions with no CodeMirror dependency so the whole engine is
 // testable headless. Consumed by sqlCompletion.ts.
@@ -61,7 +67,30 @@ export interface SqlContext {
   statement: string
 }
 
-const IDENT = String.raw`\`[^\`]+\`|[A-Za-z_][\w$]*`
+// Identifier-quote state — installed by getSqlContext, read by every helper.
+let IDQ = '`'
+let IDENT = identPattern(IDQ)
+let REF_RE = makeRefRe()
+
+function identPattern(q: string): string {
+  return `${q}[^${q}]+${q}|[A-Za-z_][\\w$]*`
+}
+
+function makeRefRe(): RegExp {
+  return new RegExp(
+    String.raw`\b(?:from|join|update|into)\s+(${IDENT})(?:\s*\.\s*(${IDENT}))?(?:\s+(?:as\s+)?(${IDENT}))?`,
+    'gi',
+  )
+}
+
+/** Install the dialect's identifier-quote character (idempotent). */
+function setIdentQuote(q: string) {
+  const next = q === '"' ? '"' : '`'
+  if (next === IDQ) return
+  IDQ = next
+  IDENT = identPattern(IDQ)
+  REF_RE = makeRefRe()
+}
 
 /** Keywords that must never be mistaken for a table alias. */
 export const ALIAS_BLOCKLIST = new Set([
@@ -75,7 +104,7 @@ export const ALIAS_BLOCKLIST = new Set([
 const TABLE_TRIGGERS = new Set(['from', 'join', 'into', 'update', 'table', 'describe'])
 
 function unquote(s: string): string {
-  return s[0] === '`' ? s.slice(1, -1) : s
+  return s[0] === IDQ ? s.slice(1, -1) : s
 }
 
 // ── Lexical scan ─────────────────────────────────────────────────────────────
@@ -102,13 +131,13 @@ export function lexAt(doc: string, pos: number): LexState {
     if (inBlock) { if (ch === '*' && next === '/') { inBlock = false; i++ } continue }
     if (inS) { if (ch === '\\') i++; else if (ch === "'") inS = false; continue }
     if (inD) { if (ch === '\\') i++; else if (ch === '"') inD = false; continue }
-    if (inB) { if (ch === '`') inB = false; continue }
+    if (inB) { if (ch === IDQ) inB = false; continue }
     if (ch === '-' && next === '-') { inLine = true; i++; continue }
     if (ch === '#') { inLine = true; continue }
     if (ch === '/' && next === '*') { inBlock = true; i++; continue }
     if (ch === "'") { inS = true; continue }
+    if (ch === IDQ) { inB = true; continue }
     if (ch === '"') { inD = true; continue }
-    if (ch === '`') { inB = true; continue }
     if (ch === ';') stmtStart = i + 1
   }
   let stmtEnd = doc.length
@@ -137,8 +166,8 @@ interface TrailingToken {
 }
 
 function readPartBack(s: string, end: number): { text: string; quoted: boolean; start: number } | null {
-  if (s[end - 1] === '`') {
-    const open = s.lastIndexOf('`', end - 2)
+  if (s[end - 1] === IDQ) {
+    const open = s.lastIndexOf(IDQ, end - 2)
     if (open < 0) return null
     return { text: s.slice(open + 1, end - 1), quoted: true, start: open }
   }
@@ -159,11 +188,11 @@ export function parseTrailingToken(before: string): TrailingToken {
       prefix = p.text
       start = p.start
       quoted = p.quoted
-      // Open (unterminated) backtick before a plain word: `us|
-      if (!p.quoted && before[p.start - 1] === '`') {
+      // Open (unterminated) identifier quote before a plain word: `us|
+      if (!p.quoted && before[p.start - 1] === IDQ) {
         quoted = true
         start = p.start - 1
-        // prefix stays the inner text; `from` points at the backtick so the
+        // prefix stays the inner text; `from` points at the quote so the
         // whole quoted token is replaced on apply.
       }
     }
@@ -235,11 +264,6 @@ function topLevelWordIndex(s: string, word: string): number {
 }
 
 // ── Referenced tables ────────────────────────────────────────────────────────
-
-const REF_RE = new RegExp(
-  String.raw`\b(?:from|join|update|into)\s+(${IDENT})(?:\s*\.\s*(${IDENT}))?(?:\s+(?:as\s+)?(${IDENT}))?`,
-  'gi',
-)
 
 function extractRefsWithIndex(stmt: string): Array<{ ref: RefTable; index: number }> {
   const out: Array<{ ref: RefTable; index: number }> = []
@@ -455,7 +479,8 @@ const COLUMN_KEYWORDS = new Set([
 
 // ── Master ───────────────────────────────────────────────────────────────────
 
-export function getSqlContext(doc: string, pos: number): SqlContext {
+export function getSqlContext(doc: string, pos: number, identQuote = '`'): SqlContext {
+  setIdentQuote(identQuote)
   const { suppressed, stmtStart, stmtEnd } = lexAt(doc, pos)
   const statement = doc.slice(stmtStart, stmtEnd)
   const beforeCursor = doc.slice(stmtStart, pos)
@@ -501,7 +526,7 @@ export function getSqlContext(doc: string, pos: number): SqlContext {
   if (updM) {
     const tail = beforeToken.slice(updM.index + updM[0].length)
     if (!/\bwhere\b/i.test(tail)) {
-      const assigned = [...tail.matchAll(/(`[^`]+`|[A-Za-z_][\w$]*)\s*=/g)].map((m) => unquote(m[1]))
+      const assigned = [...tail.matchAll(new RegExp(`(${IDENT})\\s*=`, 'g'))].map((m) => unquote(m[1]))
       updateTarget = updM[2]
         ? { db: unquote(updM[1]), table: unquote(updM[2]), assigned }
         : { table: unquote(updM[1]), assigned }
@@ -556,7 +581,7 @@ export function getSqlContext(doc: string, pos: number): SqlContext {
   const cmpM = new RegExp(
     String.raw`(${IDENT}(?:\s*\.\s*(?:${IDENT}))?)\s*(?:=|!=|<>|<=|>=|<|>)\s*$`,
   ).exec(beforeToken)
-  if (cmpM) base.comparison = { column: cmpM[1].replace(/`/g, '') }
+  if (cmpM) base.comparison = { column: cmpM[1].split(IDQ).join('') }
 
   // clause priority (mirrors dbx detectCompletionContextKind)
   if (lastWord === 'use') base.clause = 'use'

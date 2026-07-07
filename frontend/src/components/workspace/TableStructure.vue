@@ -4,14 +4,11 @@
 //
 // Editing happens against a local StructureDraft (see lib/alterPlan.ts) that
 // snapshots the original column/index/FK lists when the table is loaded. As
-// the user edits, buildAlterPlan() diffs original-vs-draft and emits MySQL
-// ALTER statements; those statements land in the AlterSqlPanel under each
-// tab. Apply executes them sequentially via QueryService and reloads.
-//
-// We chose front-end-side ALTER generation deliberately: instant preview, no
-// IPC roundtrip on each keystroke, and the diff is a pure-TS module that can
-// be unit-tested. When a second driver lands (e.g. PostgreSQL), this should
-// move to a Dialect.BuildAlterTable on the Go side. For MVP it lives here.
+// the user edits, buildAlterPlan() diffs original-vs-draft in the Go backend
+// (schemadiff + the driver's Dialect) and returns ALTER statements; those
+// land in the AlterSqlPanel under each tab. Apply executes them sequentially
+// via QueryService and reloads. Editor behavior (type catalog, modifier and
+// auto-increment rules) is driven by the driver's UIDialect descriptor.
 //
 // "new" mode reuses the same editor for creating a brand-new table: the
 // backend metadata load is skipped, a single CREATE TABLE statement is
@@ -21,6 +18,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { NInput, NSpin, NTabPane, NTabs, useMessage } from 'naive-ui'
 import { metadata as metaApi, query as queryApi } from '../../api'
+import { genericUIDialect, uiDialectForConnection, type UIDialect } from '../../api/dialect'
 import { t } from '../../i18n'
 import type { TableSummary } from '../../api/metadata'
 import { useMetadataStore } from '../../stores/metadata'
@@ -32,7 +30,6 @@ import {
   emptyColumnDraft,
   foreignKeyToDraft,
   indexToDraft,
-  parseTableCommentFromDDL,
   type AlterPlan,
   type StructureDraft,
 } from '../../lib/alterPlan'
@@ -47,6 +44,8 @@ const props = withDefaults(
   defineProps<{
     connId: string
     db: string
+    /** Schema between db and table for schema-ful databases; '' otherwise. */
+    schema?: string
     table: string
     /** 'edit' loads an existing table; 'new' creates one from a blank draft. */
     mode?: 'edit' | 'new'
@@ -59,6 +58,13 @@ const props = withDefaults(
 const message = useMessage()
 const queryStore = useQueryStore()
 const metaStore = useMetadataStore()
+
+// The driver's UI descriptor — resolves async; the generic fallback keeps the
+// editor rendering until it lands.
+const dialect = ref<UIDialect>(genericUIDialect())
+watch(() => props.connId, async (id) => {
+  dialect.value = id ? await uiDialectForConnection(id) : genericUIDialect()
+}, { immediate: true })
 const summary = ref<TableSummary | null>(null)
 const origComment = ref<string>('')
 const ddl = ref<string>('')
@@ -116,7 +122,7 @@ async function ensureColumns() {
   if (loaded.value.columns) return
   loaded.value.columns = true
   try {
-    const cols = await metaApi.listColumns(props.connId, props.db, props.table)
+    const cols = await metaApi.listColumns(props.connId, props.db, props.table, props.schema ?? '')
     summary.value = { columns: cols, indexes: [], foreignKeys: [] }
     resetDraft()
   } catch (e) {
@@ -128,7 +134,7 @@ async function ensureIndexes() {
   if (loaded.value.indexes) return
   loaded.value.indexes = true
   try {
-    const indexes = await metaApi.listIndexes(props.connId, props.db, props.table)
+    const indexes = await metaApi.listIndexes(props.connId, props.db, props.table, props.schema ?? '')
     summary.value = { ...summary.value!, indexes }
     // 首次加载 → 用后端数据填充 draft.indexes（用户尚未编辑过索引）
     if (!(draft.value.indexes ?? []).some((d) => d.origName)) {
@@ -143,7 +149,7 @@ async function ensureForeignKeys() {
   if (loaded.value.foreignKeys) return
   loaded.value.foreignKeys = true
   try {
-    const fks = await metaApi.listForeignKeys(props.connId, props.db, props.table)
+    const fks = await metaApi.listForeignKeys(props.connId, props.db, props.table, props.schema ?? '')
     summary.value = { ...summary.value!, foreignKeys: fks }
     if (!(draft.value.foreignKeys ?? []).some((d) => d.origName)) {
       draft.value = { ...draft.value, foreignKeys: (fks ?? []).map(foreignKeyToDraft) }
@@ -157,9 +163,12 @@ async function ensureDDL() {
   if (loaded.value.ddl) return
   loaded.value.ddl = true
   try {
-    const d = await metaApi.getCreateTable(props.connId, props.db, props.table)
+    const [d, comment] = await Promise.all([
+      metaApi.getCreateTable(props.connId, props.db, props.table, props.schema ?? ''),
+      metaApi.getTableComment(props.connId, props.db, props.table, props.schema ?? ''),
+    ])
     ddl.value = d
-    origComment.value = parseTableCommentFromDDL(d)
+    origComment.value = comment
     // 更新 options draft 中的 comment
     draft.value = { ...draft.value, options: { comment: origComment.value } }
   } catch (e) {
@@ -168,7 +177,7 @@ async function ensureDDL() {
 }
 
 onMounted(load)
-watch(() => [props.connId, props.db, props.table, props.mode], load)
+watch(() => [props.connId, props.db, props.schema, props.table, props.mode], load)
 
 // 切 tab 时懒加载对应的数据
 watch(activeTab, (tab) => {
@@ -190,7 +199,7 @@ function resetDraft() {
   if (props.mode === 'new') {
     // Seed with one blank column row so the editor has something to click on.
     draft.value = {
-      columns: [emptyColumnDraft()],
+      columns: [emptyColumnDraft(dialect.value)],
       indexes: [],
       foreignKeys: [],
       options: { comment: '' },
@@ -231,7 +240,8 @@ async function refreshPlan() {
   try {
     if (props.mode === 'new') {
       const stmt = await metaApi.buildCreateTable(
-        props.connId, props.db, newTableName.value, draftToWire(draft.value),
+        props.connId, props.db, newTableName.value, draftToWire(dialect.value, draft.value),
+        props.schema ?? '',
       )
       if (seq !== planSeq) return
       const stmts = stmt ? [stmt] : []
@@ -244,7 +254,8 @@ async function refreshPlan() {
     }
     const res = await metaApi.buildAlterPlan(
       props.connId, props.db, props.table,
-      summary.value, origComment.value, draftToWire(draft.value),
+      summary.value, origComment.value, draftToWire(dialect.value, draft.value),
+      props.schema ?? '',
     )
     if (seq !== planSeq) return
     plan.value = res
@@ -339,8 +350,9 @@ const newApplyDisabled = computed(() => {
       <!-- Columns -->
       <n-tab-pane name="cols" tab="Columns" display-directive="show:lazy">
         <div class="tab-body">
-          <ColumnsTab v-model="draft.columns" :busy="busy" />
+          <ColumnsTab v-model="draft.columns" :dialect="dialect" :busy="busy" />
           <AlterSqlPanel
+            :dialect="dialect"
             :statements="plan.columns"
             :busy="busy"
             :apply-disabled="newApplyDisabled"
@@ -360,6 +372,7 @@ const newApplyDisabled = computed(() => {
             :busy="busy"
           />
           <AlterSqlPanel
+            :dialect="dialect"
             :statements="plan.indexes"
             :busy="busy"
             :apply-disabled="newApplyDisabled"
@@ -380,6 +393,7 @@ const newApplyDisabled = computed(() => {
             :busy="busy"
           />
           <AlterSqlPanel
+            :dialect="dialect"
             :statements="plan.foreignKeys"
             :busy="busy"
             :apply-disabled="newApplyDisabled"
@@ -395,6 +409,7 @@ const newApplyDisabled = computed(() => {
         <div class="tab-body">
           <OptionsTab v-model="draft.options" :busy="busy" />
           <AlterSqlPanel
+            :dialect="dialect"
             :statements="plan.options"
             :busy="busy"
             :apply-disabled="newApplyDisabled"
@@ -408,7 +423,7 @@ const newApplyDisabled = computed(() => {
       <!-- DDL (read-only). Hidden in 'new' mode — the AlterSqlPanel already
            shows the CREATE TABLE statement for every tab. -->
       <n-tab-pane v-if="mode !== 'new'" name="ddl" tab="DDL" display-directive="show:lazy">
-        <DdlPanel variant="tab" :ddl="ddl" />
+        <DdlPanel variant="tab" :ddl="ddl" :dialect="dialect" />
       </n-tab-pane>
     </n-tabs>
   </n-spin>

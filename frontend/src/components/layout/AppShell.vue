@@ -140,17 +140,17 @@ function onSelectConnection(conn: ConnectionProfile) {
 function openNewConnection() {
   void systemApi.openConnectionEditor('', '')
 }
-function onOpenData(payload: { db: string; table: string }) {
+function onOpenData(payload: { db: string; schema?: string; table: string }) {
   if (!activeConn.value) return
-  queryStore.openTableTab(activeConn.value.id, payload.db, payload.table, 'table')
+  queryStore.openTableTab(activeConn.value.id, payload.db, payload.table, 'table', payload.schema ?? '')
 }
-function onOpenStructure(payload: { db: string; table: string }) {
+function onOpenStructure(payload: { db: string; schema?: string; table: string }) {
   if (!activeConn.value) return
-  queryStore.openTableTab(activeConn.value.id, payload.db, payload.table, 'structure')
+  queryStore.openTableTab(activeConn.value.id, payload.db, payload.table, 'structure', payload.schema ?? '')
 }
-function onOpenTablesOverview(payload: { db: string }) {
+function onOpenTablesOverview(payload: { db: string; schema?: string }) {
   if (!activeConn.value) return
-  queryStore.openTablesOverviewTab(activeConn.value.id, payload.db)
+  queryStore.openTablesOverviewTab(activeConn.value.id, payload.db, payload.schema ?? '')
 }
 </script>
 

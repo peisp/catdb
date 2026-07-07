@@ -1,21 +1,25 @@
 // Package sqlscript splits a SQL script into individual statements the way a
-// SQL client (e.g. the mysql CLI) does — respecting quoted strings and
-// comments, and honoring the client-side DELIMITER directive.
+// SQL client does — respecting quoted strings and comments per the dialect's
+// dbdriver.ScriptRules, and honoring the client-side DELIMITER directive when
+// the rules enable it.
 //
 // DELIMITER is NOT a statement the server understands; it is a client
 // convention that lets a routine body (whose statements end in `;`) be sent as
 // a single statement. The server only ever sees the statements between
 // delimiters, never the DELIMITER lines themselves.
 //
-// The rules implemented here are MySQL/ANSI flavored (the MVP target). A future
-// driver with different quoting (e.g. Postgres dollar-quoting) should layer its
-// own splitter behind the dialect rather than extend this one.
+// Dollar-quoting ($tag$…$tag$, Postgres) is supported when the rules enable
+// it. One limitation: the opening $tag$ must not be split across two feed
+// chunks — SplitStream feeds whole lines and a tag cannot contain a newline,
+// so this only matters for exotic manual feed() use.
 package sqlscript
 
 import (
 	"bufio"
 	"io"
 	"strings"
+
+	"catdb/internal/dbdriver"
 )
 
 const defaultDelimiter = ";"
@@ -24,14 +28,15 @@ const defaultDelimiter = ";"
 // put a whole multi-row INSERT on one line, so this is generous.
 const maxLineBytes = 16 * 1024 * 1024
 
-// Split breaks an in-memory script into trimmed, non-empty statements. It is a
-// thin wrapper over the same state machine SplitStream uses, so both honor
-// identical quoting / comment / DELIMITER rules. Comment-only and
-// whitespace-only spans (and the DELIMITER directives themselves) never produce
-// a statement; returned statements no longer contain their trailing delimiter.
-func Split(script string) []string {
+// Split breaks an in-memory script into trimmed, non-empty statements using
+// the given lexical rules. It is a thin wrapper over the same state machine
+// SplitStream uses, so both honor identical quoting / comment / DELIMITER
+// rules. Comment-only and whitespace-only spans (and the DELIMITER directives
+// themselves) never produce a statement; returned statements no longer contain
+// their trailing delimiter.
+func Split(script string, rules dbdriver.ScriptRules) []string {
 	var out []string
-	sp := newSplitter(func(s string) error {
+	sp := newSplitter(rules, func(s string) error {
 		out = append(out, s)
 		return nil
 	})
@@ -44,10 +49,10 @@ func Split(script string) []string {
 // found. It holds at most one statement (plus one physical line) in memory at a
 // time, so it is safe for arbitrarily large dump files. If fn returns an error,
 // splitting stops and that error is returned.
-func SplitStream(r io.Reader, fn func(stmt string) error) error {
+func SplitStream(r io.Reader, rules dbdriver.ScriptRules, fn func(stmt string) error) error {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
-	sp := newSplitter(fn)
+	sp := newSplitter(rules, fn)
 	for sc.Scan() {
 		// Scanner strips the line terminator; re-add '\n' so multi-line
 		// strings/comments keep their content and the statement reads back
@@ -73,19 +78,22 @@ const (
 	stDouble
 	stBacktick
 	stBlock
+	stDollar
 )
 
 type splitter struct {
+	rules      dbdriver.ScriptRules
 	delim      string
 	state      scanState
+	dollarTag  string // closing tag ("$tag$") while state == stDollar
 	buf        strings.Builder
 	hasContent bool // current statement has a real (non-ws, non-comment) char
 	emit       func(string) error
 	err        error // first error returned by emit; halts further work
 }
 
-func newSplitter(emit func(string) error) *splitter {
-	return &splitter{delim: defaultDelimiter, emit: emit}
+func newSplitter(rules dbdriver.ScriptRules, emit func(string) error) *splitter {
+	return &splitter{rules: rules, delim: defaultDelimiter, emit: emit}
 }
 
 // feed processes one chunk of input. State persists across calls so a string or
@@ -103,6 +111,8 @@ func (sp *splitter) feed(s string) {
 		i = sp.consumeBlock(s, 0)
 	case stSingle, stDouble, stBacktick:
 		i = sp.consumeString(s, 0)
+	case stDollar:
+		i = sp.consumeDollar(s, 0)
 	}
 	if sp.state != stNormal {
 		return // the open construct ran to the end of this chunk
@@ -112,7 +122,7 @@ func (sp *splitter) feed(s string) {
 		c := s[i]
 
 		// DELIMITER directive — only at statement start; occupies a whole line.
-		if !sp.hasContent && (c == 'd' || c == 'D') {
+		if sp.rules.ClientDelimiter && !sp.hasContent && (c == 'd' || c == 'D') {
 			if nd, next, ok := tryDelimiter(s, i); ok {
 				sp.delim = nd
 				sp.buf.Reset()
@@ -131,7 +141,7 @@ func (sp *splitter) feed(s string) {
 			}
 			continue
 		}
-		if c == '#' {
+		if c == '#' && sp.rules.HashComments {
 			for i < n && s[i] != '\n' {
 				sp.buf.WriteByte(s[i])
 				i++
@@ -155,8 +165,23 @@ func (sp *splitter) feed(s string) {
 			continue
 		}
 
+		// Dollar-quoted literal ($tag$ … $tag$).
+		if c == '$' && sp.rules.DollarQuoting {
+			if tag, ok := dollarTagAt(s, i); ok {
+				sp.buf.WriteString(tag)
+				sp.hasContent = true
+				sp.state = stDollar
+				sp.dollarTag = tag
+				i = sp.consumeDollar(s, i+len(tag))
+				if sp.state != stNormal {
+					return
+				}
+				continue
+			}
+		}
+
 		// Quoted string / identifier.
-		if c == '\'' || c == '"' || c == '`' {
+		if c == '\'' || c == '"' || (c == '`' && sp.rules.BacktickIdentifiers) {
 			sp.buf.WriteByte(c)
 			sp.hasContent = true
 			switch c {
@@ -209,15 +234,16 @@ func (sp *splitter) consumeBlock(s string, i int) int {
 
 // consumeString copies a quoted literal body from i (the opening quote already
 // written, sp.state set to the quote kind). Backslash escapes apply to '' and
-// "" but not to backtick identifiers; a doubled quote is an escaped quote for
-// all three. On the closing quote it resets state and returns the index past
-// it; otherwise it consumes the rest of the chunk and keeps the quote state.
+// "" only when the rules enable them, never to backtick identifiers; a doubled
+// quote is an escaped quote for all three. On the closing quote it resets
+// state and returns the index past it; otherwise it consumes the rest of the
+// chunk and keeps the quote state.
 func (sp *splitter) consumeString(s string, i int) int {
 	n := len(s)
 	quote := quoteByte(sp.state)
 	for i < n {
 		ch := s[i]
-		if ch == '\\' && sp.state != stBacktick && i+1 < n {
+		if ch == '\\' && sp.rules.BackslashEscapes && sp.state != stBacktick && i+1 < n {
 			sp.buf.WriteByte(ch)
 			sp.buf.WriteByte(s[i+1])
 			i += 2
@@ -238,6 +264,49 @@ func (sp *splitter) consumeString(s string, i int) int {
 		i++
 	}
 	return n
+}
+
+// consumeDollar copies a dollar-quoted literal body from i (the opening tag
+// already written, sp.dollarTag holding the closing tag). On the closing tag
+// it resets state and returns the index past it; otherwise it consumes the
+// rest of the chunk and keeps the dollar state.
+func (sp *splitter) consumeDollar(s string, i int) int {
+	n := len(s)
+	for i < n {
+		if s[i] == '$' && matchAt(s, i, sp.dollarTag) {
+			sp.buf.WriteString(sp.dollarTag)
+			end := i + len(sp.dollarTag)
+			sp.state = stNormal
+			sp.dollarTag = ""
+			return end
+		}
+		sp.buf.WriteByte(s[i])
+		i++
+	}
+	return n
+}
+
+// dollarTagAt recognizes a dollar-quote opener at index i: `$$` or
+// `$word$` where word is letters/digits/underscore (not starting with a
+// digit). The whole opener must be present in this chunk.
+func dollarTagAt(s string, i int) (string, bool) {
+	j := i + 1
+	for j < len(s) && (isTagChar(s[j])) {
+		j++
+	}
+	if j >= len(s) || s[j] != '$' {
+		return "", false
+	}
+	if j > i+1 && s[i+1] >= '0' && s[i+1] <= '9' {
+		return "", false // tag must not start with a digit
+	}
+	return s[i : j+1], true
+}
+
+func isTagChar(c byte) bool {
+	return c == '_' ||
+		(c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+		(c >= '0' && c <= '9')
 }
 
 func (sp *splitter) emitStmt() {

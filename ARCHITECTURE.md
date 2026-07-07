@@ -59,19 +59,18 @@
 
 ### 3.1 关键原则
 
-1. **接口不绑定 `database/sql` 类型。** 用自定义 `ResultSet`/`ColumnMeta`/`ExecResult`。这样 MySQL 插件内部可用 `*sql.DB`，未来 PG 插件可用 pgx 原生 `*pgxpool.Pool`，对核心层完全透明。**抽象层定义"做什么"，插件自选"怎么做"。**
-2. **能力声明驱动 UI。** `Capabilities()` 让前端按库的能力显隐功能（如 ClickHouse 无事务则隐藏事务开关）。
+1. **接口不绑定 `database/sql` 类型。** 用自定义 `ResultSet`/`ColumnMeta`/`ExecResult`/`TxOptions`/`ErrTxDone`。这样 MySQL 插件内部可用 `*sql.DB`，未来 PG 插件可用 pgx 原生 `*pgxpool.Pool`，对核心层完全透明。**抽象层定义"做什么"，插件自选"怎么做"。**
+2. **能力声明驱动 UI。** `Capabilities()` 让前端按库的能力显隐功能（如 ClickHouse 无事务则隐藏事务开关；`Schemas` 决定对象树是否插入 schema 层）。
 3. **连接参数自描述。** `ConnectionSchema()` 返回字段列表，前端据此**动态渲染连接表单**，新增数据库无需改前端表单代码。
+4. **UI 方言自描述。** `UIDialect()` 是驱动的声明式 UI 契约：标识符引号、CodeMirror 方言 id、结构编辑器类型目录与参数规则、自增约束、补全函数/关键字/片段、系统库清单、默认字符集等。前端组件不写任何 per-database 知识，全部从描述符读取——**新增数据库无需改前端组件**。
+5. **方言 SQL 只在插件里。** 通用层（core/services）禁止出现方言 SQL 字面量（information_schema、USE、反引号等）；`internal/services/leakguard_test.go` 用 AST 扫描强制这一点。默认库切换走 `Dialect.DefaultNamespaceSQL`，脚本分割规则走 `Dialect.ScriptRules`，类型归一化走 `Dialect.NormalizeType`，视图定义走 `Metadata.ListViewDefinitions`。
 
 ### 3.2 接口定义
 
 ```go
 package dbdriver
 
-import (
-	"context"
-	"database/sql"
-)
+import "context"
 
 // Driver —— 一个数据库类型的插件入口
 type Driver interface {
@@ -79,6 +78,7 @@ type Driver interface {
 	Version() string
 	ConnectionSchema() []ConnParamField // 前端动态渲染连接表单
 	Capabilities() Capabilities         // 前端据此显隐功能
+	UIDialect() UIDialect               // 前端声明式 UI 契约（类型目录/引号/补全目录…）
 	Dialect() Dialect
 	Open(ctx context.Context, cfg ConnConfig) (Connection, error)
 }
@@ -109,7 +109,7 @@ type Connection interface {
 	Querier() Querier
 	Metadata() Metadata
 	Editor() Editor
-	Begin(ctx context.Context, opts *sql.TxOptions) (Tx, error)
+	Begin(ctx context.Context, opts *TxOptions) (Tx, error) // 自定义 TxOptions，不绑 database/sql
 }
 
 type Querier interface {
@@ -130,17 +130,33 @@ type Metadata interface {
 	ListSchemas(ctx context.Context, db string) ([]string, error)
 	ListTables(ctx context.Context, db, schema string) ([]TableInfo, error)
 	ListViews(ctx context.Context, db, schema string) ([]ViewInfo, error)
+	// 结构同步用：一次取全某命名空间下所有视图定义（避免 N+1）
+	ListViewDefinitions(ctx context.Context, db, schema string) (map[string]string, error)
+	// ListColumns 必须返回完整精确的 NativeType（如 varchar(255)），
+	// 数据浏览用它覆盖 scanner 的裸类型名
 	ListColumns(ctx context.Context, db, schema, table string) ([]ColumnMeta, error)
 	ListIndexes(ctx context.Context, db, schema, table string) ([]IndexInfo, error)
 	ListForeignKeys(ctx context.Context, db, schema, table string) ([]ForeignKeyInfo, error)
 	ListRoutines(ctx context.Context, db, schema string) ([]RoutineInfo, error)
+	GetCreateTable(ctx context.Context, db, schema, table string) (string, error)
 }
+
+// 可选扩展（类型断言探测）：BulkMetadata（整库批量元数据，加速结构同步）、
+// DatabaseEditor（建库/改库 UI：字符集/排序规则清单 + CREATE/ALTER DATABASE 渲染）
 
 type Dialect interface {
 	QuoteIdentifier(name string) string                // MySQL `x` / PG "x"
+	// 设定会话默认命名空间的语句：MySQL "USE `x`"、PG "SET search_path"；
+	// 空串 = 该库没有此类语句
+	DefaultNamespaceSQL(name string) string
+	// SQL 脚本分割的词法规则（反引号/反斜杠转义/#注释/DELIMITER/dollar-quoting）
+	ScriptRules() ScriptRules
 	Paginate(baseSQL string, limit, offset int) string // LIMIT/OFFSET vs OFFSET FETCH
 	MapType(nativeType string) LogicalType
+	// 类型串归一化（schemadiff 比较用；折叠 UNSIGNED 位置、ZEROFILL 等方言噪音）
+	NormalizeType(nativeType string) string
 	GenerateCreateTable(t TableSchema) (string, error)
+	GenerateAlterTable(db, schema, table string, cs ChangeSet) ([]string, error)
 }
 
 // Editor —— 基于主键生成安全的增删改
@@ -153,7 +169,7 @@ type Editor interface {
 
 type Tx interface {
 	Querier
-	Commit() error
+	Commit() error   // 事务已结束时返回 dbdriver.ErrTxDone（驱动负责收敛映射）
 	Rollback() error
 }
 
@@ -193,11 +209,11 @@ import _ "yourapp/plugins/mysqldrv"
 
 ### 3.4 新增一个数据库驱动的标准步骤
 
-1. 新建 `plugins/xxxdrv/` 包，实现 `Driver`/`Connection`/`Querier`/`Metadata`/`Dialect`/`Editor`。
+1. 新建 `plugins/xxxdrv/` 包，实现 `Driver`/`Connection`/`Querier`/`Metadata`/`Dialect`/`Editor`，并编写 `UIDialect()` 描述符（类型目录、引号、补全函数目录等——参照 `plugins/mysqldrv/uidialect.go`）。可选实现 `BulkMetadata`（结构同步提速）、`DatabaseEditor`（建库/改库 UI）。
 2. `init()` 里 `registry.Register(...)`。
 3. `plugins/plugins_all.go` 加匿名导入（按需加 build tag）。
-4. **跑统一契约测试套件**（见 §7），全绿才算接入完成。
-5. 前端无需改动——连接表单由 `ConnectionSchema()` 自动渲染，功能按 `Capabilities()` 自动显隐。
+4. **跑统一契约测试套件**（见 §7），全绿才算接入完成。套件覆盖：元数据/编辑/DDL 往返、Dialect（精确列类型、NormalizeType 幂等、DefaultNamespaceSQL 可执行）、视图定义、事务生命周期（ErrTxDone 哨兵）、UIDialect 静态校验（`contract.TestUIDialect` 也可在纯单测里跑，无需真实库）。
+5. 前端无需改动——连接表单由 `ConnectionSchema()` 渲染，功能按 `Capabilities()` 显隐（含对象树 schema 层），编辑器/补全/结构编辑器按 `UIDialect()` 适配。
 
 ### 3.5 各库扩展要点
 
@@ -208,6 +224,8 @@ import _ "yourapp/plugins/mysqldrv"
 | SQLite | modernc.org/sqlite | `*sql.DB` | 纯 Go，无 CGO |
 | SQL Server | microsoft/go-mssqldb | `*sql.DB` | 分页 `OFFSET..FETCH` |
 | Redis/Mongo | go-redis / mongo-driver | 独立 `KVDriver`/`DocDriver` | 不套 SQL 接口，前端独立 UI |
+
+> **已知边界**：结构同步 / 数据传输的建表路径走源库 `GetCreateTable`（原生 DDL 原文在目标库执行），因此**只支持同构库之间**的同步/传输。异构（如 MySQL→PG）需改走 `TableSchema` + 目标库 `Dialect.GenerateCreateTable` 的类型映射管道，暂未实现。
 
 ---
 

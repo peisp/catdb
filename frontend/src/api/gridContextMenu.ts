@@ -20,6 +20,7 @@
 import { createDiscreteApi } from 'naive-ui'
 import { t } from '../i18n'
 import { useTableSelection, type SelectionRange } from '../composables/useTableSelection'
+import { genericUIDialect, uiDialectForConnection, type UIDialect } from './dialect'
 import { on, emit } from './events'
 
 const ctxSel = useTableSelection()
@@ -63,6 +64,10 @@ async function copy(text: string): Promise<void> {
   try { await navigator.clipboard.writeText(text) } catch { /* clipboard denied */ }
 }
 
+async function ctxDialect(): Promise<UIDialect> {
+  return ctxState.connId ? uiDialectForConnection(ctxState.connId) : genericUIDialect()
+}
+
 let installed = false
 
 /** Subscribe once to the Go-side context-menu click events. Call from app boot. */
@@ -73,14 +78,14 @@ export function installGridContextMenuListener(): void {
     if (!ctxSel.hasSelection()) return
     copy(ctxSel.formatTSV(ctxState.rows))
   })
-  on('ctx:grid-copy-insert', () => {
+  on('ctx:grid-copy-insert', async () => {
     if (!ctxSel.hasSelection() || !ctxState.tableName) return
-    copy(ctxSel.formatInsert(ctxState.rows, ctxState.columnNames, ctxState.tableName))
+    copy(ctxSel.formatInsert(ctxState.rows, ctxState.columnNames, ctxState.tableName, await ctxDialect()))
   })
-  on('ctx:grid-copy-update', () => {
+  on('ctx:grid-copy-update', async () => {
     if (!ctxSel.hasSelection() || !ctxState.tableName) return
     copy(ctxSel.formatUpdate(
-      ctxState.rows, ctxState.columnNames, ctxState.tableName, ctxState.pkColumns,
+      ctxState.rows, ctxState.columnNames, ctxState.tableName, ctxState.pkColumns, await ctxDialect(),
     ))
   })
   on('ctx:grid-copy-columns', () => {

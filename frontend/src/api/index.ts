@@ -13,6 +13,7 @@
 //   demo       — end-to-end M0 verification (greet / long-task / progress)
 
 export * as connections from './connections'
+export * as dialect from './dialect'
 export * as query from './query'
 export * as metadata from './metadata'
 export * as edit from './edit'

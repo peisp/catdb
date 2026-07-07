@@ -5,14 +5,21 @@
 // new-connection flow). This module owns:
 //
 //   - charset / collation listing (cached per-connection)
-//   - per-database charset/collation lookup (used in edit mode)
-//   - CREATE / ALTER DATABASE DDL builders
+//   - per-database options lookup (used in edit mode)
+//   - CREATE / ALTER DATABASE DDL rendering
 //
-// All MySQL work goes through runQuery against `information_schema`; no new
-// Service method needed. The charset list is small and stable per server,
-// so we cache it per-connection until the connection is invalidated.
-import { quoteIdent } from '../lib/alterPlan'
-import { runQuery } from './query'
+// All of it goes through MetadataService, which probes the driver's optional
+// DatabaseEditor extension — drivers without it reject with the stable
+// "database-editor-unsupported" slug and the window hides the option fields.
+// The charset list is small and stable per server, so we cache it
+// per-connection until the connection is invalidated.
+import {
+  buildAlterDatabase,
+  buildCreateDatabase,
+  getDatabaseOptions,
+  listCharsets,
+  type DatabaseOptions,
+} from './metadata'
 
 // ---- charset / collation metadata (per-connection cache) -------------------
 
@@ -37,30 +44,17 @@ export async function loadCharsetsAndCollations(connId: string): Promise<Charset
   const cached = charsetCache[connId]
   if (cached) return cached
 
-  const csRes = await runQuery(
-    connId,
-    `SELECT CHARACTER_SET_NAME, DEFAULT_COLLATE_NAME
-       FROM information_schema.CHARACTER_SETS
-       ORDER BY CHARACTER_SET_NAME`,
-  )
-  const charsets: CharsetInfo[] = (csRes.rows ?? []).map((r) => ({
-    name: String(r[0] ?? ''),
-    defaultCollation: String(r[1] ?? ''),
-  }))
-
-  const coRes = await runQuery(
-    connId,
-    `SELECT COLLATION_NAME, CHARACTER_SET_NAME
-       FROM information_schema.COLLATIONS
-       WHERE COLLATION_NAME IS NOT NULL
-       ORDER BY CHARACTER_SET_NAME, COLLATION_NAME`,
-  )
-  const collations: CollationInfo[] = (coRes.rows ?? []).map((r) => ({
-    name: String(r[0] ?? ''),
-    charset: String(r[1] ?? ''),
-  }))
-
-  const entry: CharsetCacheEntry = { charsets, collations }
+  const catalog = await listCharsets(connId)
+  const entry: CharsetCacheEntry = {
+    charsets: (catalog.charsets ?? []).map((c) => ({
+      name: c.name,
+      defaultCollation: c.defaultCollation ?? '',
+    })),
+    collations: (catalog.collations ?? []).map((c) => ({
+      name: c.name,
+      charset: c.charset ?? '',
+    })),
+  }
   charsetCache[connId] = entry
   return entry
 }
@@ -76,40 +70,21 @@ export interface DbInfo {
   collation: string
 }
 
-/** SQL-escape a string literal value (single quotes doubled, backslash kept). */
-function escapeStringLiteral(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/'/g, "''")
-}
-
 export async function loadDbInfo(connId: string, db: string): Promise<DbInfo | null> {
-  const res = await runQuery(
-    connId,
-    `SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME
-       FROM information_schema.SCHEMATA
-       WHERE SCHEMA_NAME = '${escapeStringLiteral(db)}'`,
-  )
-  if (!res.rows || res.rows.length === 0) return null
-  const r = res.rows[0]
-  return { charset: String(r[0] ?? ''), collation: String(r[1] ?? '') }
+  try {
+    const opts = await getDatabaseOptions(connId, db)
+    return { charset: opts.charset ?? '', collation: opts.collation ?? '' }
+  } catch {
+    return null
+  }
 }
 
-// ---- DDL builders ----------------------------------------------------------
-//
-// MySQL accepts unquoted bareword for CHARACTER SET / COLLATE names. Since
-// these are picked from a fixed server-provided list, not user free-text,
-// emitting them bare is safe — and matches what `SHOW CREATE DATABASE`
-// returns.
+// ---- DDL rendering (driver-side) --------------------------------------------
 
-export function buildCreateDb(name: string, charset: string, collation: string): string {
-  const parts: string[] = [`CREATE DATABASE ${quoteIdent(name)}`]
-  if (charset) parts.push(`CHARACTER SET = ${charset}`)
-  if (collation) parts.push(`COLLATE = ${collation}`)
-  return parts.join(' ')
+export function buildCreateDb(connId: string, name: string, charset: string, collation: string): Promise<string> {
+  return buildCreateDatabase(connId, name, { charset, collation } satisfies DatabaseOptions)
 }
 
-export function buildAlterDb(name: string, charset: string, collation: string): string {
-  const parts: string[] = [`ALTER DATABASE ${quoteIdent(name)}`]
-  if (charset) parts.push(`CHARACTER SET = ${charset}`)
-  if (collation) parts.push(`COLLATE = ${collation}`)
-  return parts.join(' ')
+export function buildAlterDb(connId: string, name: string, charset: string, collation: string): Promise<string> {
+  return buildAlterDatabase(connId, name, { charset, collation } satisfies DatabaseOptions)
 }

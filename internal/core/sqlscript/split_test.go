@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"catdb/internal/dbdriver"
 )
 
 var splitCases = []struct {
@@ -120,10 +122,19 @@ SELECT 1;`,
 	},
 }
 
+// mysqlRules mirrors what mysqldrv's Dialect.ScriptRules returns — the split
+// cases above are MySQL-flavored scripts.
+var mysqlRules = dbdriver.ScriptRules{
+	BacktickIdentifiers: true,
+	BackslashEscapes:    true,
+	HashComments:        true,
+	ClientDelimiter:     true,
+}
+
 func TestSplit(t *testing.T) {
 	for _, tt := range splitCases {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Split(tt.script)
+			got := Split(tt.script, mysqlRules)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Split() =\n  %#v\nwant\n  %#v", got, tt.want)
 			}
@@ -137,7 +148,7 @@ func TestSplitStreamParity(t *testing.T) {
 	for _, tt := range splitCases {
 		t.Run(tt.name, func(t *testing.T) {
 			var got []string
-			err := SplitStream(strings.NewReader(tt.script), func(s string) error {
+			err := SplitStream(strings.NewReader(tt.script), mysqlRules, func(s string) error {
 				got = append(got, s)
 				return nil
 			})
@@ -183,7 +194,7 @@ func TestSplitStreamChunkBoundaries(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var got []string
-			err := SplitStream(strings.NewReader(tt.script), func(s string) error {
+			err := SplitStream(strings.NewReader(tt.script), mysqlRules, func(s string) error {
 				got = append(got, s)
 				return nil
 			})
@@ -192,6 +203,84 @@ func TestSplitStreamChunkBoundaries(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("SplitStream() =\n  %#v\nwant\n  %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestSplitRules exercises the per-dialect lexical switches: Postgres-style
+// dollar-quoting, and MySQL-isms (backticks, # comments, backslash escapes,
+// DELIMITER) being OFF for a driver that doesn't speak them.
+func TestSplitRules(t *testing.T) {
+	pgRules := dbdriver.ScriptRules{DollarQuoting: true}
+	tests := []struct {
+		name   string
+		rules  dbdriver.ScriptRules
+		script string
+		want   []string
+	}{
+		{
+			name:   "dollar-quoted body hides semicolons",
+			rules:  pgRules,
+			script: "CREATE FUNCTION f() RETURNS int AS $$ BEGIN RETURN 1; END $$ LANGUAGE plpgsql; SELECT 1",
+			want: []string{
+				"CREATE FUNCTION f() RETURNS int AS $$ BEGIN RETURN 1; END $$ LANGUAGE plpgsql",
+				"SELECT 1",
+			},
+		},
+		{
+			name:   "tagged dollar quote",
+			rules:  pgRules,
+			script: "SELECT $tag$a;b$tag$; SELECT 2",
+			want:   []string{"SELECT $tag$a;b$tag$", "SELECT 2"},
+		},
+		{
+			name:   "dollar quoting spans lines",
+			rules:  pgRules,
+			script: "SELECT $$line one;\nline two$$; SELECT 2",
+			want:   []string{"SELECT $$line one;\nline two$$", "SELECT 2"},
+		},
+		{
+			name:   "positional params are not dollar quotes",
+			rules:  pgRules,
+			script: "SELECT * FROM t WHERE a = $1; SELECT 2",
+			want:   []string{"SELECT * FROM t WHERE a = $1", "SELECT 2"},
+		},
+		{
+			name:   "hash is not a comment when disabled",
+			rules:  dbdriver.ScriptRules{},
+			script: "SELECT '#'; SELECT x # y; SELECT 2",
+			want:   []string{"SELECT '#'", "SELECT x # y", "SELECT 2"},
+		},
+		{
+			name:   "backslash is literal when escapes disabled",
+			rules:  dbdriver.ScriptRules{},
+			script: `SELECT 'a\'; SELECT 2`,
+			want:   []string{`SELECT 'a\'`, "SELECT 2"},
+		},
+		{
+			name:   "DELIMITER is plain SQL when directive disabled",
+			rules:  dbdriver.ScriptRules{},
+			script: "DELIMITER //\nSELECT 1",
+			want:   []string{"DELIMITER //\nSELECT 1"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Split(tt.script, tt.rules)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Split() =\n  %#v\nwant\n  %#v", got, tt.want)
+			}
+			var streamed []string
+			err := SplitStream(strings.NewReader(tt.script), tt.rules, func(s string) error {
+				streamed = append(streamed, s)
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("SplitStream() error = %v", err)
+			}
+			if !reflect.DeepEqual(streamed, tt.want) {
+				t.Errorf("SplitStream() =\n  %#v\nwant\n  %#v", streamed, tt.want)
 			}
 		})
 	}

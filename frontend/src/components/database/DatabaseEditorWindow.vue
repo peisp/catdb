@@ -16,7 +16,7 @@ import { Window } from '@wailsio/runtime'
 import { NButton, NInput, NSelect, NSpin, useMessage } from 'naive-ui'
 import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { sql, MySQL } from '@codemirror/lang-sql'
+import { sql } from '@codemirror/lang-sql'
 import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { useThemeStore } from '../../stores/theme'
@@ -28,6 +28,8 @@ import {
   type CharsetInfo,
   type CollationInfo,
 } from '../../api/dbEditor'
+import { genericUIDialect, uiDialectForConnection, type UIDialect } from '../../api/dialect'
+import { cmSqlDialect } from '../../editor/cmDialect'
 import { runQuery } from '../../api/query'
 import { system as systemApi } from '../../api'
 import { t } from '../../i18n'
@@ -86,6 +88,8 @@ const collationList = ref<CollationInfo[]>([])
 const origCharset = ref('')
 const origCollation = ref('')
 
+const dialect = ref<UIDialect>(genericUIDialect())
+
 const charsetOptions = computed(() =>
   charsetList.value.map((c) => ({ label: c.name, value: c.name })),
 )
@@ -97,16 +101,37 @@ const collationOptions = computed(() => {
     .map((c) => ({ label: c.name, value: c.name }))
 })
 
-const ddlPreview = computed(() => {
+// DDL rendering happens driver-side (MetadataService.BuildCreate/AlterDatabase)
+// so the preview is async — refreshed by a debounced, sequence-guarded watcher.
+const ddlPreview = ref('')
+let ddlSeq = 0
+let ddlTimer: ReturnType<typeof setTimeout> | undefined
+
+async function refreshDdlPreview() {
+  const seq = ++ddlSeq
   const n = name.value.trim()
-  if (!n) return `-- ${t('databaseEditor.ddlEnterName')}`
-  if (mode.value === 'create') {
-    return buildCreateDb(n, charset.value, collation.value) + ';'
+  if (!n) {
+    ddlPreview.value = `-- ${t('databaseEditor.ddlEnterName')}`
+    return
   }
-  if (charset.value === origCharset.value && collation.value === origCollation.value) {
-    return `-- ${t('databaseEditor.ddlUnchanged')}`
+  if (mode.value === 'edit'
+      && charset.value === origCharset.value && collation.value === origCollation.value) {
+    ddlPreview.value = `-- ${t('databaseEditor.ddlUnchanged')}`
+    return
   }
-  return buildAlterDb(n, charset.value, collation.value) + ';'
+  try {
+    const stmt = mode.value === 'create'
+      ? await buildCreateDb(connId.value, n, charset.value, collation.value)
+      : await buildAlterDb(connId.value, n, charset.value, collation.value)
+    if (seq === ddlSeq) ddlPreview.value = stmt + ';'
+  } catch (e) {
+    if (seq === ddlSeq) ddlPreview.value = `-- ${String(e)}`
+  }
+}
+
+watch([name, charset, collation, mode], () => {
+  if (ddlTimer) clearTimeout(ddlTimer)
+  ddlTimer = setTimeout(() => void refreshDdlPreview(), 150)
 })
 
 const canSubmit = computed(() => {
@@ -121,11 +146,11 @@ const canSubmit = computed(() => {
 
 // --- CodeMirror DDL preview -------------------------------------------------
 //
-// Read-only EditorView with the MySQL dialect so the preview gets syntax
-// highlighting AND remains selectable (the previous <pre> block had the right
-// CSS but a styled <pre> can still be overridden by ancestor user-select rules
-// — CodeMirror manages its own selection layer and is the project standard,
-// per AlterSqlPanel.vue).
+// Read-only EditorView with the connection driver's SQL dialect so the
+// preview gets syntax highlighting AND remains selectable (the previous <pre>
+// block had the right CSS but a styled <pre> can still be overridden by
+// ancestor user-select rules — CodeMirror manages its own selection layer and
+// is the project standard, per AlterSqlPanel.vue).
 const cmHost = ref<HTMLDivElement | null>(null)
 let cmView: EditorView | null = null
 const cmThemeComp = new Compartment()
@@ -136,7 +161,7 @@ function initCm() {
     state: EditorState.create({
       doc: ddlPreview.value,
       extensions: [
-        sql({ dialect: MySQL }),
+        sql({ dialect: cmSqlDialect(dialect.value.editorDialect) }),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         EditorView.editable.of(false),
         EditorView.theme({
@@ -206,6 +231,7 @@ onMounted(async () => {
     mode.value = 'create'
   }
   try {
+    dialect.value = await uiDialectForConnection(cid)
     const cs = await loadCharsetsAndCollations(cid)
     charsetList.value = cs.charsets
     collationList.value = cs.collations
@@ -217,13 +243,14 @@ onMounted(async () => {
         charset.value = info.charset
         collation.value = info.collation
       }
-    } else {
-      const def = cs.charsets.find((c) => c.name === 'utf8mb4')
+    } else if (dialect.value.defaultCharset) {
+      const def = cs.charsets.find((c) => c.name === dialect.value.defaultCharset)
       if (def) {
         charset.value = def.name
         collation.value = def.defaultCollation
       }
     }
+    void refreshDdlPreview()
   } catch (e: any) {
     loadError.value = t('databaseEditor.loadCharsetsFailed', { error: e?.message ?? e })
   } finally {
@@ -244,16 +271,16 @@ async function onConfirm() {
     errorMessage.value = t('databaseEditor.nameRequired')
     return
   }
-  if (/[`\s.]/.test(n)) {
+  if (/[`"\s.]/.test(n)) {
     errorMessage.value = t('databaseEditor.nameInvalidChars')
     return
   }
-  const sql = mode.value === 'create'
-    ? buildCreateDb(n, charset.value, collation.value)
-    : buildAlterDb(n, charset.value, collation.value)
   submitting.value = true
   errorMessage.value = null
   try {
+    const sql = mode.value === 'create'
+      ? await buildCreateDb(connId.value, n, charset.value, collation.value)
+      : await buildAlterDb(connId.value, n, charset.value, collation.value)
     await runQuery(connId.value, sql)
     try {
       await systemApi.broadcastDatabaseSaved(connId.value, n)

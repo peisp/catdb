@@ -50,8 +50,7 @@ func TestGenerateCreateTable(t *testing.T) {
 		ForeignKeys: []dbdriver.ForeignKeyInfo{
 			{Name: "fk_org", Columns: []string{"org_id"}, ReferencedSchema: "app", ReferencedTable: "orgs", ReferencedColumns: []string{"id"}, OnDelete: "CASCADE"},
 		},
-		Engine:  "InnoDB",
-		Charset: "utf8mb4",
+		Options: map[string]string{"engine": "InnoDB", "charset": "utf8mb4"},
 		Comment: "user accounts",
 	}
 	got, err := d.GenerateCreateTable(ts)

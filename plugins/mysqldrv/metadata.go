@@ -72,10 +72,14 @@ func (m metadata) ListTables(ctx context.Context, db, schema string) ([]dbdriver
 	var out []dbdriver.TableInfo
 	for rows.Next() {
 		var t dbdriver.TableInfo
+		var engine, collation string
 		t.Schema = d
-		if err := rows.Scan(&t.Name, &t.Engine, &t.Comment, &t.Rows,
-				&t.DataLength, &t.CreateTime, &t.UpdateTime, &t.Collation); err != nil {
+		if err := rows.Scan(&t.Name, &engine, &t.Comment, &t.Rows,
+				&t.DataLength, &t.CreateTime, &t.UpdateTime, &collation); err != nil {
 			return nil, err
+		}
+		if engine != "" || collation != "" {
+			t.Options = map[string]string{"engine": engine, "collation": collation}
 		}
 		out = append(out, t)
 	}
@@ -107,6 +111,28 @@ func (m metadata) ListViews(ctx context.Context, db, schema string) ([]dbdriver.
 		out = append(out, v)
 	}
 	return out, rows.Err()
+}
+
+func (m metadata) ListViewDefinitions(ctx context.Context, db, schema string) (map[string]string, error) {
+	d := resolveDB(db, schema)
+	if d == "" {
+		return nil, fmt.Errorf("mysqldrv: ListViewDefinitions requires a database name")
+	}
+	const q = `SELECT TABLE_NAME, VIEW_DEFINITION FROM information_schema.VIEWS WHERE TABLE_SCHEMA=?`
+	rows, err := m.db.QueryContext(ctx, q, d)
+	if err != nil {
+		return nil, fmt.Errorf("mysqldrv: list view definitions: %w", err)
+	}
+	defer rows.Close()
+	defs := map[string]string{}
+	for rows.Next() {
+		var name, def string
+		if err := rows.Scan(&name, &def); err != nil {
+			return nil, err
+		}
+		defs[name] = def
+	}
+	return defs, rows.Err()
 }
 
 func (m metadata) ListColumns(ctx context.Context, db, schema, table string) ([]dbdriver.ColumnMeta, error) {

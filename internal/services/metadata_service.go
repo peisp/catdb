@@ -58,6 +58,93 @@ func (s *MetadataService) resolveDialect(ctx context.Context, connID string) (db
 	return d.Dialect(), nil
 }
 
+// GetTableComment returns table's comment via the driver's metadata — the
+// structure editor used to regex it out of the native CREATE TABLE text,
+// which only worked for MySQL.
+func (s *MetadataService) GetTableComment(ctx context.Context, connID, db, schema, table string) (string, error) {
+	m, err := s.resolveMeta(ctx, connID)
+	if err != nil {
+		return "", err
+	}
+	tables, err := m.ListTables(ctx, db, schema)
+	if err != nil {
+		return "", err
+	}
+	for _, t := range tables {
+		if t.Name == table {
+			return t.Comment, nil
+		}
+	}
+	return "", nil
+}
+
+// resolveDBEditor probes the connection's Metadata for the optional
+// DatabaseEditor extension. A stable "not-supported" slug reaches the
+// front-end when the driver doesn't implement it.
+func (s *MetadataService) resolveDBEditor(ctx context.Context, connID string) (dbdriver.DatabaseEditor, error) {
+	m, err := s.resolveMeta(ctx, connID)
+	if err != nil {
+		return nil, err
+	}
+	ed, ok := m.(dbdriver.DatabaseEditor)
+	if !ok {
+		return nil, fmt.Errorf("database-editor-unsupported")
+	}
+	return ed, nil
+}
+
+// CharsetCatalog bundles the database editor's picker data in one call.
+type CharsetCatalog struct {
+	Charsets   []dbdriver.CharsetInfo   `json:"charsets"`
+	Collations []dbdriver.CollationInfo `json:"collations"`
+}
+
+// ListCharsets returns the server's charsets + collations for the database
+// editor. Errors with "database-editor-unsupported" when the driver has no
+// database editor support.
+func (s *MetadataService) ListCharsets(ctx context.Context, connID string) (CharsetCatalog, error) {
+	ed, err := s.resolveDBEditor(ctx, connID)
+	if err != nil {
+		return CharsetCatalog{}, err
+	}
+	cs, err := ed.ListCharsets(ctx)
+	if err != nil {
+		return CharsetCatalog{}, err
+	}
+	co, err := ed.ListCollations(ctx)
+	if err != nil {
+		return CharsetCatalog{}, err
+	}
+	return CharsetCatalog{Charsets: cs, Collations: co}, nil
+}
+
+// GetDatabaseOptions returns db's current options (edit mode prefill).
+func (s *MetadataService) GetDatabaseOptions(ctx context.Context, connID, db string) (dbdriver.DatabaseOptions, error) {
+	ed, err := s.resolveDBEditor(ctx, connID)
+	if err != nil {
+		return dbdriver.DatabaseOptions{}, err
+	}
+	return ed.GetDatabaseOptions(ctx, db)
+}
+
+// BuildCreateDatabase renders the CREATE DATABASE statement (preview + run).
+func (s *MetadataService) BuildCreateDatabase(ctx context.Context, connID, name string, opts dbdriver.DatabaseOptions) (string, error) {
+	ed, err := s.resolveDBEditor(ctx, connID)
+	if err != nil {
+		return "", err
+	}
+	return ed.CreateDatabaseSQL(name, opts)
+}
+
+// BuildAlterDatabase renders the ALTER DATABASE statement (preview + run).
+func (s *MetadataService) BuildAlterDatabase(ctx context.Context, connID, name string, opts dbdriver.DatabaseOptions) (string, error) {
+	ed, err := s.resolveDBEditor(ctx, connID)
+	if err != nil {
+		return "", err
+	}
+	return ed.AlterDatabaseSQL(name, opts)
+}
+
 func (s *MetadataService) ListDatabases(ctx context.Context, connID string) ([]string, error) {
 	m, err := s.resolveMeta(ctx, connID)
 	if err != nil {
@@ -204,7 +291,7 @@ func (s *MetadataService) BuildAlterPlan(ctx context.Context, connID string, req
 		ForeignKeys: req.Orig.ForeignKeys,
 		Comment:     req.OrigComment,
 	}
-	cs := schemadiff.Diff(current, req.Draft, schemadiff.Options{})
+	cs := schemadiff.Diff(current, req.Draft, schemadiff.Options{NormalizeType: dia.NormalizeType})
 
 	render := func(part dbdriver.ChangeSet) ([]string, error) {
 		if part.Empty() {
@@ -424,12 +511,14 @@ func (s *MetadataService) BrowseTable(ctx context.Context, connID, db, schema, t
 	}
 	out := BrowseResult{Columns: rs.Columns(), Rows: rows, SQL: paginated}
 
-	// Enrich column metadata with full COLUMN_TYPE from information_schema
-	// when available (MySQL). The scanner only gives bare DatabaseTypeName()
-	// which lacks precision/parameters.
+	// Enrich column metadata with the driver's full native types — the scanner
+	// only gives bare DatabaseTypeName() which lacks precision/parameters,
+	// while Metadata.ListColumns returns the precise type text.
 	if len(out.Columns) > 0 {
-		if cols, err := enrichColumnTypes(ctx, q, db, schema, table, out.Columns); err == nil {
-			out.Columns = cols
+		if m := conn.Metadata(); m != nil {
+			if cols, cerr := m.ListColumns(ctx, db, schema, table); cerr == nil {
+				out.Columns = mergeNativeTypes(out.Columns, cols)
+			}
 		}
 	}
 
@@ -442,57 +531,21 @@ func (s *MetadataService) BrowseTable(ctx context.Context, connID, db, schema, t
 	return out, nil
 }
 
-// enrichColumnTypes queries information_schema.COLUMNS for full COLUMN_TYPE
-// strings and merges them into the ColumnMeta slice. This gives table browsing
-// proper type precision (e.g. "varchar(255)" instead of "VARCHAR").
-//
-// ponytail: MySQL-specific query. Non-MySQL databases fail gracefully and
-// return the original columns unchanged.
-func enrichColumnTypes(ctx context.Context, q dbdriver.Querier, db, schema, table string, cols []dbdriver.ColumnMeta) ([]dbdriver.ColumnMeta, error) {
-	schemaName := schema
-	if schemaName == "" {
-		schemaName = db
-	}
-	if schemaName == "" {
-		return cols, nil
-	}
-	rs, err := q.Query(ctx,
-		"SELECT COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?",
-		schemaName, table)
-	if err != nil {
-		return cols, nil // non-MySQL DB, skip enrichment
-	}
-	defer rs.Close()
-	typeMap := make(map[string]string, len(cols))
-	for {
-		batch, done, err := rs.Next(200)
-		if err != nil {
-			return cols, nil
-		}
-		for _, row := range batch {
-			if len(row) >= 2 {
-				if name, ok := row[0].(string); ok {
-					if ct, ok := row[1].(string); ok {
-						typeMap[strings.ToLower(name)] = ct
-					}
-				}
-			}
-		}
-		if done {
-			break
+// mergeNativeTypes overlays the precise NativeType from Metadata.ListColumns
+// onto the scanner-derived result columns, matched by name (case-insensitive).
+func mergeNativeTypes(cols, meta []dbdriver.ColumnMeta) []dbdriver.ColumnMeta {
+	typeMap := make(map[string]string, len(meta))
+	for _, mc := range meta {
+		if mc.NativeType != "" {
+			typeMap[strings.ToLower(mc.Name)] = mc.NativeType
 		}
 	}
-	changed := false
 	for i := range cols {
 		if ct, ok := typeMap[strings.ToLower(cols[i].Name)]; ok {
 			cols[i].NativeType = ct
-			changed = true
 		}
 	}
-	if !changed {
-		return cols, nil
-	}
-	return cols, nil
+	return cols
 }
 
 // CountTableRows runs `SELECT COUNT(*) FROM db.table [WHERE …]` so the data

@@ -10,10 +10,12 @@ import { NButton, NEmpty, NFlex, NText, useMessage } from 'naive-ui'
 import { dialogs } from '../../api'
 import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { sql, MySQL } from '@codemirror/lang-sql'
+import { sql } from '@codemirror/lang-sql'
 import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { useThemeStore } from '../../stores/theme'
+import { genericUIDialect, type UIDialect } from '../../api/dialect'
+import { cmSqlDialect } from '../../editor/cmDialect'
 import ResizeHandle from '../shared/ResizeHandle.vue'
 import { t } from '../../i18n'
 
@@ -27,6 +29,8 @@ const props = defineProps<{
   /** Confirmation text shown in the Apply dialog. */
   applyConfirmTitle?: string
   applyConfirmContent?: string
+  /** Driver UI descriptor — picks the syntax-highlighting SQL dialect. */
+  dialect?: UIDialect
 }>()
 const emit = defineEmits<{
   (e: 'apply'): void
@@ -86,7 +90,7 @@ function init() {
     state: EditorState.create({
       doc: joined.value,
       extensions: [
-        sql({ dialect: MySQL }),
+        sql({ dialect: cmSqlDialect((props.dialect ?? genericUIDialect()).editorDialect) }),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         EditorView.editable.of(false),
         EditorView.theme({

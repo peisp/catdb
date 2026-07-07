@@ -1,8 +1,10 @@
 package mysqldrv
 
 import (
-	"catdb/internal/dbdriver"
 	"database/sql"
+	"errors"
+
+	"catdb/internal/dbdriver"
 )
 
 // tx wraps a *sql.Tx and satisfies dbdriver.Tx via composition with querier.
@@ -18,5 +20,14 @@ func newTx(raw *sql.Tx) dbdriver.Tx {
 	}
 }
 
-func (t *tx) Commit() error   { return t.raw.Commit() }
-func (t *tx) Rollback() error { return t.raw.Rollback() }
+func (t *tx) Commit() error   { return mapTxDone(t.raw.Commit()) }
+func (t *tx) Rollback() error { return mapTxDone(t.raw.Rollback()) }
+
+// mapTxDone folds database/sql's ErrTxDone into the driver-neutral sentinel
+// so generic layers never have to import database/sql to test for it.
+func mapTxDone(err error) error {
+	if errors.Is(err, sql.ErrTxDone) {
+		return dbdriver.ErrTxDone
+	}
+	return err
+}

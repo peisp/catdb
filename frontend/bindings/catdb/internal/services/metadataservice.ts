@@ -53,6 +53,13 @@ export function BrowseTable(connID: string, db: string, schema: string, table: s
 }
 
 /**
+ * BuildAlterDatabase renders the ALTER DATABASE statement (preview + run).
+ */
+export function BuildAlterDatabase(connID: string, name: string, opts: dbdriver$0.DatabaseOptions): $CancellablePromise<string> {
+    return $Call.ByName("catdb/internal/services.MetadataService.BuildAlterDatabase", connID, name, opts);
+}
+
+/**
  * BuildAlterPlan diffs the draft against the original snapshot and renders
  * ALTER statements through the connection's Dialect.
  */
@@ -60,6 +67,13 @@ export function BuildAlterPlan(connID: string, req: $models.AlterPlanRequest): $
     return $Call.ByName("catdb/internal/services.MetadataService.BuildAlterPlan", connID, req).then(($result: any) => {
         return $$createType2($result);
     });
+}
+
+/**
+ * BuildCreateDatabase renders the CREATE DATABASE statement (preview + run).
+ */
+export function BuildCreateDatabase(connID: string, name: string, opts: dbdriver$0.DatabaseOptions): $CancellablePromise<string> {
+    return $Call.ByName("catdb/internal/services.MetadataService.BuildCreateDatabase", connID, name, opts);
 }
 
 /**
@@ -85,39 +99,68 @@ export function GetCreateTable(connID: string, db: string, schema: string, table
     return $Call.ByName("catdb/internal/services.MetadataService.GetCreateTable", connID, db, schema, table);
 }
 
+/**
+ * GetDatabaseOptions returns db's current options (edit mode prefill).
+ */
+export function GetDatabaseOptions(connID: string, db: string): $CancellablePromise<dbdriver$0.DatabaseOptions> {
+    return $Call.ByName("catdb/internal/services.MetadataService.GetDatabaseOptions", connID, db).then(($result: any) => {
+        return $$createType3($result);
+    });
+}
+
+/**
+ * GetTableComment returns table's comment via the driver's metadata — the
+ * structure editor used to regex it out of the native CREATE TABLE text,
+ * which only worked for MySQL.
+ */
+export function GetTableComment(connID: string, db: string, schema: string, table: string): $CancellablePromise<string> {
+    return $Call.ByName("catdb/internal/services.MetadataService.GetTableComment", connID, db, schema, table);
+}
+
 export function GetTableSummary(connID: string, db: string, schema: string, table: string): $CancellablePromise<$models.TableSummary> {
     return $Call.ByName("catdb/internal/services.MetadataService.GetTableSummary", connID, db, schema, table).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType4($result);
+    });
+}
+
+/**
+ * ListCharsets returns the server's charsets + collations for the database
+ * editor. Errors with "database-editor-unsupported" when the driver has no
+ * database editor support.
+ */
+export function ListCharsets(connID: string): $CancellablePromise<$models.CharsetCatalog> {
+    return $Call.ByName("catdb/internal/services.MetadataService.ListCharsets", connID).then(($result: any) => {
+        return $$createType5($result);
     });
 }
 
 export function ListColumns(connID: string, db: string, schema: string, table: string): $CancellablePromise<dbdriver$0.ColumnMeta[]> {
     return $Call.ByName("catdb/internal/services.MetadataService.ListColumns", connID, db, schema, table).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
 export function ListDatabases(connID: string): $CancellablePromise<string[]> {
     return $Call.ByName("catdb/internal/services.MetadataService.ListDatabases", connID).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType8($result);
     });
 }
 
 export function ListForeignKeys(connID: string, db: string, schema: string, table: string): $CancellablePromise<dbdriver$0.ForeignKeyInfo[]> {
     return $Call.ByName("catdb/internal/services.MetadataService.ListForeignKeys", connID, db, schema, table).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType10($result);
     });
 }
 
 export function ListIndexes(connID: string, db: string, schema: string, table: string): $CancellablePromise<dbdriver$0.IndexInfo[]> {
     return $Call.ByName("catdb/internal/services.MetadataService.ListIndexes", connID, db, schema, table).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType12($result);
     });
 }
 
 export function ListRoutines(connID: string, db: string, schema: string): $CancellablePromise<dbdriver$0.RoutineInfo[]> {
     return $Call.ByName("catdb/internal/services.MetadataService.ListRoutines", connID, db, schema).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType14($result);
     });
 }
 
@@ -127,19 +170,19 @@ export function ListRoutines(connID: string, db: string, schema: string): $Cance
  */
 export function ListSchemas(connID: string, db: string): $CancellablePromise<string[]> {
     return $Call.ByName("catdb/internal/services.MetadataService.ListSchemas", connID, db).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType8($result);
     });
 }
 
 export function ListTables(connID: string, db: string, schema: string): $CancellablePromise<dbdriver$0.TableInfo[]> {
     return $Call.ByName("catdb/internal/services.MetadataService.ListTables", connID, db, schema).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType16($result);
     });
 }
 
 export function ListViews(connID: string, db: string, schema: string): $CancellablePromise<dbdriver$0.ViewInfo[]> {
     return $Call.ByName("catdb/internal/services.MetadataService.ListViews", connID, db, schema).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType18($result);
     });
 }
 
@@ -147,17 +190,19 @@ export function ListViews(connID: string, db: string, schema: string): $Cancella
 const $$createType0 = $models.AutocompleteSnapshot.createFrom;
 const $$createType1 = $models.BrowseResult.createFrom;
 const $$createType2 = $models.AlterPlanResult.createFrom;
-const $$createType3 = $models.TableSummary.createFrom;
-const $$createType4 = dbdriver$0.ColumnMeta.createFrom;
-const $$createType5 = $Create.Array($$createType4);
-const $$createType6 = $Create.Array($Create.Any);
-const $$createType7 = dbdriver$0.ForeignKeyInfo.createFrom;
-const $$createType8 = $Create.Array($$createType7);
-const $$createType9 = dbdriver$0.IndexInfo.createFrom;
+const $$createType3 = dbdriver$0.DatabaseOptions.createFrom;
+const $$createType4 = $models.TableSummary.createFrom;
+const $$createType5 = $models.CharsetCatalog.createFrom;
+const $$createType6 = dbdriver$0.ColumnMeta.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = $Create.Array($Create.Any);
+const $$createType9 = dbdriver$0.ForeignKeyInfo.createFrom;
 const $$createType10 = $Create.Array($$createType9);
-const $$createType11 = dbdriver$0.RoutineInfo.createFrom;
+const $$createType11 = dbdriver$0.IndexInfo.createFrom;
 const $$createType12 = $Create.Array($$createType11);
-const $$createType13 = dbdriver$0.TableInfo.createFrom;
+const $$createType13 = dbdriver$0.RoutineInfo.createFrom;
 const $$createType14 = $Create.Array($$createType13);
-const $$createType15 = dbdriver$0.ViewInfo.createFrom;
+const $$createType15 = dbdriver$0.TableInfo.createFrom;
 const $$createType16 = $Create.Array($$createType15);
+const $$createType17 = dbdriver$0.ViewInfo.createFrom;
+const $$createType18 = $Create.Array($$createType17);

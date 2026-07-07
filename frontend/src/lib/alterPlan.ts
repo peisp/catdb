@@ -1,31 +1,23 @@
-import { t } from '../i18n'
+import { i18n, t } from '../i18n'
 
 // alterPlan — the structure editor's draft model and UI helpers.
 //
 // The ALTER/CREATE diff engine that used to live here has moved to the Go
 // backend (internal/core/schemadiff + Dialect.GenerateAlterTable); components
 // call metadata.buildAlterPlan / buildCreateTable instead. What remains is
-// pure editing state: draft shapes with stable client-side keys, MySQL
-// native-type parsing for the three-field type editor, and the snapshot→draft
-// converters.
+// pure editing state: draft shapes with stable client-side keys, native-type
+// parsing for the three-field type editor, and the snapshot→draft converters.
+//
+// No per-database knowledge lives here: the type catalog, params-field rules
+// and modifiers all come from the driver's UIDialect descriptor (api/dialect).
+// Identifier quoting lives in api/dialect (quoteIdentWith / quoteTableWith).
+import { typeFormatOf, type UIDialect } from '../api/dialect'
 import type {
   ColumnMeta,
   ForeignKeyInfo,
   IndexInfo,
   TableSummary,
 } from '../api/metadata'
-
-// ---- identifier quoting -----------------------------------------------------
-
-/** MySQL identifier quoting — backticks, double any embedded backtick. */
-export function quoteIdent(name: string): string {
-  return '`' + String(name).replace(/`/g, '``') + '`'
-}
-
-/** Compose `db`.`table` form when db is non-empty. */
-export function quoteTable(db: string, table: string): string {
-  return db ? `${quoteIdent(db)}.${quoteIdent(table)}` : quoteIdent(table)
-}
 
 // ---- draft shapes ----------------------------------------------------------
 //
@@ -86,7 +78,11 @@ export interface ParsedNativeType {
   unsigned: boolean
 }
 
-/** Parse a MySQL COLUMN_TYPE string into base/params/unsigned. */
+/**
+ * Parse a native type string into base/params/unsigned. The UNSIGNED /
+ * ZEROFILL stripping only ever matches on dialects that emit those tokens
+ * (MySQL); for other databases it is a no-op.
+ */
 export function parseNativeType(raw: string): ParsedNativeType {
   let s = (raw ?? '').trim()
   if (!s) return { baseType: '', typeParams: '', unsigned: false }
@@ -113,40 +109,20 @@ export function parseNativeType(raw: string): ParsedNativeType {
 }
 
 /** Reassemble the canonical native-type string from the split fields. */
-export function buildNativeType(c: {
+export function buildNativeType(d: UIDialect, c: {
   baseType: string
   typeParams: string
   unsigned: boolean
 }): string {
-  const base = (c.baseType || 'VARCHAR').toUpperCase()
+  const base = (c.baseType || d.defaultColumnType || 'VARCHAR').toUpperCase()
   let s = base
   if (c.typeParams && c.typeParams.trim() !== '') {
     s += `(${c.typeParams.trim()})`
   }
-  if (c.unsigned && baseTypeSupportsUnsigned(base)) {
+  if (c.unsigned && typeFormatOf(d, base).supportsUnsigned) {
     s += ' UNSIGNED'
   }
   return s
-}
-
-/** Whether a base type accepts the UNSIGNED modifier (numeric types only). */
-export function baseTypeSupportsUnsigned(base: string): boolean {
-  switch ((base || '').toUpperCase()) {
-    case 'TINYINT':
-    case 'SMALLINT':
-    case 'MEDIUMINT':
-    case 'INT':
-    case 'INTEGER':
-    case 'BIGINT':
-    case 'DECIMAL':
-    case 'NUMERIC':
-    case 'FLOAT':
-    case 'DOUBLE':
-    case 'REAL':
-      return true
-    default:
-      return false
-  }
 }
 
 /**
@@ -170,75 +146,41 @@ export interface TypeFormat {
   paramsRequired: boolean
 }
 
-export function typeFormatFor(base: string): TypeFormat {
-  const supportsUnsigned = baseTypeSupportsUnsigned(base)
-  switch ((base || '').toUpperCase()) {
-    case 'VARCHAR':
-    case 'VARBINARY':
-      return { kind: 'length', supportsUnsigned, placeholder: t('structure.columns.ph.length'), paramsRequired: true }
-    case 'CHAR':
-    case 'BINARY':
-      return { kind: 'length', supportsUnsigned, placeholder: t('structure.columns.ph.length'), paramsRequired: false }
-    case 'TINYINT':
-    case 'SMALLINT':
-    case 'MEDIUMINT':
-    case 'INT':
-    case 'INTEGER':
-    case 'BIGINT':
-      return { kind: 'displayWidth', supportsUnsigned, placeholder: t('structure.columns.ph.width'), paramsRequired: false }
-    case 'BIT':
-      return { kind: 'displayWidth', supportsUnsigned, placeholder: t('structure.columns.ph.bits'), paramsRequired: false }
-    case 'DECIMAL':
-    case 'NUMERIC':
-    case 'FLOAT':
-    case 'DOUBLE':
-    case 'REAL':
-      return { kind: 'precisionScale', supportsUnsigned, placeholder: t('structure.columns.ph.precisionScale'), paramsRequired: false }
-    case 'DATETIME':
-    case 'TIMESTAMP':
-    case 'TIME':
-      return { kind: 'fractionalSeconds', supportsUnsigned, placeholder: t('structure.columns.ph.fractionalSeconds'), paramsRequired: false }
-    case 'ENUM':
-    case 'SET':
-      return { kind: 'enumValues', supportsUnsigned, placeholder: "'a','b'", paramsRequired: true }
-    default:
-      return { kind: 'none', supportsUnsigned, placeholder: '—', paramsRequired: false }
+const PLACEHOLDER_BY_KIND: Record<TypeParamKind, () => string> = {
+  length: () => t('structure.columns.ph.length'),
+  displayWidth: () => t('structure.columns.ph.width'),
+  precisionScale: () => t('structure.columns.ph.precisionScale'),
+  fractionalSeconds: () => t('structure.columns.ph.fractionalSeconds'),
+  enumValues: () => "'a','b'",
+  none: () => '—',
+}
+
+export function typeFormatFor(d: UIDialect, base: string): TypeFormat {
+  const f = typeFormatOf(d, base)
+  const kind = (f.kind || 'none') as TypeParamKind
+  return {
+    kind,
+    supportsUnsigned: !!f.supportsUnsigned,
+    placeholder: (PLACEHOLDER_BY_KIND[kind] ?? PLACEHOLDER_BY_KIND.none)(),
+    paramsRequired: !!f.paramsRequired,
   }
 }
 
 /**
- * Grouped catalog of base types for the type-select dropdown. Order matters:
- * the first option of the first group is what newly-created columns default to.
+ * Grouped catalog of base types for the type-select dropdown, read from the
+ * driver's UIDialect. Group keys are stable identifiers localized here (raw
+ * key shown when a future driver introduces one we have no translation for).
  * A function (not a const) so the group labels re-translate on locale switch —
  * call it from a `computed` in the component.
  */
-export function baseTypeGroups(): { label: string; types: string[] }[] {
-  return [
-    {
-      label: t('structure.typeGroups.string'),
-      types: ['VARCHAR', 'CHAR', 'TEXT', 'TINYTEXT', 'MEDIUMTEXT', 'LONGTEXT'],
-    },
-    {
-      label: t('structure.typeGroups.integer'),
-      types: ['INT', 'BIGINT', 'TINYINT', 'SMALLINT', 'MEDIUMINT'],
-    },
-    {
-      label: t('structure.typeGroups.decimal'),
-      types: ['DECIMAL', 'FLOAT', 'DOUBLE'],
-    },
-    {
-      label: t('structure.typeGroups.datetime'),
-      types: ['DATETIME', 'TIMESTAMP', 'DATE', 'TIME', 'YEAR'],
-    },
-    {
-      label: t('structure.typeGroups.binary'),
-      types: ['BINARY', 'VARBINARY', 'BLOB', 'TINYBLOB', 'MEDIUMBLOB', 'LONGBLOB'],
-    },
-    {
-      label: t('structure.typeGroups.other'),
-      types: ['JSON', 'BIT', 'ENUM', 'SET', 'GEOMETRY'],
-    },
-  ]
+export function baseTypeGroups(d: UIDialect): { label: string; types: string[] }[] {
+  return (d.typeGroups ?? []).map((g) => {
+    const key = `structure.typeGroups.${g.key}`
+    return {
+      label: i18n.global.te(key) ? t(key) : g.key,
+      types: [...(g.types ?? [])],
+    }
+  })
 }
 
 /**
@@ -352,14 +294,14 @@ export function summaryToDraft(s: TableSummary, comment: string): StructureDraft
   }
 }
 
-export function emptyColumnDraft(): ColumnDraft {
+export function emptyColumnDraft(d: UIDialect): ColumnDraft {
   return {
     _key: nextKey(),
     origName: '',
     origPos: -1,
     name: '',
-    baseType: 'VARCHAR',
-    typeParams: '255',
+    baseType: (d.defaultColumnType || 'VARCHAR').toUpperCase(),
+    typeParams: d.defaultColumnParams ?? '',
     unsigned: false,
     nullable: true,
     default: undefined,
@@ -441,12 +383,12 @@ export interface WireTable {
   comment: string
 }
 
-export function draftToWire(draft: StructureDraft): WireTable {
+export function draftToWire(d: UIDialect, draft: StructureDraft): WireTable {
   return {
     columns: (draft.columns ?? []).map((c) => ({
       origName: c.origName,
       name: c.name,
-      nativeType: buildNativeType(c),
+      nativeType: buildNativeType(d, c),
       nullable: c.nullable,
       // undefined key is dropped by JSON serialization → Go nil (no DEFAULT).
       default: c.default,
@@ -490,21 +432,3 @@ export function emptyAlterPlan(): AlterPlan {
   return { columns: [], indexes: [], foreignKeys: [], options: [], all: [] }
 }
 
-// ---- DDL parsing (read-only) ----------------------------------------------
-
-/**
- * Extract the table COMMENT from a MySQL `SHOW CREATE TABLE` output. Returns
- * '' when no comment clause is present. Handles the doubled-single-quote
- * escape MySQL emits inside the COMMENT='…' literal.
- *
- * We deliberately match only on the trailing table-options portion (after the
- * last closing paren) so a COMMENT='…' on a column definition can't be picked
- * up by mistake.
- */
-export function parseTableCommentFromDDL(ddl: string): string {
-  if (!ddl) return ''
-  const tail = ddl.slice(ddl.lastIndexOf(')'))
-  const m = tail.match(/\bCOMMENT\s*=\s*'((?:[^']|'')*)'/)
-  if (!m) return ''
-  return m[1].replace(/''/g, "'")
-}

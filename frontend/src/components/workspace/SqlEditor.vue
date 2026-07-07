@@ -18,7 +18,7 @@ import {
   keymap,
   lineNumbers,
 } from '@codemirror/view'
-import { sql, MySQL } from '@codemirror/lang-sql'
+import { sql } from '@codemirror/lang-sql'
 import {
   bracketMatching,
   defaultHighlightStyle,
@@ -43,9 +43,11 @@ import {
 } from '@codemirror/commands'
 import { useThemeStore } from '../../stores/theme'
 import { editorSurface } from '../../styles/theme'
+import { genericUIDialect, type UIDialect } from '../../api/dialect'
+import { cmSqlDialect } from '../../editor/cmDialect'
 import {
   createSqlCompletionSource,
-  sqlSignatureHelp,
+  createSqlSignatureHelp,
   type CompletionCatalog,
 } from '../../editor/sqlCompletion'
 import { t } from '../../i18n'
@@ -60,6 +62,10 @@ const props = defineProps<{
   /** Live metadata view for completion (databases / tables / columns). The
    *  engine reads it lazily at completion time — no reconfigure needed. */
   catalog?: CompletionCatalog
+  /** The connection driver's UI descriptor — SQL dialect for highlighting,
+   *  identifier quoting, function/keyword catalogs for completion. Read
+   *  lazily by the completion engine; highlighting reconfigures on change. */
+  dialect?: UIDialect
 }>()
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
@@ -74,7 +80,10 @@ const EMPTY_CATALOG: CompletionCatalog = {
   ensureTables: () => Promise.resolve(null),
 }
 
-// Built once; the catalog closures read the latest metadata at completion time.
+const getDialect = () => props.dialect ?? genericUIDialect()
+
+// Built once; the catalog/dialect closures read the latest state at
+// completion time.
 const sqlSource = createSqlCompletionSource(
   {
     databases: () => (props.catalog ?? EMPTY_CATALOG).databases(),
@@ -91,7 +100,9 @@ const sqlSource = createSqlCompletionSource(
     nColumns: (n) => t('queryTab.completionColumns', { n }),
     joinCondition: () => t('queryTab.completionJoinCond'),
   },
+  getDialect,
 )
+const sqlSignatureHelp = createSqlSignatureHelp(getDialect)
 
 const host = ref<HTMLDivElement | null>(null)
 const view = ref<EditorView | null>(null)
@@ -108,12 +119,13 @@ function editorChrome(dark: boolean) {
   ]
 }
 
-// Keyword completion + syntax only. Schema completion is NOT delegated to
 // `sql()` provides syntax highlighting/parsing only — its own completion
 // sources never run because `autocompletion({ override })` bypasses all
-// language-data sources.
+// language-data sources. The dialect follows the connection's driver and
+// reconfigures via a compartment when the descriptor resolves.
+const sqlLangCompartment = new Compartment()
 function buildSqlExt() {
-  return sql({ dialect: MySQL, upperCaseKeywords: true })
+  return sql({ dialect: cmSqlDialect(getDialect().editorDialect), upperCaseKeywords: true })
 }
 
 // Crisp inline-SVG completion icons. CodeMirror's default glyphs for these
@@ -210,7 +222,7 @@ function makeState(initial: string) {
         ...foldKeymap,
         indentWithTab,
       ]),
-      buildSqlExt(),
+      sqlLangCompartment.of(buildSqlExt()),
       // Parameter hint tooltip while typing inside a known function call.
       sqlSignatureHelp,
       themeCompartment.of(editorChrome(theme.mode === 'dark')),
@@ -321,6 +333,16 @@ watch(
     view.value.dispatch({
       effects: themeCompartment.reconfigure(editorChrome(m === 'dark')),
     })
+  },
+)
+
+// The syntax-highlighting dialect follows the driver descriptor (which
+// resolves async on first mount).
+watch(
+  () => props.dialect,
+  () => {
+    if (!view.value) return
+    view.value.dispatch({ effects: sqlLangCompartment.reconfigure(buildSqlExt()) })
   },
 )
 

@@ -3,10 +3,12 @@ import { onBeforeUnmount, ref, watch } from 'vue'
 import { NSpin, useMessage } from 'naive-ui'
 import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { sql, MySQL } from '@codemirror/lang-sql'
+import { sql } from '@codemirror/lang-sql'
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { useThemeStore } from '../../stores/theme'
+import { genericUIDialect, type UIDialect } from '../../api/dialect'
+import { cmSqlDialect } from '../../editor/cmDialect'
 import { t } from '../../i18n'
 import ResizeHandle from '../shared/ResizeHandle.vue'
 
@@ -17,12 +19,15 @@ const props = withDefaults(defineProps<{
   variant?: 'panel' | 'tab'
   active?: boolean
   width?: number
+  /** Driver UI descriptor — picks the syntax-highlighting SQL dialect. */
+  dialect?: UIDialect
 }>(), {
   loading: false,
   table: null,
   variant: 'panel',
   active: false,
   width: 360,
+  dialect: undefined,
 })
 
 const emit = defineEmits<{
@@ -43,7 +48,7 @@ function initDdlEditor() {
     state: EditorState.create({
       doc: props.ddl,
       extensions: [
-        sql({ dialect: MySQL }),
+        sql({ dialect: cmSqlDialect((props.dialect ?? genericUIDialect()).editorDialect) }),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         EditorView.editable.of(false),
         EditorView.lineWrapping,

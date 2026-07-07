@@ -2,7 +2,6 @@ package registry
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
 	"catdb/internal/dbdriver"
@@ -14,13 +13,13 @@ func (f fakeDriver) Name() string                               { return f.name 
 func (f fakeDriver) Version() string                            { return "test" }
 func (f fakeDriver) ConnectionSchema() []dbdriver.ConnParamField { return nil }
 func (f fakeDriver) Capabilities() dbdriver.Capabilities         { return dbdriver.Capabilities{} }
+func (f fakeDriver) UIDialect() dbdriver.UIDialect               { return dbdriver.UIDialect{} }
 func (f fakeDriver) Dialect() dbdriver.Dialect                   { return nil }
 func (f fakeDriver) Open(_ context.Context, _ dbdriver.ConnConfig) (dbdriver.Connection, error) {
 	return nil, nil
 }
 
 var _ dbdriver.Driver = fakeDriver{}
-var _ = sql.TxOptions{}
 
 func TestRegisterAndGet(t *testing.T) {
 	reset()

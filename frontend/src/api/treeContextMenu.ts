@@ -27,6 +27,7 @@ import { openTextPrompt } from './prompts'
 interface ActiveCtx {
   connId: string
   db?: string
+  schema?: string
   table?: string
   // for 「查询」 group / leaf
   queryId?: string

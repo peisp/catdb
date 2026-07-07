@@ -232,7 +232,7 @@ func compareSchemasConns(ctx context.Context, srcConn, tgtConn dbdriver.Connecti
 				diff.Error = rerr.Error()
 				break
 			}
-			cs := schemadiff.Diff(tgt, schemadiff.FromTableSchema(src, tgt), schemadiff.Options{})
+			cs := schemadiff.Diff(tgt, schemadiff.FromTableSchema(src, tgt), schemadiff.Options{NormalizeType: dia.NormalizeType})
 			if cs.Empty() {
 				diff.Status = "same"
 				break
@@ -413,8 +413,8 @@ func hasDestructiveChange(cs dbdriver.ChangeSet) bool {
 
 // ---- views -------------------------------------------------------------------
 
-// compareViews diffs view presence + normalized definitions. MySQL-flavored
-// (information_schema.VIEWS); other drivers fail gracefully per object.
+// compareViews diffs view presence + normalized definitions via the drivers'
+// Metadata.ListViewDefinitions.
 func compareViews(ctx context.Context, srcConn, tgtConn dbdriver.Connection, dia dbdriver.Dialect, req SchemaCompareRequest, included func(string) bool, syncID string) []SchemaObjectDiff {
 	srcMeta, tgtMeta := srcConn.Metadata(), tgtConn.Metadata()
 	srcViews, err := srcMeta.ListViews(ctx, req.SourceDB, req.SourceSchema)
@@ -441,8 +441,8 @@ func compareViews(ctx context.Context, srcConn, tgtConn dbdriver.Connection, dia
 		return nil
 	}
 
-	srcDefs, srcErr := fetchViewDefinitions(ctx, srcConn, firstNonEmptyStr(req.SourceSchema, req.SourceDB))
-	tgtDefs, tgtErr := fetchViewDefinitions(ctx, tgtConn, firstNonEmptyStr(req.TargetSchema, req.TargetDB))
+	srcDefs, srcErr := srcMeta.ListViewDefinitions(ctx, req.SourceDB, req.SourceSchema)
+	tgtDefs, tgtErr := tgtMeta.ListViewDefinitions(ctx, req.TargetDB, req.TargetSchema)
 
 	var out []SchemaObjectDiff
 	for _, name := range sortedKeys(srcSet, tgtSet) {
@@ -478,50 +478,6 @@ func compareViews(ctx context.Context, srcConn, tgtConn dbdriver.Connection, dia
 		emitSchemaCompareProgress(syncID, "object-done", name, "view", &diff)
 	}
 	return out
-}
-
-// fetchViewDefinitions loads VIEW_DEFINITION for every view in db.
-func fetchViewDefinitions(ctx context.Context, conn dbdriver.Connection, db string) (map[string]string, error) {
-	q := conn.Querier()
-	if q == nil {
-		return nil, fmt.Errorf("no querier")
-	}
-	rs, err := q.Query(ctx,
-		"SELECT TABLE_NAME, VIEW_DEFINITION FROM information_schema.VIEWS WHERE TABLE_SCHEMA = ?", db)
-	if err != nil {
-		return nil, err
-	}
-	defer rs.Close()
-	defs := map[string]string{}
-	for {
-		rows, done, err := rs.Next(200)
-		if err != nil {
-			return nil, err
-		}
-		for _, row := range rows {
-			if len(row) >= 2 {
-				name := asString(row[0])
-				def := asString(row[1])
-				if name != "" {
-					defs[name] = def
-				}
-			}
-		}
-		if done {
-			return defs, nil
-		}
-	}
-}
-
-func asString(v any) string {
-	switch x := v.(type) {
-	case string:
-		return x
-	case []byte:
-		return string(x)
-	default:
-		return ""
-	}
 }
 
 // normalizeViewDef canonicalizes a VIEW_DEFINITION for equality comparison:

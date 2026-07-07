@@ -7,6 +7,7 @@
 import { computed, ref, watch } from 'vue'
 import { NButton, NInput, NSpin, useMessage } from 'naive-ui'
 import { metadata as metaApi } from '../../api'
+import { genericUIDialect, uiDialectForConnection, type UIDialect } from '../../api/dialect'
 import { useQueryStore } from '../../stores/query'
 import { LogicalType } from '../../api/metadata'
 import type { ColumnMeta, TableInfo } from '../../api/metadata'
@@ -18,10 +19,18 @@ import DdlPanel from '../shared/DdlPanel.vue'
 const props = defineProps<{
   connId: string
   db: string
+  /** Schema between db and table for schema-ful databases; '' otherwise. */
+  schema?: string
 }>()
 
 const queryStore = useQueryStore()
 const message = useMessage()
+
+// Driver UI descriptor — syntax dialect for the DDL panel.
+const uiDialect = ref<UIDialect>(genericUIDialect())
+watch(() => props.connId, async (id) => {
+  uiDialect.value = id ? await uiDialectForConnection(id) : genericUIDialect()
+}, { immediate: true })
 
 const tables = ref<TableInfo[]>([])
 const filterText = ref('')
@@ -115,11 +124,11 @@ function formatTime(s: string): string {
 const rows = computed<any[][]>(() => {
   return filteredTables.value.map((t) => [
     t.name,
-    t.engine ?? '',
+    t.options?.['engine'] ?? '',
     t.comment ?? '',
     t.rows ?? 0,
     formatSize(t.dataLength ?? 0),
-    t.collation ?? '',
+    t.options?.['collation'] ?? '',
     formatTime(t.createTime ?? ''),
     formatTime(t.updateTime ?? ''),
   ])
@@ -132,7 +141,7 @@ async function load() {
   }
   loading.value = true
   try {
-    tables.value = await metaApi.listTables(props.connId, props.db)
+    tables.value = await metaApi.listTables(props.connId, props.db, props.schema ?? '')
   } catch (e: any) {
     message.error(t('tablesOverview.loadFailed', { error: String(e) }))
   } finally {
@@ -143,7 +152,7 @@ async function load() {
 // 监听 db 切换 —— 同一个固定的 Overview tab 在 ObjectTree 点不同库时会复用，
 // 此处随 props.db 变化重新拉取。
 watch(
-  () => [props.connId, props.db] as const,
+  () => [props.connId, props.db, props.schema] as const,
   () => { void load() },
   { immediate: true },
 )
@@ -164,13 +173,13 @@ watch(filteredTables, () => { selectedRow.value = null })
 function openSelected() {
   const table = selectedTable.value
   if (!table) return
-  queryStore.openTableTab(props.connId, props.db, table, 'table')
+  queryStore.openTableTab(props.connId, props.db, table, 'table', props.schema ?? '')
 }
 
 function editSelected() {
   const table = selectedTable.value
   if (!table) return
-  queryStore.openTableTab(props.connId, props.db, table, 'structure')
+  queryStore.openTableTab(props.connId, props.db, table, 'structure', props.schema ?? '')
 }
 
 function createTable() {
@@ -181,14 +190,14 @@ function createTable() {
 function renameSelected() {
   const table = selectedTable.value
   if (!table) return
-  void renameTable({ connId: props.connId, db: props.db, table, onAfterMutate: load })
+  void renameTable({ connId: props.connId, db: props.db, schema: props.schema, table, onAfterMutate: load })
 }
 
 // 双击单元格 → 跳到该表的数据浏览 tab
 function onDblClickCell(p: { row: number }) {
   const table = filteredTables.value[p.row]
   if (!table) return
-  queryStore.openTableTab(props.connId, props.db, table.name, 'table')
+  queryStore.openTableTab(props.connId, props.db, table.name, 'table', props.schema ?? '')
 }
 
 // 右键单元格 → 把当前行对应的表名注入 catdb-tables-overview 菜单上下文。
@@ -199,6 +208,7 @@ function onCellContextMenu(p: { row: number }) {
   setActiveTableContext({
     connId: props.connId,
     db: props.db,
+    schema: props.schema,
     table: table.name,
     onAfterMutate: load,
   })
@@ -219,7 +229,7 @@ async function loadDdl() {
   if (!table) { ddl.value = ''; return }
   ddlLoading.value = true
   try {
-    ddl.value = await metaApi.getCreateTable(props.connId, props.db, table)
+    ddl.value = await metaApi.getCreateTable(props.connId, props.db, table, props.schema ?? '')
   } catch (e: any) {
     ddl.value = ''
     message.error(t('tablesOverview.ddlFailed', { error: String(e) }))
@@ -278,6 +288,7 @@ watch(selectedTable, () => { if (ddlPanelOpen.value) void loadDdl() })
       <DdlPanel
         variant="panel"
         :ddl="ddl"
+        :dialect="uiDialect"
         :loading="ddlLoading"
         :table="selectedTable"
         :active="ddlPanelOpen"

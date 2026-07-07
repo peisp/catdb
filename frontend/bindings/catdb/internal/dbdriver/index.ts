@@ -3,8 +3,11 @@
 
 export {
     Capabilities,
+    CharsetInfo,
+    CollationInfo,
     ColumnMeta,
     ConnParamField,
+    DatabaseOptions,
     ExecResult,
     ForeignKeyInfo,
     IndexColumn,
@@ -15,5 +18,11 @@ export {
     SSLConfig,
     ServerInfo,
     TableInfo,
+    UIAutoIncrement,
+    UIDialect,
+    UIFunction,
+    UISnippet,
+    UITypeFormat,
+    UITypeGroup,
     ViewInfo
 } from "./models.js";

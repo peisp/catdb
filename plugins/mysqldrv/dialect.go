@@ -2,6 +2,7 @@ package mysqldrv
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"catdb/internal/dbdriver"
@@ -13,6 +14,71 @@ type dialect struct{}
 func (dialect) QuoteIdentifier(name string) string {
 	// MySQL identifiers use backticks; escape embedded backticks by doubling.
 	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
+}
+
+var (
+	reZerofill = regexp.MustCompile(`(?i)\s+ZEROFILL\b`)
+	reUnsigned = regexp.MustCompile(`(?i)\s+UNSIGNED\b`)
+	reTypeParm = regexp.MustCompile(`^([^()]+?)\s*\((.+)\)\s*$`)
+)
+
+// NormalizeType canonicalizes a MySQL COLUMN_TYPE for equality comparison:
+// uppercase base, no whitespace inside parens, UNSIGNED suffix in a fixed
+// position, ZEROFILL dropped.
+func (dialect) NormalizeType(nativeType string) string {
+	s := strings.TrimSpace(nativeType)
+	if s == "" {
+		return ""
+	}
+	s = reZerofill.ReplaceAllString(s, "")
+	unsigned := false
+	if reUnsigned.MatchString(s) {
+		unsigned = true
+		s = reUnsigned.ReplaceAllString(s, "")
+	}
+	s = strings.TrimSpace(s)
+	base, params := strings.ToUpper(s), ""
+	if m := reTypeParm.FindStringSubmatch(s); m != nil {
+		base = strings.ToUpper(strings.TrimSpace(m[1]))
+		parts := strings.Split(strings.TrimSpace(m[2]), ",")
+		for i := range parts {
+			parts[i] = strings.TrimSpace(parts[i])
+		}
+		params = strings.Join(parts, ",")
+	}
+	out := base
+	if params != "" {
+		out += "(" + params + ")"
+	}
+	if unsigned && baseTypeSupportsUnsigned(base) {
+		out += " UNSIGNED"
+	}
+	return out
+}
+
+func baseTypeSupportsUnsigned(base string) bool {
+	switch strings.ToUpper(base) {
+	case "TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT",
+		"DECIMAL", "NUMERIC", "FLOAT", "DOUBLE", "REAL":
+		return true
+	}
+	return false
+}
+
+func (dialect) ScriptRules() dbdriver.ScriptRules {
+	return dbdriver.ScriptRules{
+		BacktickIdentifiers: true,
+		BackslashEscapes:    true,
+		HashComments:        true,
+		ClientDelimiter:     true,
+	}
+}
+
+func (d dialect) DefaultNamespaceSQL(name string) string {
+	if strings.TrimSpace(name) == "" {
+		return ""
+	}
+	return "USE " + d.QuoteIdentifier(name)
 }
 
 func (dialect) Paginate(baseSQL string, limit, offset int) string {

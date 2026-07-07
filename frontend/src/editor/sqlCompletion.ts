@@ -24,6 +24,7 @@ import type { Completion, CompletionContext, CompletionResult, CompletionSource 
 import { insertCompletionText, snippetCompletion } from '@codemirror/autocomplete'
 import { StateField, type EditorState, type Extension } from '@codemirror/state'
 import { EditorView, showTooltip, type Tooltip } from '@codemirror/view'
+import { genericUIDialect, type UIDialect, type UIFunction } from '../api/dialect'
 import { getSqlContext, ALIAS_BLOCKLIST, type RefTable, type SqlContext } from './sqlContext'
 
 // ── Catalog input ────────────────────────────────────────────────────────────
@@ -65,6 +66,10 @@ export interface CompletionLabels {
 }
 
 // ── Keywords ─────────────────────────────────────────────────────────────────
+//
+// Generic ANSI-flavored keywords only. Dialect-specific keywords/phrases
+// (MySQL's SHOW …, AUTO_INCREMENT, ENGINE, …) come from the driver's
+// UIDialect.keywords and are merged in per dialect (see assetsFor).
 
 const KEYWORDS = [
   'SELECT', 'FROM', 'WHERE', 'JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN',
@@ -74,18 +79,14 @@ const KEYWORDS = [
   'DELETE FROM', 'CREATE TABLE', 'CREATE INDEX', 'CREATE VIEW', 'CREATE DATABASE',
   'ALTER TABLE', 'DROP TABLE', 'DROP INDEX', 'DROP VIEW', 'DROP DATABASE',
   'TRUNCATE TABLE', 'PRIMARY KEY', 'FOREIGN KEY', 'REFERENCES', 'UNIQUE',
-  'DEFAULT', 'AUTO_INCREMENT', 'ENGINE', 'CHARSET', 'COLLATE', 'USE',
-  'SHOW TABLES', 'SHOW DATABASES', 'SHOW CREATE TABLE', 'SHOW COLUMNS FROM',
-  'SHOW INDEX FROM', 'SHOW PROCESSLIST', 'SHOW VARIABLES', 'SHOW STATUS',
-  'DESCRIBE', 'EXPLAIN', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'WITH',
+  'DEFAULT', 'EXPLAIN', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'WITH',
   'RECURSIVE', 'ASC', 'DESC', 'INTERVAL', 'ADD COLUMN', 'DROP COLUMN',
-  'MODIFY COLUMN', 'CHANGE COLUMN', 'RENAME TO', 'IF NOT EXISTS', 'IF EXISTS',
-  'START TRANSACTION', 'COMMIT', 'ROLLBACK', 'REPLACE INTO',
-  'ON DUPLICATE KEY UPDATE', 'FOR UPDATE', 'PARTITION BY', 'OVER',
-  'INT', 'BIGINT', 'SMALLINT', 'TINYINT', 'VARCHAR', 'CHAR', 'TEXT',
-  'LONGTEXT', 'MEDIUMTEXT', 'DATETIME', 'TIMESTAMP', 'DATE', 'TIME', 'YEAR',
-  'DECIMAL', 'FLOAT', 'DOUBLE', 'BOOLEAN', 'BLOB', 'LONGBLOB', 'JSON', 'ENUM',
-  'BINARY', 'VARBINARY', 'UNSIGNED', 'NOT NULL', 'TRUE', 'FALSE',
+  'RENAME TO', 'IF NOT EXISTS', 'IF EXISTS',
+  'START TRANSACTION', 'COMMIT', 'ROLLBACK', 'FOR UPDATE', 'PARTITION BY', 'OVER',
+  'INT', 'BIGINT', 'SMALLINT', 'VARCHAR', 'CHAR', 'TEXT',
+  'DATETIME', 'TIMESTAMP', 'DATE', 'TIME',
+  'DECIMAL', 'FLOAT', 'DOUBLE', 'BOOLEAN', 'JSON',
+  'BINARY', 'VARBINARY', 'NOT NULL', 'TRUE', 'FALSE',
 ]
 
 const HIGH_FREQ = new Set([
@@ -114,120 +115,10 @@ const PREFERRED_AFTER: Record<string, string[]> = {
   select: ['DISTINCT'],
 }
 
-// ── Functions ────────────────────────────────────────────────────────────────
-
-const MYSQL_FUNCTIONS: Array<{ label: string; detail: string; info?: string }> = [
-  { label: 'COUNT', detail: 'aggregate', info: 'COUNT(expr) — number of non-NULL rows' },
-  { label: 'SUM', detail: 'aggregate', info: 'SUM(expr) — sum of expr' },
-  { label: 'AVG', detail: 'aggregate', info: 'AVG(expr) — average of expr' },
-  { label: 'MIN', detail: 'aggregate', info: 'MIN(expr)' },
-  { label: 'MAX', detail: 'aggregate', info: 'MAX(expr)' },
-  { label: 'GROUP_CONCAT', detail: 'aggregate', info: 'GROUP_CONCAT([DISTINCT] expr [ORDER BY …] [SEPARATOR str])' },
-  { label: 'CONCAT', detail: 'string', info: 'CONCAT(str1, str2, …) — concatenate strings' },
-  { label: 'CONCAT_WS', detail: 'string', info: 'CONCAT_WS(sep, str1, str2, …)' },
-  { label: 'SUBSTRING', detail: 'string', info: 'SUBSTRING(str, pos[, len])' },
-  { label: 'LENGTH', detail: 'string', info: 'LENGTH(str) — byte length' },
-  { label: 'CHAR_LENGTH', detail: 'string', info: 'CHAR_LENGTH(str) — character length' },
-  { label: 'TRIM', detail: 'string' },
-  { label: 'LTRIM', detail: 'string' },
-  { label: 'RTRIM', detail: 'string' },
-  { label: 'LOWER', detail: 'string' },
-  { label: 'UPPER', detail: 'string' },
-  { label: 'REPLACE', detail: 'string', info: 'REPLACE(str, from, to)' },
-  { label: 'LEFT', detail: 'string', info: 'LEFT(str, len)' },
-  { label: 'RIGHT', detail: 'string', info: 'RIGHT(str, len)' },
-  { label: 'LOCATE', detail: 'string', info: 'LOCATE(substr, str[, pos])' },
-  { label: 'INSTR', detail: 'string', info: 'INSTR(str, substr)' },
-  { label: 'LPAD', detail: 'string' },
-  { label: 'RPAD', detail: 'string' },
-  { label: 'FORMAT', detail: 'string', info: 'FORMAT(num, decimals)' },
-  { label: 'ROUND', detail: 'numeric', info: 'ROUND(x[, d])' },
-  { label: 'FLOOR', detail: 'numeric' },
-  { label: 'CEIL', detail: 'numeric' },
-  { label: 'ABS', detail: 'numeric' },
-  { label: 'MOD', detail: 'numeric' },
-  { label: 'POWER', detail: 'numeric' },
-  { label: 'RAND', detail: 'numeric' },
-  { label: 'GREATEST', detail: 'numeric' },
-  { label: 'LEAST', detail: 'numeric' },
-  { label: 'NOW', detail: 'datetime', info: 'NOW() — current DATETIME' },
-  { label: 'CURDATE', detail: 'datetime' },
-  { label: 'CURTIME', detail: 'datetime' },
-  { label: 'CURRENT_TIMESTAMP', detail: 'datetime' },
-  { label: 'UNIX_TIMESTAMP', detail: 'datetime', info: 'UNIX_TIMESTAMP([date])' },
-  { label: 'FROM_UNIXTIME', detail: 'datetime', info: 'FROM_UNIXTIME(ts[, format])' },
-  { label: 'DATE', detail: 'datetime' },
-  { label: 'DATE_FORMAT', detail: 'datetime', info: 'DATE_FORMAT(date, format)' },
-  { label: 'STR_TO_DATE', detail: 'datetime', info: 'STR_TO_DATE(str, format)' },
-  { label: 'DATE_ADD', detail: 'datetime', info: 'DATE_ADD(date, INTERVAL n unit)' },
-  { label: 'DATE_SUB', detail: 'datetime', info: 'DATE_SUB(date, INTERVAL n unit)' },
-  { label: 'DATEDIFF', detail: 'datetime', info: 'DATEDIFF(date1, date2) — days between' },
-  { label: 'TIMESTAMPDIFF', detail: 'datetime', info: 'TIMESTAMPDIFF(unit, dt1, dt2)' },
-  { label: 'YEAR', detail: 'datetime' },
-  { label: 'MONTH', detail: 'datetime' },
-  { label: 'DAY', detail: 'datetime' },
-  { label: 'HOUR', detail: 'datetime' },
-  { label: 'MINUTE', detail: 'datetime' },
-  { label: 'SECOND', detail: 'datetime' },
-  { label: 'IFNULL', detail: 'control', info: 'IFNULL(expr, alt)' },
-  { label: 'NULLIF', detail: 'control', info: 'NULLIF(a, b) — NULL if a=b' },
-  { label: 'COALESCE', detail: 'control', info: 'COALESCE(a, b, …) — first non-NULL' },
-  { label: 'IF', detail: 'control', info: 'IF(cond, a, b)' },
-  { label: 'JSON_EXTRACT', detail: 'json' },
-  { label: 'JSON_UNQUOTE', detail: 'json' },
-  { label: 'JSON_OBJECT', detail: 'json' },
-  { label: 'JSON_ARRAY', detail: 'json' },
-  { label: 'CAST', detail: 'cast', info: 'CAST(expr AS type)' },
-  { label: 'CONVERT', detail: 'cast', info: 'CONVERT(expr, type)' },
-  { label: 'VERSION', detail: 'system' },
-  { label: 'DATABASE', detail: 'system' },
-  { label: 'USER', detail: 'system' },
-  { label: 'LAST_INSERT_ID', detail: 'system' },
-  { label: 'UUID', detail: 'system' },
-]
-
-export const FUNCTION_SIGNATURES = new Map<string, string[]>([
-  ['COUNT', ['expr']],
-  ['SUM', ['expr']],
-  ['AVG', ['expr']],
-  ['MIN', ['expr']],
-  ['MAX', ['expr']],
-  ['GROUP_CONCAT', ['expr', 'separator']],
-  ['CONCAT', ['str', '…']],
-  ['CONCAT_WS', ['separator', 'str', '…']],
-  ['SUBSTRING', ['str', 'pos', 'len']],
-  ['REPLACE', ['str', 'from', 'to']],
-  ['LEFT', ['str', 'len']],
-  ['RIGHT', ['str', 'len']],
-  ['LOCATE', ['substr', 'str', 'pos']],
-  ['INSTR', ['str', 'substr']],
-  ['LPAD', ['str', 'len', 'pad']],
-  ['RPAD', ['str', 'len', 'pad']],
-  ['ROUND', ['x', 'decimals']],
-  ['MOD', ['n', 'm']],
-  ['POWER', ['base', 'exp']],
-  ['FORMAT', ['num', 'decimals']],
-  ['DATE_FORMAT', ['date', 'format']],
-  ['STR_TO_DATE', ['str', 'format']],
-  ['DATE_ADD', ['date', 'INTERVAL n unit']],
-  ['DATE_SUB', ['date', 'INTERVAL n unit']],
-  ['DATEDIFF', ['date1', 'date2']],
-  ['TIMESTAMPDIFF', ['unit', 'dt1', 'dt2']],
-  ['FROM_UNIXTIME', ['ts', 'format']],
-  ['IFNULL', ['expr', 'alt']],
-  ['NULLIF', ['a', 'b']],
-  ['COALESCE', ['a', 'b', '…']],
-  ['IF', ['cond', 'then', 'else']],
-  ['CAST', ['expr AS type']],
-  ['CONVERT', ['expr', 'type']],
-])
-
-const NO_ARG_FUNCTIONS = new Set([
-  'NOW', 'CURDATE', 'CURTIME', 'CURRENT_TIMESTAMP', 'RAND', 'VERSION',
-  'DATABASE', 'USER', 'LAST_INSERT_ID', 'UUID', 'UNIX_TIMESTAMP',
-])
-
 // ── Snippets ─────────────────────────────────────────────────────────────────
+//
+// Generic statement skeletons only; dialect-specific snippets (e.g. MySQL's
+// createtable with ENGINE/CHARSET tail) come from UIDialect.snippets.
 
 const SNIPPETS: readonly Completion[] = [
   snippetCompletion('SELECT ${columns} FROM ${table}${}', { label: 'select', detail: 'SELECT … FROM …', type: 'keyword' }),
@@ -241,10 +132,60 @@ const SNIPPETS: readonly Completion[] = [
   snippetCompletion('WITH ${name} AS (\n  SELECT ${columns}\n  FROM ${table}\n)\nSELECT *\nFROM ${name}${}', { label: 'cte', detail: 'WITH … AS ( … )', type: 'keyword' }),
   snippetCompletion('GROUP BY ${columns}${}', { label: 'groupby', detail: 'GROUP BY …', type: 'keyword' }),
   snippetCompletion('ORDER BY ${columns} ${direction}${}', { label: 'orderby', detail: 'ORDER BY … ASC|DESC', type: 'keyword' }),
-  snippetCompletion('CREATE TABLE ${name} (\n  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,\n  ${cols}\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4${}', { label: 'createtable', detail: 'CREATE TABLE …', type: 'keyword' }),
   snippetCompletion('CASE WHEN ${cond} THEN ${value} ELSE ${other} END${}', { label: 'case', detail: 'CASE WHEN … THEN … ELSE … END', type: 'keyword' }),
   snippetCompletion('EXISTS (\n  SELECT 1 FROM ${table} WHERE ${condition}\n)${}', { label: 'exists', detail: 'EXISTS ( SELECT 1 … )', type: 'keyword' }),
 ]
+
+// ── Per-dialect assets ───────────────────────────────────────────────────────
+//
+// Everything derived from the driver's UIDialect, computed once per descriptor
+// object and cached: completion items for its functions, the signature map
+// for parameter hints, merged keywords, merged snippets, its system-schema
+// set, and its identifier quote.
+
+interface DialectAssets {
+  quote: string
+  keywords: string[]
+  functionItems: readonly Completion[]
+  signatures: Map<string, string[]>
+  snippets: readonly Completion[]
+  systemSchemas: Set<string>
+}
+
+const assetsCache = new WeakMap<UIDialect, DialectAssets>()
+
+function functionItem(f: UIFunction): Completion {
+  const base = { label: f.name, type: 'function', detail: f.category || undefined, info: f.info || undefined }
+  if (f.noArgs) return { ...base, apply: f.name + '()' }
+  const params = f.params ?? []
+  const body = params.length
+    ? `${f.name}(${params.filter((p) => p !== '…').map((p) => `\${${p}}`).join(', ')})\${}`
+    : `${f.name}(\${})`
+  return snippetCompletion(body, base)
+}
+
+export function assetsFor(d: UIDialect): DialectAssets {
+  const cached = assetsCache.get(d)
+  if (cached) return cached
+  const signatures = new Map<string, string[]>()
+  for (const f of d.functions ?? []) {
+    if (!f.noArgs && f.params?.length) signatures.set(f.name.toUpperCase(), [...f.params])
+  }
+  const assets: DialectAssets = {
+    quote: d.identQuote || '`',
+    keywords: [...KEYWORDS, ...(d.keywords ?? [])],
+    functionItems: (d.functions ?? []).map(functionItem),
+    signatures,
+    snippets: [
+      ...SNIPPETS,
+      ...(d.snippets ?? []).map((s) =>
+        snippetCompletion(s.body, { label: s.label, detail: s.detail || undefined, type: 'keyword' })),
+    ],
+    systemSchemas: new Set((d.systemSchemas ?? []).map((s) => s.toLowerCase())),
+  }
+  assetsCache.set(d, assets)
+  return assets
+}
 
 // ── Match scoring (dbx computeMatchScore tiers) ──────────────────────────────
 
@@ -337,11 +278,15 @@ function withHistory(c: Completion): Completion {
 
 // ── Identifier / alias helpers ───────────────────────────────────────────────
 
+// The active dialect's identifier quote — installed at the top of each
+// completion-source run (single-threaded; all helpers run inside it).
+let QCH = '`'
+
 function needsQuote(name: string): boolean {
   return !/^[A-Za-z_][\w$]*$/.test(name)
 }
 function quoteName(name: string): string {
-  return needsQuote(name) ? '`' + name + '`' : name
+  return needsQuote(name) ? QCH + name + QCH : name
 }
 
 function aliasCandidates(name: string): string[] {
@@ -543,7 +488,8 @@ function buildComparisonValues(items: Scored[], sc: SqlContext, catalog: Complet
   // Above the in-scope columns (2000+180) — after `col =` a concrete value is
   // the most likely pick.
   if (/date|time|year/.test(type)) {
-    for (const [i, f] of ['NOW()', 'CURDATE()', 'CURRENT_TIMESTAMP'].entries()) {
+    // Portable spellings — valid in MySQL and Postgres alike.
+    for (const [i, f] of ['NOW()', 'CURRENT_TIMESTAMP', 'CURRENT_DATE'].entries()) {
       items.push({ completion: { label: f, type: 'function', apply: f }, score: 2700 - i })
     }
   } else if (/^(tinyint\(1\)|bool|boolean|bit)/.test(type)) {
@@ -553,37 +499,26 @@ function buildComparisonValues(items: Scored[], sc: SqlContext, catalog: Complet
   }
 }
 
-function buildKeywords(items: Scored[], sc: SqlContext) {
+function buildKeywords(items: Scored[], sc: SqlContext, assets: DialectAssets) {
   const preferred = PREFERRED_AFTER[sc.lastWord]
   if (preferred) {
     for (const [i, kw] of preferred.entries()) {
       push(items, { label: kw, type: 'keyword', apply: kw + ' ' }, sc.prefix, 1800 - i * 10)
     }
   }
-  for (const kw of KEYWORDS) {
+  for (const kw of assets.keywords) {
     if (preferred?.includes(kw)) continue
     push(items, { label: kw, type: 'keyword', apply: kw + ' ' }, sc.prefix, HIGH_FREQ.has(kw) ? 100 : 0)
   }
 }
 
-const FUNCTION_ITEMS: readonly Completion[] = MYSQL_FUNCTIONS.map((f) => {
-  if (NO_ARG_FUNCTIONS.has(f.label)) {
-    return { label: f.label, type: 'function', detail: f.detail, info: f.info, apply: f.label + '()' }
-  }
-  const params = FUNCTION_SIGNATURES.get(f.label)
-  const body = params
-    ? `${f.label}(${params.filter((p) => p !== '…').map((p) => `\${${p}}`).join(', ')})\${}`
-    : `${f.label}(\${})`
-  return snippetCompletion(body, { label: f.label, type: 'function', detail: f.detail, info: f.info })
-})
-
-function buildFunctions(items: Scored[], sc: SqlContext) {
-  for (const f of FUNCTION_ITEMS) push(items, f, sc.prefix, 0)
+function buildFunctions(items: Scored[], sc: SqlContext, assets: DialectAssets) {
+  for (const f of assets.functionItems) push(items, f, sc.prefix, 0)
 }
 
-function buildSnippets(items: Scored[], sc: SqlContext) {
+function buildSnippets(items: Scored[], sc: SqlContext, assets: DialectAssets) {
   if (!sc.prefix) return
-  for (const s of SNIPPETS) {
+  for (const s of assets.snippets) {
     // exact label typed → the snippet should win over the bare keyword
     push(items, s, sc.prefix, s.label.toLowerCase() === sc.prefix.toLowerCase() ? 1500 : -50)
   }
@@ -607,13 +542,12 @@ function buildTables(items: Scored[], sc: SqlContext, catalog: CompletionCatalog
   }
 }
 
-// System catalogs are noise in everyday completion — hidden until the user
-// types a prefix that could be asking for them (e.g. "inf" → information_schema).
-const SYSTEM_SCHEMAS = new Set(['information_schema', 'mysql', 'performance_schema', 'sys'])
-
-function buildDatabases(items: Scored[], sc: SqlContext, catalog: CompletionCatalog, base = 0) {
+// System catalogs (from the driver's UIDialect.systemSchemas) are noise in
+// everyday completion — hidden until the user types a prefix that could be
+// asking for them (e.g. "inf" → information_schema).
+function buildDatabases(items: Scored[], sc: SqlContext, catalog: CompletionCatalog, assets: DialectAssets, base = 0) {
   for (const db of catalog.visibleDatabases?.() ?? catalog.databases()) {
-    if (!sc.prefix && SYSTEM_SCHEMAS.has(db.toLowerCase())) continue
+    if (!sc.prefix && assets.systemSchemas.has(db.toLowerCase())) continue
     push(items, { label: db, type: 'namespace', apply: quoteName(db) }, sc.prefix, base)
   }
 }
@@ -717,11 +651,11 @@ function finish(items: Scored[], sc: SqlContext): CompletionResult | null {
     if (seen.has(key)) continue
     seen.add(key)
     let c = withHistory(completion)
-    // Reopen a quoted prefix's backtick on apply: `us → `users`
+    // Reopen a quoted prefix's identifier quote on apply: `us → `users`
     if (sc.quoted && typeof completion.apply !== 'function') {
       const text = typeof completion.apply === 'string' ? completion.apply : completion.label
-      const inner = text.replace(/`/g, '')
-      c = withHistory({ ...completion, apply: '`' + inner + '`' })
+      const inner = text.split(QCH).join('')
+      c = withHistory({ ...completion, apply: QCH + inner + QCH })
     }
     options.push(c)
     if (options.length >= MAX_ITEMS) break
@@ -731,18 +665,23 @@ function finish(items: Scored[], sc: SqlContext): CompletionResult | null {
 
 /**
  * The completion source. Registered via `autocompletion({ override })`, so it
- * fully owns the popup: no other source contributes.
+ * fully owns the popup: no other source contributes. `getDialect` is read
+ * lazily on every run (like the catalog) so the source keeps working while
+ * the driver descriptor resolves asynchronously.
  */
 export function createSqlCompletionSource(
   catalog: CompletionCatalog,
   labels: CompletionLabels,
+  getDialect: () => UIDialect = genericUIDialect,
 ): CompletionSource {
   const source = (
     ctx: CompletionContext,
     retried = false,
   ): CompletionResult | Promise<CompletionResult | null> | null => {
+    const assets = assetsFor(getDialect())
+    QCH = assets.quote
     const doc = ctx.state.doc.toString()
-    const sc = getSqlContext(doc, ctx.pos)
+    const sc = getSqlContext(doc, ctx.pos, assets.quote)
     if (sc.suppressed) return null
 
     if (sc.qualifier.length) return buildQualified(sc, catalog, labels)
@@ -781,12 +720,12 @@ export function createSqlCompletionSource(
 
     switch (sc.clause) {
       case 'use':
-        buildDatabases(items, sc, catalog, 1000)
+        buildDatabases(items, sc, catalog, assets, 1000)
         break
       case 'table': {
         const cur = catalog.currentDb()
         buildTables(items, sc, catalog, (cur && catalog.tablesFor(cur)) || [])
-        buildDatabases(items, sc, catalog)
+        buildDatabases(items, sc, catalog, assets)
         break
       }
       case 'insert-columns': {
@@ -815,13 +754,13 @@ export function createSqlCompletionSource(
         }
         if (sc.comparison) {
           buildComparisonValues(items, sc, catalog)
-          buildFunctions(items, sc)
+          buildFunctions(items, sc, assets)
         }
         push(items, { label: 'WHERE', type: 'keyword', apply: 'WHERE ' }, sc.prefix, 100)
         break
       }
       case 'values':
-        buildFunctions(items, sc)
+        buildFunctions(items, sc, assets)
         for (const kw of ['NULL', 'DEFAULT', 'TRUE', 'FALSE']) {
           push(items, { label: kw, type: 'keyword', apply: kw }, sc.prefix, 100)
         }
@@ -829,34 +768,34 @@ export function createSqlCompletionSource(
       case 'on':
         buildJoinConditions(items, sc, catalog, labels)
         buildScopeColumns(items, sc, catalog, 1500)
-        buildKeywords(items, sc)
+        buildKeywords(items, sc, assets)
         break
       case 'select-list':
         buildScopeColumns(items, sc, catalog, 2000)
         buildStarExpansions(items, sc, catalog, labels)
         buildComparisonValues(items, sc, catalog)
-        buildFunctions(items, sc)
-        buildKeywords(items, sc)
-        buildSnippets(items, sc)
+        buildFunctions(items, sc, assets)
+        buildKeywords(items, sc, assets)
+        buildSnippets(items, sc, assets)
         break
       case 'order-group':
         for (const [i, a] of sc.selectAliases.entries()) {
           push(items, { label: a, type: 'variable', apply: quoteName(a) }, sc.prefix, 2200 - i)
         }
         buildScopeColumns(items, sc, catalog, 2000)
-        buildKeywords(items, sc)
+        buildKeywords(items, sc, assets)
         break
       case 'column':
         buildScopeColumns(items, sc, catalog, 2000)
         buildComparisonValues(items, sc, catalog)
-        buildFunctions(items, sc)
-        buildKeywords(items, sc)
-        buildSnippets(items, sc)
+        buildFunctions(items, sc, assets)
+        buildKeywords(items, sc, assets)
+        buildSnippets(items, sc, assets)
         break
       default:
-        buildKeywords(items, sc)
-        buildSnippets(items, sc)
-        buildFunctions(items, sc)
+        buildKeywords(items, sc, assets)
+        buildSnippets(items, sc, assets)
+        buildFunctions(items, sc, assets)
         // columns still reachable in generic spots when the statement has refs
         buildScopeColumns(items, sc, catalog, 0)
         break
@@ -870,7 +809,7 @@ export function createSqlCompletionSource(
 
 interface SigInfo { name: string; params: string[]; active: number }
 
-function activeSignature(before: string): SigInfo | null {
+function activeSignature(before: string, signatures: Map<string, string[]>): SigInfo | null {
   const pos = before.length
   let depth = 0
   let q: string | null = null
@@ -888,7 +827,7 @@ function activeSignature(before: string): SigInfo | null {
   if (open < 0) return null
   const name = /([A-Za-z_][\w$]*)\s*$/.exec(before.slice(0, open))?.[1]
   if (!name) return null
-  const params = FUNCTION_SIGNATURES.get(name.toUpperCase())
+  const params = signatures.get(name.toUpperCase())
   if (!params) return null
   let active = 0
   let d = 0
@@ -925,22 +864,29 @@ function signatureTooltip(head: number, sig: SigInfo): Tooltip {
   }
 }
 
-function computeSignature(state: EditorState): Tooltip | null {
+function computeSignature(state: EditorState, signatures: Map<string, string[]>): Tooltip | null {
   const sel = state.selection.main
   if (!sel.empty) return null
   const before = state.doc.sliceString(Math.max(0, sel.head - 4000), sel.head)
-  const sig = activeSignature(before)
+  const sig = activeSignature(before, signatures)
   return sig ? signatureTooltip(sel.head, sig) : null
 }
 
-/** Editor extension: shows a parameter hint while inside a known function call. */
-export const sqlSignatureHelp: Extension = StateField.define<Tooltip | null>({
-  create(state) {
-    return computeSignature(state)
-  },
-  update(value, tr) {
-    if (!tr.docChanged && !tr.selection) return value
-    return computeSignature(tr.state)
-  },
-  provide: (f) => showTooltip.from(f),
-})
+/**
+ * Editor extension factory: parameter hint while inside a known function call.
+ * Signatures come from the dialect's function catalog; `getDialect` is read
+ * lazily so the hint follows the resolved driver descriptor.
+ */
+export function createSqlSignatureHelp(getDialect: () => UIDialect = genericUIDialect): Extension {
+  const sigs = () => assetsFor(getDialect()).signatures
+  return StateField.define<Tooltip | null>({
+    create(state) {
+      return computeSignature(state, sigs())
+    },
+    update(value, tr) {
+      if (!tr.docChanged && !tr.selection) return value
+      return computeSignature(tr.state, sigs())
+    },
+    provide: (f) => showTooltip.from(f),
+  })
+}

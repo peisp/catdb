@@ -41,6 +41,7 @@ type DriverInfo struct {
 	Version      string                    `json:"version"`
 	Capabilities dbdriver.Capabilities     `json:"capabilities"`
 	Schema       []dbdriver.ConnParamField `json:"schema"`
+	UI           dbdriver.UIDialect        `json:"ui"`
 }
 
 // ListDrivers returns the set of registered drivers and their connection
@@ -55,6 +56,7 @@ func (s *ConnectionService) ListDrivers(_ context.Context) []DriverInfo {
 			Version:      d.Version(),
 			Capabilities: d.Capabilities(),
 			Schema:       d.ConnectionSchema(),
+			UI:           d.UIDialect(),
 		})
 	}
 	return out

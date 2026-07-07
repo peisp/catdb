@@ -16,7 +16,7 @@
 import { createDiscreteApi } from 'naive-ui'
 import { confirm } from './dialogs'
 import { t } from '../i18n'
-import { quoteTable } from '../lib/alterPlan'
+import { quoteIdentWith, uiDialectForConnection } from './dialect'
 import { useQueryStore } from '../stores/query'
 import { useMetadataStore } from '../stores/metadata'
 import { runQuery } from './query'
@@ -26,9 +26,19 @@ import { openTextPrompt } from './prompts'
 interface ActiveCtx {
   connId: string
   db: string
+  /** Schema between db and table for schema-ful databases; '' / undefined otherwise. */
+  schema?: string
   table: string
   /** 调用方在右键时注入，删除/清空成功后调用以刷新本地视图。 */
   onAfterMutate?: () => Promise<void> | void
+}
+
+/** Fully qualified, dialect-quoted table reference for ctx (db[.schema].table). */
+function qualify(d: import('./dialect').UIDialect, ctx: ActiveCtx): string {
+  return [ctx.db, ctx.schema, ctx.table]
+    .filter(Boolean)
+    .map((part) => quoteIdentWith(d, part!))
+    .join('.')
 }
 
 let active: ActiveCtx | null = null
@@ -58,9 +68,12 @@ export async function renameTable(ctx: ActiveCtx): Promise<void> {
   })
   if (newName === null) return
   try {
+    // ALTER TABLE … RENAME TO is the cross-database spelling (MySQL and
+    // Postgres both accept it; RENAME TABLE is MySQL-only).
+    const d = await uiDialectForConnection(ctx.connId)
     await runQuery(
       ctx.connId,
-      `RENAME TABLE ${quoteTable(ctx.db, ctx.table)} TO ${quoteTable(ctx.db, newName)}`,
+      `ALTER TABLE ${qualify(d, ctx)} RENAME TO ${quoteIdentWith(d, newName)}`,
     )
     // Re-point any open tabs at the new name so titles + future
     // openTableTab lookups stay consistent.
@@ -72,8 +85,8 @@ export async function renameTable(ctx: ActiveCtx): Promise<void> {
       else if (t.kind === 'structure') t.title = `⚙ ${ctx.db}.${newName}`
     }
     const meta = useMetadataStore()
-    meta.invalidateTables(ctx.connId, ctx.db)
-    meta.invalidateColumns(ctx.connId, ctx.db, ctx.table)
+    meta.invalidateTables(ctx.connId, ctx.db, ctx.schema ?? '')
+    meta.invalidateColumns(ctx.connId, ctx.db, ctx.table, ctx.schema ?? '')
     message.success(t('common.renamedTo', { name: newName }))
     await ctx.onAfterMutate?.()
   } catch (e) {
@@ -92,14 +105,14 @@ export function installTableContextMenuListener(): void {
 
   on('ctx:tbl-open', () => {
     if (!active) return
-    const { connId, db, table } = active
-    useQueryStore().openTableTab(connId, db, table, 'table')
+    const { connId, db, schema, table } = active
+    useQueryStore().openTableTab(connId, db, table, 'table', schema ?? '')
   })
 
   on('ctx:tbl-edit', () => {
     if (!active) return
-    const { connId, db, table } = active
-    useQueryStore().openTableTab(connId, db, table, 'structure')
+    const { connId, db, schema, table } = active
+    useQueryStore().openTableTab(connId, db, table, 'structure', schema ?? '')
   })
 
   on('ctx:tbl-rename', () => {
@@ -120,7 +133,8 @@ export function installTableContextMenuListener(): void {
     })
     if (choice !== 'truncate') return
     try {
-      await runQuery(ctx.connId, `TRUNCATE TABLE ${quoteTable(ctx.db, ctx.table)}`)
+      const d = await uiDialectForConnection(ctx.connId)
+      await runQuery(ctx.connId, `TRUNCATE TABLE ${qualify(d, ctx)}`)
       message.success(t('table.truncate.success', { name: ctx.table }))
       await ctx.onAfterMutate?.()
     } catch (e) {
@@ -142,9 +156,10 @@ export function installTableContextMenuListener(): void {
     })
     if (choice !== 'drop') return
     try {
-      await runQuery(ctx.connId, `DROP TABLE ${quoteTable(ctx.db, ctx.table)}`)
+      const d = await uiDialectForConnection(ctx.connId)
+      await runQuery(ctx.connId, `DROP TABLE ${qualify(d, ctx)}`)
       message.success(t('table.drop.success', { name: ctx.table }))
-      useMetadataStore().invalidateTables(ctx.connId, ctx.db)
+      useMetadataStore().invalidateTables(ctx.connId, ctx.db, ctx.schema ?? '')
       await ctx.onAfterMutate?.()
     } catch (e) {
       message.error(t('common.deleteFailed', { error: String(e) }))

@@ -60,6 +60,10 @@ func Run(t *testing.T, ctx context.Context, d dbdriver.Driver, cfg dbdriver.Conn
 	t.Run("Metadata", func(t *testing.T) { testMetadata(t, ctx, d, conn, fx) })
 	t.Run("Edit", func(t *testing.T) { testEdit(t, ctx, d, conn, fx) })
 	t.Run("DDL", func(t *testing.T) { testDDL(t, ctx, d, conn) })
+	t.Run("Dialect", func(t *testing.T) { testDialect(t, ctx, d, conn, fx) })
+	t.Run("Views", func(t *testing.T) { testViewDefinitions(t, ctx, d, conn, fx) })
+	t.Run("Tx", func(t *testing.T) { testTxLifecycle(t, ctx, conn) })
+	t.Run("UIDialect", func(t *testing.T) { TestUIDialect(t, d) })
 }
 
 func testPing(t *testing.T, ctx context.Context, c dbdriver.Connection) {
@@ -337,7 +341,7 @@ func testDDL(t *testing.T, ctx context.Context, d dbdriver.Driver, c dbdriver.Co
 	if len(current.Columns) != 3 || !current.Columns[0].IsPrimaryKey {
 		t.Fatalf("created table read back wrong: %+v", current.Columns)
 	}
-	if cs := schemadiff.Diff(current, schemadiff.FromTableSchema(current, current), schemadiff.Options{}); !cs.Empty() {
+	if cs := schemadiff.Diff(current, schemadiff.FromTableSchema(current, current), schemadiff.Options{NormalizeType: dia.NormalizeType}); !cs.Empty() {
 		t.Fatalf("self-diff of created table must be empty, got %+v", cs)
 	}
 
@@ -349,7 +353,7 @@ func testDDL(t *testing.T, ctx context.Context, d dbdriver.Driver, c dbdriver.Co
 	desiredSchema.Indexes = append(append([]dbdriver.IndexInfo{}, current.Indexes...),
 		dbdriver.IndexInfo{Name: "ix_note", Columns: []dbdriver.IndexColumn{{Name: "note"}}, Type: "BTREE"})
 
-	cs := schemadiff.Diff(current, schemadiff.FromTableSchema(desiredSchema, current), schemadiff.Options{})
+	cs := schemadiff.Diff(current, schemadiff.FromTableSchema(desiredSchema, current), schemadiff.Options{NormalizeType: dia.NormalizeType})
 	if cs.Empty() {
 		t.Fatal("expected a non-empty ChangeSet")
 	}
@@ -363,7 +367,7 @@ func testDDL(t *testing.T, ctx context.Context, d dbdriver.Driver, c dbdriver.Co
 
 	// Convergence: after applying, re-diff must be empty.
 	after := readTableSchema(t, ctx, m, db, schema, tn)
-	if cs := schemadiff.Diff(after, schemadiff.FromTableSchema(desiredSchema, after), schemadiff.Options{}); !cs.Empty() {
+	if cs := schemadiff.Diff(after, schemadiff.FromTableSchema(desiredSchema, after), schemadiff.Options{NormalizeType: dia.NormalizeType}); !cs.Empty() {
 		t.Fatalf("re-diff after apply must be empty, got %+v", cs)
 	}
 }

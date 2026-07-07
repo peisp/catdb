@@ -55,8 +55,11 @@ export interface QueryTab {
   // pinned tab per connection.
   pinned?: boolean
 
-  // For 'table' / 'structure' kinds, the object reference.
+  // For 'table' / 'structure' kinds, the object reference. `schema` is the
+  // middle level for schema-ful databases (Capabilities.schemas); '' for
+  // databases without one (MySQL).
   db?: string
+  schema?: string
   table?: string
   // For 'query' kind: the table inferred from the SELECT result, enabling
   // inline editing on the result grid. Set by applyRun; undefined until
@@ -100,7 +103,7 @@ export interface QueryTab {
   txnId: string | null
 }
 
-function freshTab(connId: string, opts?: { kind?: TabKind; title?: string; db?: string; table?: string; pinned?: boolean }): QueryTab {
+function freshTab(connId: string, opts?: { kind?: TabKind; title?: string; db?: string; schema?: string; table?: string; pinned?: boolean }): QueryTab {
   return {
     id: nextTabId(),
     connId,
@@ -108,6 +111,7 @@ function freshTab(connId: string, opts?: { kind?: TabKind; title?: string; db?: 
     title: opts?.title ?? 'Query',
     pinned: opts?.pinned ?? false,
     db: opts?.db,
+    schema: opts?.schema,
     table: opts?.table,
     sql: '',
     savedSql: '',
@@ -175,8 +179,8 @@ export const useQueryStore = defineStore('query', () => {
     activeByConn.value = { ...activeByConn.value, [connId]: id }
   }
 
-  function addTab(connId: string, opts?: { sql?: string; title?: string; kind?: TabKind; db?: string; table?: string; savedQueryId?: string }): QueryTab {
-    const t = freshTab(connId, { kind: opts?.kind, title: opts?.title, db: opts?.db, table: opts?.table })
+  function addTab(connId: string, opts?: { sql?: string; title?: string; kind?: TabKind; db?: string; schema?: string; table?: string; savedQueryId?: string }): QueryTab {
+    const t = freshTab(connId, { kind: opts?.kind, title: opts?.title, db: opts?.db, schema: opts?.schema, table: opts?.table })
     if (opts?.sql) t.sql = opts.sql
     if (opts?.savedQueryId) t.savedQueryId = opts.savedQueryId
     tabs.value.push(t)
@@ -300,20 +304,22 @@ export const useQueryStore = defineStore('query', () => {
     t.txnId = null
   }
 
-  function openTableTab(connId: string, db: string, table: string, kind: 'table' | 'structure' = 'table'): QueryTab {
+  function openTableTab(connId: string, db: string, table: string, kind: 'table' | 'structure' = 'table', schema = ''): QueryTab {
     const titlePrefix = kind === 'structure' ? '⚙' : '⊞'
     const existing = tabs.value.find(
-      (t) => t.connId === connId && t.kind === kind && t.db === db && t.table === table,
+      (t) => t.connId === connId && t.kind === kind && t.db === db && (t.schema ?? '') === schema && t.table === table,
     )
     if (existing) {
       setActive(connId, existing.id)
       return existing
     }
+    const qualified = [db, schema, table].filter(Boolean).join('.')
     return addTab(connId, {
       kind,
       db,
+      schema,
       table,
-      title: `${titlePrefix} ${db}.${table}`,
+      title: `${titlePrefix} ${qualified}`,
     })
   }
 
@@ -376,11 +382,12 @@ export const useQueryStore = defineStore('query', () => {
    * Click a database in the object tree → focus the pinned overview tab and
    * point it at this db. Always exactly one overview tab per connection.
    */
-  function openTablesOverviewTab(connId: string, db: string): QueryTab {
+  function openTablesOverviewTab(connId: string, db: string, schema = ''): QueryTab {
     const t = ensureOverviewTab(connId, db)
-    if (t.db !== db) {
+    if (t.db !== db || (t.schema ?? '') !== schema) {
       t.db = db
-      t.title = `📋 ${db}`
+      t.schema = schema
+      t.title = `📋 ${[db, schema].filter(Boolean).join('.')}`
     }
     setActive(connId, t.id)
     return t

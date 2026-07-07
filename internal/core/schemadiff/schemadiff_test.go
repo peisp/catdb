@@ -2,6 +2,7 @@ package schemadiff
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"catdb/internal/dbdriver"
@@ -52,11 +53,30 @@ func TestDiffNoChanges(t *testing.T) {
 }
 
 func TestDiffCosmeticTypeDifferenceIgnored(t *testing.T) {
-	cur := dbdriver.TableSchema{Columns: []dbdriver.ColumnMeta{col("p", "decimal(10, 2) unsigned")}}
-	des := Table{Columns: []Column{{OrigName: "p", Name: "p", NativeType: "DECIMAL(10,2) UNSIGNED", Nullable: true}}}
+	cur := dbdriver.TableSchema{Columns: []dbdriver.ColumnMeta{col("p", "decimal(10, 2)")}}
+	des := Table{Columns: []Column{{OrigName: "p", Name: "p", NativeType: "DECIMAL(10,2)", Nullable: true}}}
 	cs := Diff(cur, des, Options{})
 	if !cs.Empty() {
 		t.Fatalf("cosmetic type diff must not emit changes, got %+v", cs.Columns)
+	}
+}
+
+// TestDiffDriverNormalizeType verifies Options.NormalizeType (the driver's
+// Dialect.NormalizeType) overrides the neutral fallback — dialect quirks like
+// MySQL's UNSIGNED placement compare equal only through it.
+func TestDiffDriverNormalizeType(t *testing.T) {
+	cur := dbdriver.TableSchema{Columns: []dbdriver.ColumnMeta{col("p", "decimal(10, 2) unsigned")}}
+	des := Table{Columns: []Column{{OrigName: "p", Name: "p", NativeType: "DECIMAL(10,2) UNSIGNED", Nullable: true}}}
+	if cs := Diff(cur, des, Options{}); cs.Empty() {
+		t.Fatal("neutral fallback should NOT equate dialect-specific spellings")
+	}
+	mysqlish := func(s string) string {
+		s = strings.ToUpper(strings.TrimSpace(s))
+		s = strings.ReplaceAll(s, ", ", ",")
+		return s
+	}
+	if cs := Diff(cur, des, Options{NormalizeType: mysqlish}); !cs.Empty() {
+		t.Fatalf("driver normalizer must equate the spellings, got %+v", cs.Columns)
 	}
 }
 
@@ -329,16 +349,16 @@ func TestFromTableSchemaOrigNameFilling(t *testing.T) {
 }
 
 func TestNormalizeNativeType(t *testing.T) {
+	// Dialect-neutral fallback only: case + param whitespace. Database quirks
+	// (UNSIGNED/ZEROFILL, type aliases) are the driver's NormalizeType job —
+	// see plugins/mysqldrv/dialect_test.go.
 	cases := map[string]string{
-		"varchar(255)":           "VARCHAR(255)",
-		"decimal(10, 2)":         "DECIMAL(10,2)",
-		"int(10) unsigned":       "INT(10) UNSIGNED",
-		"int unsigned zerofill":  "INT UNSIGNED",
-		"enum('a','b')":          "ENUM('a','b')",
-		"datetime(6)":            "DATETIME(6)",
-		"text":                   "TEXT",
-		"":                       "",
-		"DECIMAL(10,2) UNSIGNED": "DECIMAL(10,2) UNSIGNED",
+		"varchar(255)":   "VARCHAR(255)",
+		"decimal(10, 2)": "DECIMAL(10,2)",
+		"enum('a','b')":  "ENUM('a','b')",
+		"datetime(6)":    "DATETIME(6)",
+		"text":           "TEXT",
+		"":               "",
 	}
 	for in, want := range cases {
 		if got := NormalizeNativeType(in); got != want {

@@ -9,6 +9,8 @@
 // Any change here must be propagated to every plugin and to the contract test suite.
 package dbdriver
 
+import "errors"
+
 // ConnParamField describes one field of a driver's connection form.
 // The front-end renders the form dynamically from this list; adding a new
 // database does not require a front-end change.
@@ -114,6 +116,48 @@ type ColumnMeta struct {
 	Comment        string      `json:"comment,omitempty"`
 }
 
+// ScriptRules describes the lexical rules a SQL-script splitter needs to
+// tokenize this database's scripts: which quote characters exist, which
+// comment styles apply, and whether client-side DELIMITER directives are
+// honored. Exposed via Dialect.ScriptRules.
+type ScriptRules struct {
+	// BacktickIdentifiers treats ` as an identifier quote (MySQL).
+	BacktickIdentifiers bool
+	// BackslashEscapes treats \ as an escape inside '…' and "…" (MySQL).
+	BackslashEscapes bool
+	// HashComments treats # as a line comment (MySQL).
+	HashComments bool
+	// ClientDelimiter honors the client-side DELIMITER directive (MySQL).
+	ClientDelimiter bool
+	// DollarQuoting recognizes $tag$…$tag$ string literals (Postgres).
+	DollarQuoting bool
+}
+
+// ErrTxDone is returned by Tx.Commit/Rollback when the transaction has
+// already been committed or rolled back (e.g. by a DDL implicit commit).
+// Drivers must map their native "tx finished" error onto this sentinel so
+// generic layers can errors.Is against it.
+var ErrTxDone = errors.New("dbdriver: transaction has already been committed or rolled back")
+
+// IsolationLevel is the framework-agnostic transaction isolation level.
+// Drivers map it to their native representation; IsolationDefault means
+// "whatever the database defaults to".
+type IsolationLevel int
+
+const (
+	IsolationDefault IsolationLevel = iota
+	IsolationReadUncommitted
+	IsolationReadCommitted
+	IsolationRepeatableRead
+	IsolationSerializable
+)
+
+// TxOptions configures Connection.Begin. Nil means driver defaults.
+type TxOptions struct {
+	Isolation IsolationLevel
+	ReadOnly  bool
+}
+
 // ExecResult is returned by non-SELECT statements.
 type ExecResult struct {
 	RowsAffected int64 `json:"rowsAffected"`
@@ -121,16 +165,19 @@ type ExecResult struct {
 }
 
 // TableInfo is a row in the object tree at the table level.
+//
+// Options carries driver-specific display attributes (MySQL: "engine",
+// "collation"). Generic layers must not interpret the keys; the driver's UI
+// dialect descriptor tells the front-end which ones to show.
 type TableInfo struct {
-	Name       string `json:"name"`
-	Schema     string `json:"schema,omitempty"`
-	Engine     string `json:"engine,omitempty"`
-	Comment    string `json:"comment,omitempty"`
-	Rows       int64  `json:"rows,omitempty"`
-	DataLength int64  `json:"dataLength"`
-	CreateTime string `json:"createTime"`
-	UpdateTime string `json:"updateTime"`
-	Collation  string `json:"collation"`
+	Name       string            `json:"name"`
+	Schema     string            `json:"schema,omitempty"`
+	Comment    string            `json:"comment,omitempty"`
+	Rows       int64             `json:"rows,omitempty"`
+	DataLength int64             `json:"dataLength"`
+	CreateTime string            `json:"createTime"`
+	UpdateTime string            `json:"updateTime"`
+	Options    map[string]string `json:"options,omitempty"`
 }
 
 // ViewInfo is a view in the object tree.
@@ -177,14 +224,17 @@ type RoutineInfo struct {
 }
 
 // TableSchema is the input to Dialect.GenerateCreateTable.
+//
+// Options carries driver-specific table options (MySQL: "engine", "charset").
+// Generic layers pass it through opaquely; drivers ignore keys they don't
+// recognize.
 type TableSchema struct {
-	Name        string         `json:"name"`
-	Schema      string         `json:"schema,omitempty"`
-	Columns     []ColumnMeta   `json:"columns"`
-	PrimaryKey  []string       `json:"primaryKey,omitempty"`
-	Indexes     []IndexInfo    `json:"indexes,omitempty"`
-	ForeignKeys []ForeignKeyInfo `json:"foreignKeys,omitempty"`
-	Engine      string         `json:"engine,omitempty"`
-	Charset     string         `json:"charset,omitempty"`
-	Comment     string         `json:"comment,omitempty"`
+	Name        string            `json:"name"`
+	Schema      string            `json:"schema,omitempty"`
+	Columns     []ColumnMeta      `json:"columns"`
+	PrimaryKey  []string          `json:"primaryKey,omitempty"`
+	Indexes     []IndexInfo       `json:"indexes,omitempty"`
+	ForeignKeys []ForeignKeyInfo  `json:"foreignKeys,omitempty"`
+	Options     map[string]string `json:"options,omitempty"`
+	Comment     string            `json:"comment,omitempty"`
 }

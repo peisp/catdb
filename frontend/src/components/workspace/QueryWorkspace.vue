@@ -63,18 +63,21 @@ watch(() => props.connection.id, ensureTab)
             v-else-if="t.kind === 'table' && t.db && t.table"
             :conn-id="t.connId"
             :db="t.db"
+            :schema="t.schema ?? ''"
             :table="t.table"
           />
           <TableStructure
             v-else-if="t.kind === 'structure' && t.db && t.table"
             :conn-id="t.connId"
             :db="t.db"
+            :schema="t.schema ?? ''"
             :table="t.table"
           />
           <TableStructure
             v-else-if="t.kind === 'new-table' && t.db"
             :conn-id="t.connId"
             :db="t.db"
+            :schema="t.schema ?? ''"
             :table="t.table ?? ''"
             mode="new"
             :tab-id="t.id"
@@ -83,6 +86,7 @@ watch(() => props.connection.id, ensureTab)
             v-else-if="t.kind === 'tables-overview'"
             :conn-id="t.connId"
             :db="t.db ?? ''"
+            :schema="t.schema ?? ''"
           />
         </div>
       </template>

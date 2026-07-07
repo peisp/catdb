@@ -4,8 +4,11 @@
 // highlighted is exactly what copies).
 //
 // Format helpers generate TSV, INSERT, UPDATE, column names, and data+columns.
+// SQL-producing helpers take the driver's UIDialect so identifier quoting and
+// string escaping match the target database.
 
 import { ref } from 'vue'
+import { genericUIDialect, quoteIdentWith, type UIDialect } from '../api/dialect'
 
 export interface SelectionRange {
   startRow: number
@@ -14,12 +17,13 @@ export interface SelectionRange {
   endCol: number
 }
 
-function escapeSql(v: any): string {
+function escapeSql(d: UIDialect, v: any): string {
   if (v == null) return 'NULL'
   if (typeof v === 'number') return String(v)
   if (typeof v === 'boolean') return v ? '1' : '0'
-  const s = String(v)
-  return "'" + s.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'"
+  let s = String(v).replace(/'/g, "''")
+  if (d.stringBackslashEscapes) s = s.replace(/\\/g, '\\\\')
+  return "'" + s + "'"
 }
 
 function renderValue(v: any): string {
@@ -161,14 +165,17 @@ export function useTableSelection() {
     return lines.join('\n')
   }
 
-  function formatInsert(rows: any[][], columnNames: string[], table: string): string {
+  function formatInsert(
+    rows: any[][], columnNames: string[], table: string,
+    dialect: UIDialect = genericUIDialect(),
+  ): string {
     const b = block()
     if (!b) return ''
-    const colList = columnNames.slice(b.c0, b.c1 + 1).map((c) => '`' + c + '`').join(', ')
+    const colList = columnNames.slice(b.c0, b.c1 + 1).map((c) => quoteIdentWith(dialect, c)).join(', ')
     const valueSets: string[] = []
     for (let r = b.r0; r <= b.r1; r++) {
       const vals: string[] = []
-      for (let c = b.c0; c <= b.c1; c++) vals.push(escapeSql(rows[r]?.[c]))
+      for (let c = b.c0; c <= b.c1; c++) vals.push(escapeSql(dialect, rows[r]?.[c]))
       valueSets.push('(' + vals.join(', ') + ')')
     }
     return `INSERT INTO ${table} (${colList}) VALUES\n${valueSets.join(',\n')};`
@@ -179,10 +186,12 @@ export function useTableSelection() {
     columnNames: string[],
     table: string,
     pkColumns: string[],
+    dialect: UIDialect = genericUIDialect(),
   ): string {
     if (!pkColumns.length) return '-- No primary key — cannot generate UPDATE'
     const b = block()
     if (!b) return ''
+    const q = (name: string) => quoteIdentWith(dialect, name)
     const selected = columnNames.slice(b.c0, b.c1 + 1)
     const parts: string[] = []
     for (let r = b.r0; r <= b.r1; r++) {
@@ -193,9 +202,9 @@ export function useTableSelection() {
         const val = rows[r]?.[c]
         if (val == null) continue
         if (pkColumns.includes(col)) {
-          whereClauses.push('`' + col + '` = ' + escapeSql(val))
+          whereClauses.push(q(col) + ' = ' + escapeSql(dialect, val))
         } else {
-          setClauses.push('`' + col + '` = ' + escapeSql(val))
+          setClauses.push(q(col) + ' = ' + escapeSql(dialect, val))
         }
       }
       // Include PK columns not in the selection by looking them up from rows
@@ -203,7 +212,7 @@ export function useTableSelection() {
         if (!selected.includes(pk)) {
           const pkIdx = columnNames.indexOf(pk)
           if (pkIdx >= 0) {
-            whereClauses.push('`' + pk + '` = ' + escapeSql(rows[r]?.[pkIdx]))
+            whereClauses.push(q(pk) + ' = ' + escapeSql(dialect, rows[r]?.[pkIdx]))
           }
         }
       }

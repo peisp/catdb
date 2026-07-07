@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"regexp"
@@ -172,11 +171,16 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 	}
 
 	// Split the script into statements client-side (honoring quotes, comments,
-	// and the DELIMITER directive) — the same job the mysql CLI does. The
-	// server never understands DELIMITER, and the driver runs one statement at
-	// a time, so a multi-statement script must be chopped here. Only the final
-	// statement's result is streamed back; leading ones are run and discarded.
-	stmts := sqlscript.Split(sqlText)
+	// and the DELIMITER directive per the driver's lexical rules) — the same
+	// job the mysql CLI does. The server never understands DELIMITER, and the
+	// driver runs one statement at a time, so a multi-statement script must be
+	// chopped here. Only the final statement's result is streamed back;
+	// leading ones are run and discarded.
+	rules, err := s.scriptRulesFor(ctx, connID)
+	if err != nil {
+		return empty, err
+	}
+	stmts := sqlscript.Split(sqlText, rules)
 	if len(stmts) == 0 {
 		return empty, fmt.Errorf("QueryService: sql is empty")
 	}
@@ -438,7 +442,11 @@ func (s *QueryService) Explain(ctx context.Context, connID, sqlText string, opts
 	// EXPLAIN targets a single statement — use the last one in the script
 	// (typically the user's selection) so a DELIMITER-prefixed script doesn't
 	// reach the server verbatim.
-	stmts := sqlscript.Split(sqlText)
+	rules, err := s.scriptRulesFor(ctx, connID)
+	if err != nil {
+		return empty, err
+	}
+	stmts := sqlscript.Split(sqlText, rules)
 	if len(stmts) == 0 {
 		return empty, fmt.Errorf("QueryService: sql is empty")
 	}
@@ -497,7 +505,11 @@ func (s *QueryService) CountQuery(ctx context.Context, connID, sqlText string, o
 	if connID == "" {
 		return 0, fmt.Errorf("QueryService: connID is required")
 	}
-	stmts := sqlscript.Split(sqlText)
+	rules, err := s.scriptRulesFor(ctx, connID)
+	if err != nil {
+		return 0, err
+	}
+	stmts := sqlscript.Split(sqlText, rules)
 	if len(stmts) == 0 {
 		return 0, fmt.Errorf("QueryService: sql is empty")
 	}
@@ -709,18 +721,14 @@ func (s *QueryService) acquireQuerier(
 		}
 		// Set the default schema on the transaction's connection when needed.
 		if schema != "" {
-			q := t.tx
-			driverName, err := s.mgr.DriverName(ctx, connID)
+			d, err := s.driverFor(ctx, connID)
 			if err != nil {
-				return nil, nil, fmt.Errorf("QueryService: resolve driver: %w", err)
-			}
-			d, err := registry.Get(driverName)
-			if err != nil {
-				return nil, nil, fmt.Errorf("QueryService: resolve driver: %w", err)
-			}
-			quoted := d.Dialect().QuoteIdentifier(schema)
-			if _, err := q.Exec(ctx, "USE "+quoted); err != nil {
 				return nil, nil, err
+			}
+			if stmt := d.Dialect().DefaultNamespaceSQL(schema); stmt != "" {
+				if _, err := t.tx.Exec(ctx, stmt); err != nil {
+					return nil, nil, err
+				}
 			}
 		}
 		return t.tx, nil, nil
@@ -734,43 +742,70 @@ func (s *QueryService) acquireQuerier(
 		return q, nil, nil
 	}
 
-	driverName, err := s.mgr.DriverName(ctx, connID)
+	d, err := s.driverFor(ctx, connID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("QueryService: resolve driver: %w", err)
+		return nil, nil, err
 	}
-	d, err := registry.Get(driverName)
-	if err != nil {
-		return nil, nil, fmt.Errorf("QueryService: resolve driver: %w", err)
+	stmt := d.Dialect().DefaultNamespaceSQL(schema)
+	if stmt == "" {
+		// The database has no session-default statement; callers must qualify.
+		q := conn.Querier()
+		if q == nil {
+			return nil, nil, fmt.Errorf("QueryService: connection has no querier")
+		}
+		return q, nil, nil
 	}
 
 	tx, err := conn.Begin(beginCtx, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("QueryService: begin tx for default schema: %w", err)
 	}
-	quoted := d.Dialect().QuoteIdentifier(schema)
-	if _, err := tx.Exec(ctx, "USE "+quoted); err != nil {
+	if _, err := tx.Exec(ctx, stmt); err != nil {
 		_ = tx.Rollback()
 		return nil, nil, err
 	}
 	return tx, tx, nil
 }
 
-// releaseTx commits the tx when runErr is nil and rolls back otherwise. The
-// implicit-commit a DDL statement performs in MySQL leaves the tx in a
-// finished state — sql.ErrTxDone is therefore treated as success here so
-// callers don't see spurious errors after a successful CREATE/ALTER/DROP.
+// scriptRulesFor resolves the lexical script-splitting rules for connID's
+// driver.
+func (s *QueryService) scriptRulesFor(ctx context.Context, connID string) (dbdriver.ScriptRules, error) {
+	d, err := s.driverFor(ctx, connID)
+	if err != nil {
+		return dbdriver.ScriptRules{}, err
+	}
+	return d.Dialect().ScriptRules(), nil
+}
+
+// driverFor resolves the registered driver behind a connection ID.
+func (s *QueryService) driverFor(ctx context.Context, connID string) (dbdriver.Driver, error) {
+	driverName, err := s.mgr.DriverName(ctx, connID)
+	if err != nil {
+		return nil, fmt.Errorf("QueryService: resolve driver: %w", err)
+	}
+	d, err := registry.Get(driverName)
+	if err != nil {
+		return nil, fmt.Errorf("QueryService: resolve driver: %w", err)
+	}
+	return d, nil
+}
+
+// releaseTx commits the tx when runErr is nil and rolls back otherwise. An
+// implicit commit (e.g. DDL in MySQL) leaves the tx in a finished state —
+// dbdriver.ErrTxDone is therefore treated as success here so callers don't
+// see spurious errors after a successful CREATE/ALTER/DROP.
 func releaseTx(tx dbdriver.Tx, runErr error) {
 	if tx == nil {
 		return
 	}
 	if runErr != nil {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, dbdriver.ErrTxDone) {
 			// Best-effort: rollback failure on an already-errored path is
 			// not worth surfacing.
 		}
 		return
 	}
-	if err := tx.Commit(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+	if err := tx.Commit(); err != nil && !errors.Is(err, dbdriver.ErrTxDone) {
 		// Same: commit failures on the happy path are rare and the user
 		// already has their result; logging would be the right answer
 		// once we wire up structured logging.

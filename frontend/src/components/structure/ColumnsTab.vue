@@ -29,16 +29,22 @@ import {
   typeFormatFor,
   type ColumnDraft,
 } from '../../lib/alterPlan'
+import { autoIncrementAllowed, type UIDialect } from '../../api/dialect'
 import { t } from '../../i18n'
-
-// computed so the type-group labels re-translate on locale switch.
-const typeGroups = computed(() => baseTypeGroups())
 
 const props = defineProps<{
   modelValue: ColumnDraft[]
+  /** The driver's UI descriptor — type catalog, modifier + AI rules. */
+  dialect: UIDialect
   /** Disable editing while we're in the middle of an Apply. */
   busy?: boolean
 }>()
+
+// computed so the type-group labels re-translate on locale switch.
+const typeGroups = computed(() => baseTypeGroups(props.dialect))
+// Hide the UNSIGNED column entirely for dialects without the modifier.
+const showUnsigned = computed(() => !!props.dialect.hasUnsigned)
+const totalCols = computed(() => (showUnsigned.value ? 12 : 11))
 const emit = defineEmits<{
   (e: 'update:modelValue', v: ColumnDraft[]): void
 }>()
@@ -53,7 +59,7 @@ function commit() {
 
 function addRow(insertAfter?: number) {
   const list = props.modelValue.slice()
-  const row = emptyColumnDraft()
+  const row = emptyColumnDraft(props.dialect)
   if (insertAfter == null || insertAfter >= list.length - 1) {
     list.push(row)
   } else {
@@ -285,12 +291,12 @@ function setDefault(row: ColumnDraft, val: string) {
 
 /** Type-aware metadata for the params input of a given draft row. */
 function fmtFor(row: ColumnDraft) {
-  return typeFormatFor(row.baseType)
+  return typeFormatFor(props.dialect, row.baseType)
 }
 
 function onTypeChange(row: ColumnDraft, base: string) {
-  const prev = typeFormatFor(row.baseType)
-  const next = typeFormatFor(base)
+  const prev = typeFormatFor(props.dialect, row.baseType)
+  const next = typeFormatFor(props.dialect, base)
   row.baseType = base.toUpperCase()
   // Clear params when moving to a type that can't carry them, OR when the
   // param shape changes incompatibly (e.g. length "255" stays meaningful when
@@ -318,60 +324,49 @@ function onUnsignedChange(row: ColumnDraft, v: boolean) {
   commit()
 }
 
-// ---- AUTO_INCREMENT constraints --------------------------------------------
+// ---- auto-increment constraints ---------------------------------------------
 //
-// MySQL enforces two rules on AUTO_INCREMENT that the UI mirrors to avoid the
-// user ever staging a DDL the server will reject:
-//   1. only integer columns can be AUTO_INCREMENT
-//   2. each table has at most one AUTO_INCREMENT column
-// We treat the checkbox as disabled when either rule blocks it for that row.
+// The dialect's UIDialect.autoIncrement declares the rules the UI mirrors so
+// the user never stages a DDL the server will reject — which base types may
+// carry the flag, and how many columns per table may have it (MySQL: integer
+// types, one per table). Unsupported dialects render "—" on every row.
 
-const INTEGER_BASE_TYPES = new Set([
-  'TINYINT',
-  'SMALLINT',
-  'MEDIUMINT',
-  'INT',
-  'INTEGER',
-  'BIGINT',
-])
-
-function isIntegerType(row: ColumnDraft): boolean {
-  return INTEGER_BASE_TYPES.has((row.baseType || '').toUpperCase())
+function aiAllowed(row: ColumnDraft): boolean {
+  return autoIncrementAllowed(props.dialect, row.baseType)
 }
 
 /**
- * Whether the AI checkbox renders on this row. Non-integer rows show "—"
- * (the type can never carry AI); every integer row always renders a live
- * checkbox — the AI flag behaves like a radio across integer rows (checking
- * one auto-clears the others), so we never need to disable them.
+ * Whether the AI checkbox renders on this row. Disallowed rows show "—"
+ * (the type can never carry AI); every allowed row always renders a live
+ * checkbox — with MaxPerTable=1 the flag behaves like a radio across rows
+ * (checking one auto-clears the others), so we never need to disable them.
  */
 function aiSelectable(row: ColumnDraft): boolean {
-  return isIntegerType(row)
+  return aiAllowed(row)
 }
 
 function aiTitle(row: ColumnDraft): string {
-  if (!isIntegerType(row)) return t('structure.columns.aiIntOnly')
+  if (!aiAllowed(row)) return t('structure.columns.aiIntOnly')
   return COL_TITLES.value.ai
 }
 
-// MySQL requires every PRIMARY KEY column to be NOT NULL; if the user checks
-// PK we also force NOT NULL so the resulting DDL is valid without an extra
-// click. Unchecking PK does NOT re-enable nullable — the user might have
-// independently meant NOT NULL.
+// Some dialects (MySQL) require every PRIMARY KEY column to be NOT NULL; when
+// declared, checking PK also forces NOT NULL so the resulting DDL is valid
+// without an extra click. Unchecking PK does NOT re-enable nullable — the
+// user might have independently meant NOT NULL.
 function onPkChange(row: ColumnDraft, v: boolean) {
   row.isPrimaryKey = v
-  if (v) row.nullable = false
+  if (v && props.dialect.primaryKeyForcesNotNull) row.nullable = false
   commit()
 }
 
 function onAiChange(row: ColumnDraft, v: boolean) {
-  // Defensive: shouldn't fire on non-integer rows (UI hides the checkbox),
+  // Defensive: shouldn't fire on disallowed rows (UI hides the checkbox),
   // but guard anyway so the model can't drift.
-  if (v && !isIntegerType(row)) return
-  if (v) {
-    // Radio-style: checking a row auto-clears every other row's AI in one
-    // pass. Without this MySQL would reject the resulting ALTER (only one
-    // AUTO_INCREMENT per table).
+  if (v && !aiAllowed(row)) return
+  if (v && props.dialect.autoIncrement?.maxPerTable === 1) {
+    // Radio-style: checking a row auto-clears every other row's flag in one
+    // pass, honoring the dialect's one-per-table rule.
     for (const r of props.modelValue) {
       if (r !== row && r.isAutoIncrement) r.isAutoIncrement = false
     }
@@ -380,10 +375,10 @@ function onAiChange(row: ColumnDraft, v: boolean) {
   commit()
 }
 
-// When a row's type changes away from an integer type, drop AI silently so
-// the model stays consistent with the visible disabled state.
+// When a row's type changes to one that can't carry the flag, drop it
+// silently so the model stays consistent with the visible disabled state.
 function maybeClearAiOnTypeChange(row: ColumnDraft) {
-  if (row.isAutoIncrement && !isIntegerType(row)) {
+  if (row.isAutoIncrement && !aiAllowed(row)) {
     row.isAutoIncrement = false
   }
 }
@@ -417,7 +412,7 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
           <col style="width: 22%" />
           <col style="width: 13%" />
           <col style="width: 11%" />
-          <col style="width: 52px" />
+          <col v-if="showUnsigned" style="width: 52px" />
           <col style="width: 44px" />
           <col style="width: 44px" />
           <col style="width: 44px" />
@@ -437,7 +432,7 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
                 {{ COL_TITLES.params }}
               </n-tooltip>
             </th>
-            <th class="th-center">
+            <th v-if="showUnsigned" class="th-center">
               <n-tooltip placement="top" :delay="100" :show-arrow="false">
                 <template #trigger><span class="th-tip">UN</span></template>
                 {{ COL_TITLES.unsigned }}
@@ -538,7 +533,7 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
                 {{ COL_TITLES.params }}
               </n-tooltip>
             </td>
-            <td class="td-center">
+            <td v-if="showUnsigned" class="td-center">
               <n-tooltip placement="top" :delay="100" :show-arrow="false">
                 <template #trigger>
                   <span class="td-tip-wrap">
@@ -628,7 +623,7 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
             </td>
           </tr>
           <tr v-if="modelValue.length === 0" class="empty-row">
-            <td colspan="12" style="text-align: center; color: var(--n-text-color-3); padding: 16px">
+            <td :colspan="totalCols" style="text-align: center; color: var(--n-text-color-3); padding: 16px">
               {{ $t('structure.columns.empty') }}
             </td>
           </tr>

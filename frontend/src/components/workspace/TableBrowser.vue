@@ -11,6 +11,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NAlert, NButton, NInput, NSpin, NTag, useMessage } from 'naive-ui'
 import { edit as editApi, metadata as metaApi } from '../../api'
+import { genericUIDialect, quoteIdentWith, uiDialectForConnection, type UIDialect } from '../../api/dialect'
 import { on } from '../../api/events'
 import { setActiveGridContext } from '../../api/gridContextMenu'
 import { useTableSelection, type SelectionRange } from '../../composables/useTableSelection'
@@ -26,10 +27,18 @@ import ResizeHandle from "../shared/ResizeHandle.vue";
 const props = defineProps<{
   connId: string
   db: string
+  /** Schema between db and table for schema-ful databases; '' otherwise. */
+  schema?: string
   table: string
 }>()
 
 const message = useMessage()
+
+// Driver UI descriptor — identifier quoting for clipboard SQL, DDL dialect.
+const uiDialect = ref<UIDialect>(genericUIDialect())
+watch(() => props.connId, async (id) => {
+  uiDialect.value = id ? await uiDialectForConnection(id) : genericUIDialect()
+}, { immediate: true })
 
 // pageSize == -1 means "all rows" (passed through to backend as a sentinel).
 const ALL_ROWS = -1
@@ -125,7 +134,13 @@ const rootRef = ref<HTMLElement | null>(null)
 const hasSelection = computed(() => sel.selection.value !== null)
 
 function colNames(): string[] { return columns.value.map((c) => c.name) }
-function fullTableName(): string { return `\`${props.db}\`.\`${props.table}\`` }
+function fullTableName(): string {
+  const d = uiDialect.value
+  return [props.db, props.schema, props.table]
+    .filter(Boolean)
+    .map((part) => quoteIdentWith(d, part!))
+    .join('.')
+}
 
 function onSelectionChange(p: { range: SelectionRange | null }) {
   sel.selection.value = p.range
@@ -187,6 +202,7 @@ async function load() {
       filterOrderBy.value ? '' : sortOrder.value,
       filterWhere.value,
       filterOrderBy.value,
+      props.schema ?? '',
     )
   } catch (e) {
     message.error(t('tableBrowser.browseFailed', { error: String(e) }))
@@ -277,7 +293,7 @@ const countLoading = ref(false)
 async function loadTotal() {
   countLoading.value = true
   try {
-    totalRows.value = await metaApi.countTableRows(props.connId, props.db, props.table, filterWhere.value)
+    totalRows.value = await metaApi.countTableRows(props.connId, props.db, props.table, filterWhere.value, props.schema ?? '')
   } catch (e) {
     message.error(t('resultFooter.countFailed', { error: String(e) }))
   } finally {
@@ -405,6 +421,7 @@ async function saveNewRow() {
     const res = await editApi.applyChange(props.connId, {
       op: 'insert',
       db: props.db,
+      schema: props.schema ?? '',
       table: props.table,
       values,
     })
@@ -511,7 +528,7 @@ const commentMap = ref<Map<string, string>>(new Map())
 
 async function loadColumnComments() {
   try {
-    const cols = await metaApi.listColumns(props.connId, props.db, props.table)
+    const cols = await metaApi.listColumns(props.connId, props.db, props.table, props.schema ?? '')
     const map = new Map<string, string>()
     for (const c of cols) if (c.comment) map.set(c.name, c.comment)
     commentMap.value = map
@@ -612,7 +629,7 @@ function toggleDdlPanel() {
 async function loadDdl() {
   ddlLoading.value = true
   try {
-    ddl.value = await metaApi.getCreateTable(props.connId, props.db, props.table)
+    ddl.value = await metaApi.getCreateTable(props.connId, props.db, props.table, props.schema ?? '')
   } catch (e: any) {
     ddl.value = ''
     message.error(t('tablesOverview.ddlFailed', { error: String(e) }))
@@ -737,6 +754,7 @@ async function loadDdl() {
         <DdlPanel
             variant="panel"
             :ddl="ddl"
+            :dialect="uiDialect"
             :loading="ddlLoading"
             :table="table"
             :active="ddlPanelOpen"

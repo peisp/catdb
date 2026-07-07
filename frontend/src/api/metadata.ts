@@ -60,6 +60,31 @@ export function getCreateTable(connId: string, db: string, table: string, schema
 export function getTableSummary(connId: string, db: string, table: string, schema = ''): Promise<TableSummary> {
   return MetadataService.GetTableSummary(connId, db, schema, table) as unknown as Promise<TableSummary>
 }
+export function getTableComment(connId: string, db: string, table: string, schema = ''): Promise<string> {
+  return MetadataService.GetTableComment(connId, db, schema, table) as unknown as Promise<string>
+}
+// Database editor (optional per driver — rejects with
+// "database-editor-unsupported" when the driver has no support).
+export interface CharsetCatalog {
+  charsets: { name: string; defaultCollation?: string }[]
+  collations: { name: string; charset?: string }[]
+}
+export interface DatabaseOptions {
+  charset?: string
+  collation?: string
+}
+export function listCharsets(connId: string): Promise<CharsetCatalog> {
+  return MetadataService.ListCharsets(connId) as unknown as Promise<CharsetCatalog>
+}
+export function getDatabaseOptions(connId: string, db: string): Promise<DatabaseOptions> {
+  return MetadataService.GetDatabaseOptions(connId, db) as unknown as Promise<DatabaseOptions>
+}
+export function buildCreateDatabase(connId: string, name: string, opts: DatabaseOptions): Promise<string> {
+  return MetadataService.BuildCreateDatabase(connId, name, opts as never) as unknown as Promise<string>
+}
+export function buildAlterDatabase(connId: string, name: string, opts: DatabaseOptions): Promise<string> {
+  return MetadataService.BuildAlterDatabase(connId, name, opts as never) as unknown as Promise<string>
+}
 export function autocompleteFor(connId: string, db: string, schema = ''): Promise<AutocompleteSnapshot> {
   return MetadataService.AutocompleteFor(connId, db, schema) as unknown as Promise<AutocompleteSnapshot>
 }
