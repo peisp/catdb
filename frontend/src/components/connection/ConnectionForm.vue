@@ -32,18 +32,34 @@ import { t, i18n } from '../../i18n'
 
 // Localize a driver-provided schema string (group/label/help) by key, falling
 // back to the driver's own (English baseline) text when no translation exists.
-// Keeps the driver locale-agnostic while still localizing the MySQL fields.
-function trOr(key: string, fallback: string): string {
-  return i18n.global.te(key) ? (i18n.global.t(key) as string) : fallback
+// Keeps the driver locale-agnostic while still localizing the known fields.
+// Field lookups try a driver-scoped key first (`<driver>_<key>`) so drivers
+// can give shared keys their own wording (SQLite's "database" is a file path).
+function trOr(keys: string[], fallback: string): string {
+  for (const k of keys) {
+    if (i18n.global.te(k)) return i18n.global.t(k) as string
+  }
+  return fallback
 }
 function groupLabel(g: string): string {
-  return trOr(`connection.form.groups.${g}`, g)
+  return trOr([`connection.form.groups.${g}`], g)
 }
 function fieldLabel(f: { key: string; label: string }): string {
-  return trOr(`connection.form.field.${f.key.replace(/\./g, '_')}`, f.label)
+  const k = f.key.replace(/\./g, '_')
+  const drv = selectedDriver.value?.name
+  return trOr(
+    drv ? [`connection.form.field.${drv}_${k}`, `connection.form.field.${k}`] : [`connection.form.field.${k}`],
+    f.label,
+  )
 }
 function fieldHelp(f: { key: string; help?: string }): string {
-  return f.help ? trOr(`connection.form.help.${f.key.replace(/\./g, '_')}`, f.help) : ''
+  if (!f.help) return ''
+  const k = f.key.replace(/\./g, '_')
+  const drv = selectedDriver.value?.name
+  return trOr(
+    drv ? [`connection.form.help.${drv}_${k}`, `connection.form.help.${k}`] : [`connection.form.help.${k}`],
+    f.help,
+  )
 }
 
 const props = defineProps<{
@@ -123,7 +139,7 @@ function buildInitialValues(): Record<string, any> {
   for (const f of drv.schema) {
     let val: any = f.default ?? ''
     if (f.type === 'number') val = f.default ? Number(f.default) : 0
-    if (f.type === 'bool') val = false
+    if (f.type === 'bool') val = f.default === 'true'
     setPath(v, f.key, val)
   }
   // Override with the persisted profile (no secrets — keyring is opaque). Only
