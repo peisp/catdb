@@ -72,12 +72,24 @@ function snapshotTables(connId: string, db: string): SchemaTable[] | null {
   }))
 }
 
+// Databases with the object tree's schema filter applied — shared by the
+// toolbar dropdown and the completion engine so both match the tree.
+function filteredDatabases(connId: string): string[] {
+  const list = metaStore.databases[connId] ?? []
+  const filter = store.schemaFilter[connId]
+  return filter ? list.filter((d) => filter.includes(d)) : list
+}
+
 // Live metadata view for the editor's completion engine. Closures read the
 // store at completion time; `ensureTables` lets `otherdb.` load on demand.
 const catalog: CompletionCatalog = {
   databases: () => {
     const connId = tab.value?.connId
     return connId ? (metaStore.databases[connId] ?? []) : []
+  },
+  visibleDatabases: () => {
+    const connId = tab.value?.connId
+    return connId ? filteredDatabases(connId) : []
   },
   currentDb: () => currentDb.value ?? undefined,
   tablesFor: (db) => {
@@ -99,10 +111,7 @@ const catalog: CompletionCatalog = {
 const dbOptions = computed(() => {
   const connId = tab.value?.connId
   if (!connId) return []
-  const list = metaStore.databases[connId] ?? []
-  const filter = store.schemaFilter[connId]
-  const filtered = filter ? list.filter((d) => filter.includes(d)) : list
-  return filtered.map((d) => ({ label: d, value: d }))
+  return filteredDatabases(connId).map((d) => ({ label: d, value: d }))
 })
 
 async function ensureAutocomplete() {

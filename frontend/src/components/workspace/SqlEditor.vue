@@ -78,6 +78,10 @@ const EMPTY_CATALOG: CompletionCatalog = {
 const sqlSource = createSqlCompletionSource(
   {
     databases: () => (props.catalog ?? EMPTY_CATALOG).databases(),
+    visibleDatabases: () => {
+      const c = props.catalog ?? EMPTY_CATALOG
+      return c.visibleDatabases?.() ?? c.databases()
+    },
     currentDb: () => (props.catalog ?? EMPTY_CATALOG).currentDb(),
     tablesFor: (db) => (props.catalog ?? EMPTY_CATALOG).tablesFor(db),
     ensureTables: (db) => (props.catalog ?? EMPTY_CATALOG).ensureTables(db),

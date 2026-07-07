@@ -44,6 +44,12 @@ export interface SchemaTable {
 /** Live view of the connection's metadata; closures read the latest state. */
 export interface CompletionCatalog {
   databases(): string[]
+  /**
+   * Databases to offer as suggestions (object tree's schema filter applied).
+   * Resolving an explicitly typed `db.` qualifier still uses databases(), so
+   * a filtered-out database keeps working when named in full.
+   */
+  visibleDatabases?(): string[]
   currentDb(): string | undefined
   /** Tables of one database, or null if its snapshot isn't loaded yet. */
   tablesFor(db: string): SchemaTable[] | null
@@ -606,7 +612,7 @@ function buildTables(items: Scored[], sc: SqlContext, catalog: CompletionCatalog
 const SYSTEM_SCHEMAS = new Set(['information_schema', 'mysql', 'performance_schema', 'sys'])
 
 function buildDatabases(items: Scored[], sc: SqlContext, catalog: CompletionCatalog, base = 0) {
-  for (const db of catalog.databases()) {
+  for (const db of catalog.visibleDatabases?.() ?? catalog.databases()) {
     if (!sc.prefix && SYSTEM_SCHEMAS.has(db.toLowerCase())) continue
     push(items, { label: db, type: 'namespace', apply: quoteName(db) }, sc.prefix, base)
   }
