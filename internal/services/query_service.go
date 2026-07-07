@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -218,7 +219,7 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 		runCancel()
 	}
 
-	q, tx, err := s.acquireQuerier(runCtx, conn, connID, opts.DefaultSchema, opts.TxnID)
+	q, tx, err := s.acquireQuerier(runCtx, context.Background(), conn, connID, opts.DefaultSchema, opts.TxnID)
 	if err != nil {
 		cerr := classifyErr(err, timeoutCtx)
 		teardown()
@@ -454,7 +455,7 @@ func (s *QueryService) Explain(ctx context.Context, connID, sqlText string, opts
 	tctx, cancel := context.WithTimeout(ctx, DefaultQueryTimeout)
 	defer cancel()
 
-	q, tx, err := s.acquireQuerier(tctx, conn, connID, opts.DefaultSchema, opts.TxnID)
+	q, tx, err := s.acquireQuerier(tctx, context.Background(), conn, connID, opts.DefaultSchema, opts.TxnID)
 	if err != nil {
 		return empty, classifyErr(err, tctx)
 	}
@@ -519,7 +520,7 @@ func (s *QueryService) CountQuery(ctx context.Context, connID, sqlText string, o
 	tctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	q, tx, err := s.acquireQuerier(tctx, conn, connID, opts.DefaultSchema, "")
+	q, tx, err := s.acquireQuerier(tctx, tctx, conn, connID, opts.DefaultSchema, "")
 	if err != nil {
 		return 0, err
 	}
@@ -541,17 +542,51 @@ func (s *QueryService) CountQuery(ctx context.Context, connID, sqlText string, o
 	return scalarToInt64(rows[0][0])
 }
 
+// lockingReadRe matches locking-read clauses. The scan can false-positive on
+// a string literal containing the words; skipping the count is the safe
+// direction, so we don't bother tokenizing.
+var lockingReadRe = regexp.MustCompile(`(?i)\bFOR\s+UPDATE\b|\bFOR\s+SHARE\b|\bLOCK\s+IN\s+SHARE\s+MODE\b`)
+
 // isCountableQuery reports whether the statement can be wrapped as a derived
 // table for COUNT(*). SHOW/EXPLAIN/DESC return rows but are not valid inside
-// a subquery.
+// a subquery. Locking reads are excluded: MySQL 8 allows FOR UPDATE inside a
+// derived table, so the count would re-run the full locking scan next to the
+// user's own query.
 func isCountableQuery(s string) bool {
+	s = stripLeadingComments(s)
 	upper := strings.ToUpper(strings.TrimLeft(s, " \t\n\r("))
 	for _, kw := range []string{"SELECT", "WITH", "TABLE", "VALUES"} {
 		if strings.HasPrefix(upper, kw) {
-			return true
+			return !lockingReadRe.MatchString(s)
 		}
 	}
 	return false
+}
+
+// stripLeadingComments drops -- / # line comments and /* */ block comments
+// before the first real token, so a SELECT under a leading comment is still
+// recognized as countable. (The comments stay in the wrapped SQL — they are
+// legal inside a derived table.)
+func stripLeadingComments(s string) string {
+	for {
+		s = strings.TrimLeft(s, " \t\n\r")
+		switch {
+		case strings.HasPrefix(s, "--"), strings.HasPrefix(s, "#"):
+			i := strings.IndexByte(s, '\n')
+			if i < 0 {
+				return ""
+			}
+			s = s[i+1:]
+		case strings.HasPrefix(s, "/*"):
+			i := strings.Index(s, "*/")
+			if i < 0 {
+				return ""
+			}
+			s = s[i+2:]
+		default:
+			return s
+		}
+	}
 }
 
 // scalarToInt64 normalizes the driver's COUNT(*) scalar representation.
@@ -653,8 +688,14 @@ func (s *QueryService) IsTransactionActive(_ context.Context, txnID string) (boo
 // The returned Tx is nil when schema is empty. Callers MUST eventually call
 // releaseTx on it (with either nil err for commit, or non-nil for rollback)
 // so the underlying connection returns to the pool.
+//
+// beginCtx bounds the pinned tx itself: Begin blocks when the pool is
+// exhausted, and database/sql rolls the tx back when its context dies.
+// Streaming callers whose tx must outlive the call pass context.Background();
+// short-lived callers (Count) pass their request context so both the Begin
+// and the tx obey cancellation/timeout.
 func (s *QueryService) acquireQuerier(
-	ctx context.Context,
+	ctx, beginCtx context.Context,
 	conn dbdriver.Connection,
 	connID, schema, txnID string,
 ) (dbdriver.Querier, dbdriver.Tx, error) {
@@ -702,7 +743,7 @@ func (s *QueryService) acquireQuerier(
 		return nil, nil, fmt.Errorf("QueryService: resolve driver: %w", err)
 	}
 
-	tx, err := conn.Begin(context.Background(), nil)
+	tx, err := conn.Begin(beginCtx, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("QueryService: begin tx for default schema: %w", err)
 	}

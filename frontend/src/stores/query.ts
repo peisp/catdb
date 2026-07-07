@@ -551,24 +551,42 @@ export const useQueryStore = defineStore('query', () => {
 
     // Exact total: wrap the statement in SELECT COUNT(*) and race it WITH the
     // query itself — fired after the first batch it would usually lose to the
-    // drain (2000 rows/batch) and never get displayed. Multi-statement
-    // scripts still wait for the first batch: earlier statements may mutate
-    // what the final SELECT reads. Skipped in manual transactions — the count
-    // runs on the pooled connection and wouldn't see uncommitted rows.
+    // drain (2000 rows/batch) and never get displayed. Single statements fire
+    // it on a short delay instead of immediately: a query that finishes inside
+    // the first batch never triggers the count, so cheap point queries aren't
+    // executed twice server-side, while streaming result sets only lose a
+    // sliver of the display window. Multi-statement scripts still wait for the
+    // first batch: earlier statements may mutate what the final SELECT reads.
+    // Skipped in manual transactions — the count runs on the pooled connection
+    // and wouldn't see uncommitted rows.
+    //
+    // The count has its own controller: cancelling the run cancels it too,
+    // and once the drain completes (rowsTotal is exact) we abort it to
+    // reclaim the pooled connection. (Abort closes the client socket; MySQL
+    // only notices when it writes the result, so a scan already underway may
+    // still run to completion server-side.)
+    const countCtrl = new AbortController()
+    ctrl.signal.addEventListener('abort', () => countCtrl.abort(), { once: true })
     const fireCount = () => {
-      if (t.txnId) return
-      const sqlAtRun = t.lastRunSql
+      if (t.txnId || countCtrl.signal.aborted || t.done) return
       void queryApi
-        .countQuery(t.connId, sqlAtRun, { defaultSchema: options.defaultSchema }, ctrl.signal)
+        .countQuery(
+          t.connId,
+          t.lastRunSql,
+          { defaultSchema: options.defaultSchema, timeoutMs: options.timeoutMs },
+          countCtrl.signal,
+        )
         .then((n) => {
-          if (t.lastRunSql === sqlAtRun && !t.done) t.exactTotal = n
+          // countCtrl is aborted whenever this run settles, so an aborted
+          // signal marks the result as belonging to a stale run.
+          if (!countCtrl.signal.aborted && !t.done) t.exactTotal = n
         })
-        .catch(() => { /* not countable / count failed — total stays unknown */ })
+        .catch(() => { /* not countable / count failed / aborted — total stays unknown */ })
     }
     // Crude ';' scan (a ';' inside a string literal just means we fall back
     // to the safe late fire).
     const isMultiStatement = /;/.test(t.sql.trim().replace(/;+\s*$/, ''))
-    if (!isMultiStatement) fireCount()
+    if (!isMultiStatement) setTimeout(fireCount, 80)
 
     try {
       const res = await queryApi.runQuery(t.connId, t.sql, opts, ctrl.signal)
@@ -603,6 +621,9 @@ export const useQueryStore = defineStore('query', () => {
         t.errorMessage = formatError(e)
       }
     } finally {
+      // The run is settled one way or another — a still-pending COUNT(*) has
+      // nothing left to inform; abort it so its pooled connection is freed.
+      countCtrl.abort()
       t.controller = null
       t.fetching = false
     }

@@ -312,7 +312,9 @@ const rowsLabel = computed(() => {
   if (!t.isResultSet || t.rowsTotal <= 0) return null
   if (t.done) return { key: 'queryTab.rowsCount', n: t.rowsTotal, total: 0 }
   if (t.exactTotal != null) {
-    return { key: 'queryTab.rowsCountOfTotal', n: t.rowsTotal, total: t.exactTotal }
+    // The count runs on its own connection/snapshot; concurrent writes can
+    // leave it below the rows already drained. Never show n > total.
+    return { key: 'queryTab.rowsCountOfTotal', n: t.rowsTotal, total: Math.max(t.exactTotal, t.rowsTotal) }
   }
   return { key: 'queryTab.rowsCountPartial', n: t.rowsTotal, total: 0 }
 })

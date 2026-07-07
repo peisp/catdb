@@ -32,17 +32,27 @@ func TestLooksLikeRowsQuery(t *testing.T) {
 
 func TestIsCountableQuery(t *testing.T) {
 	cases := map[string]bool{
-		"SELECT * FROM t":               true,
-		"  select id from t limit 5":    true,
-		"WITH x AS (SELECT 1) SELECT *": true,
-		"(SELECT 1)":                    true,
-		"TABLE t":                       true,
-		"VALUES ROW(1)":                 true,
-		"SHOW TABLES":                   false,
-		"EXPLAIN SELECT 1":              false,
-		"DESC t":                        false,
-		"UPDATE t SET a=1":              false,
-		"INSERT INTO t VALUES (1)":      false,
+		"SELECT * FROM t":                    true,
+		"  select id from t limit 5":         true,
+		"WITH x AS (SELECT 1) SELECT *":      true,
+		"(SELECT 1)":                         true,
+		"TABLE t":                            true,
+		"VALUES ROW(1)":                      true,
+		"-- note\nSELECT 1":                  true,
+		"# note\nSELECT 1":                   true,
+		"/* c */ SELECT 1":                   true,
+		"/* a */\n-- b\nSELECT 1":            true,
+		"SELECT for_update FROM t":           true,
+		"SHOW TABLES":                        false,
+		"EXPLAIN SELECT 1":                   false,
+		"DESC t":                             false,
+		"UPDATE t SET a=1":                   false,
+		"INSERT INTO t VALUES (1)":           false,
+		"-- only a comment":                  false,
+		"SELECT * FROM t FOR UPDATE":         false,
+		"SELECT * FROM t for share":          false,
+		"SELECT * FROM t LOCK IN SHARE MODE": false,
+		"SELECT 1 FROM t\nFOR\nUPDATE":       false,
 	}
 	for in, want := range cases {
 		if got := isCountableQuery(in); got != want {
