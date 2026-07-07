@@ -126,8 +126,10 @@ func (s *EditService) ApplyChange(ctx context.Context, connID string, ch RowChan
 	}, nil
 }
 
-// interpolateSQL replaces "?" placeholders with display-safe formatted values.
-// For display only — never use the result for execution.
+// interpolateSQL replaces placeholders with display-safe formatted values.
+// Both placeholder styles drivers emit are handled: positional "?" (MySQL)
+// and numbered "$1…$n" (Postgres). For display only — never use the result
+// for execution.
 func interpolateSQL(sql string, args []any) string {
 	if len(args) == 0 {
 		return sql
@@ -135,15 +137,37 @@ func interpolateSQL(sql string, args []any) string {
 	var buf strings.Builder
 	argIdx := 0
 	for {
-		i := strings.Index(sql, "?")
+		i := strings.IndexAny(sql, "?$")
 		if i < 0 || argIdx >= len(args) {
 			buf.WriteString(sql)
 			break
 		}
 		buf.WriteString(sql[:i])
-		buf.WriteString(sqlArgValue(args[argIdx]))
-		sql = sql[i+1:]
-		argIdx++
+		if sql[i] == '?' {
+			buf.WriteString(sqlArgValue(args[argIdx]))
+			sql = sql[i+1:]
+			argIdx++
+			continue
+		}
+		// "$n" — the digits carry the arg index; skip bare "$" (e.g. inside
+		// dollar-quoted strings, which never appear in Editor-built SQL anyway).
+		j := i + 1
+		for j < len(sql) && sql[j] >= '0' && sql[j] <= '9' {
+			j++
+		}
+		if j == i+1 {
+			buf.WriteByte('$')
+			sql = sql[i+1:]
+			continue
+		}
+		n, err := strconv.Atoi(sql[i+1 : j])
+		if err != nil || n < 1 || n > len(args) {
+			buf.WriteString(sql[i:j])
+		} else {
+			buf.WriteString(sqlArgValue(args[n-1]))
+			argIdx++
+		}
+		sql = sql[j:]
 	}
 	return buf.String()
 }

@@ -248,12 +248,25 @@ function onSqlUpdate(v: string) {
   tab.value.sql = v
 }
 
+// Map the driver's editor dialect id onto sql-formatter's language id so
+// formatting follows the active connection instead of assuming MySQL.
+function formatterLanguage() {
+  switch (uiDialect.value.editorDialect) {
+    case 'mysql': return 'mysql' as const
+    case 'mariadb': return 'mariadb' as const
+    case 'postgresql': return 'postgresql' as const
+    case 'sqlite': return 'sqlite' as const
+    case 'mssql': return 'transactsql' as const
+    default: return 'sql' as const
+  }
+}
+
 function formatSql() {
   const sql = tab.value.sql.trim()
   if (!sql) return
   try {
     const formatted = format(sql, {
-      language: 'mysql',
+      language: formatterLanguage(),
       tabWidth: 2,
       useTabs: false,
       keywordCase: 'upper',
