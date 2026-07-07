@@ -1,15 +1,19 @@
 <script setup lang="ts">
-// StatusBar — bottom strip (UI_SPEC.md §3). Only reacts to connection state
-// changes (connect/disconnect/switch). Shows connection name, connection
-// status, server version/user, theme mode, and build tag.
+// StatusBar — bottom strip (UI_SPEC.md §3). Follows the workspace's active
+// connection (passed down from AppShell) and its current database. Shows
+// connection name, connection status, current database, server version/user,
+// theme mode, and build tag.
 import { computed, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { connections as connectionsApi, system as systemApi } from '../../api'
 import { useConnectionsStore } from '../../stores/connections'
+import { useQueryStore } from '../../stores/query'
 import { useThemeStore } from '../../stores/theme'
 import { useUpdatesStore } from '../../stores/updates'
 import { t } from '../../i18n'
-import type { ServerInfo } from '../../api/connections'
+import type { ConnectionProfile, ServerInfo } from '../../api/connections'
+
+const props = defineProps<{ activeConn: ConnectionProfile | null }>()
 
 const REPO_URL = 'https://github.com/peisp/catdb'
 
@@ -18,6 +22,7 @@ function openRepo() {
 }
 
 const conns = useConnectionsStore()
+const queryStore = useQueryStore()
 const theme = useThemeStore()
 const updates = useUpdatesStore()
 const message = useMessage()
@@ -25,19 +30,23 @@ const message = useMessage()
 const serverInfo = ref<ServerInfo | null>(null)
 const checking = ref(false)
 
-const liveConn = computed(() => {
-  // Reach the first live connection — for M4 the workspace only ever shows
-  // tabs from the active connection, so this is a reasonable proxy.
-  const connId = conns.liveIds.values().next().value
-  if (!connId) return null
-  return conns.connections.find((c) => c.id === connId) ?? null
+const isLive = computed(() => !!props.activeConn && conns.liveIds.has(props.activeConn.id))
+
+// Current database: the active tab's db, falling back to the object tree's
+// last-selected database for this connection.
+const currentDb = computed(() => {
+  const c = props.activeConn
+  if (!c) return null
+  return queryStore.activeTab(c.id)?.db || queryStore.selectedDb[c.id] || null
 })
 
-// Fetch server info when the active connection changes.
-watch(liveConn, async (conn) => {
-  if (!conn) { serverInfo.value = null; return }
+// Fetch server info when the live active connection changes — this covers
+// switching connections and a selected connection going live/offline.
+const liveConnId = computed(() => (isLive.value ? props.activeConn!.id : null))
+watch(liveConnId, async (id) => {
+  if (!id) { serverInfo.value = null; return }
   try {
-    serverInfo.value = await connectionsApi.getServerInfo(conn.id)
+    serverInfo.value = await connectionsApi.getServerInfo(id)
   } catch {
     // connection may not be fully live yet, that's fine
     serverInfo.value = null
@@ -86,9 +95,14 @@ const versionTitle = computed(() => {
 
 <template>
   <div class="bar">
-    <span class="slot mono">{{ liveConn ? liveConn.name : $t('statusBar.noConnection') }}</span>
+    <span class="slot mono">{{ activeConn ? activeConn.name : $t('statusBar.noConnection') }}</span>
     <span class="sep" />
-    <span class="slot">{{ liveConn ? $t('statusBar.connected') : $t('statusBar.disconnected') }}</span>
+    <span class="slot">{{ isLive ? $t('statusBar.connected') : $t('statusBar.disconnected') }}</span>
+    <!-- 当前数据库槽位（暂时隐藏）
+    <span v-if="currentDb" class="sep" />
+    <span v-if="currentDb" class="slot mono">{{ currentDb }}</span>
+    -->
+
     <span v-if="serverInfo" class="sep" />
     <span v-if="serverInfo" class="slot mono">{{ serverInfo.version }}</span>
     <span v-if="serverInfo" class="sep" />

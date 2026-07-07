@@ -229,7 +229,7 @@ function onOpenTablesOverview(payload: { db: string; schema?: string }) {
           <ConnectionWelcome v-else @new="openNewConnection" />
         </main>
         <div class="status">
-          <StatusBar />
+          <StatusBar :active-conn="activeConn" />
         </div>
       </div>
     </div>
