@@ -5,6 +5,7 @@ import {
   MSSQL,
   MariaSQL,
   MySQL,
+  PLSQL,
   PostgreSQL,
   SQLite,
   StandardSQL,
@@ -17,6 +18,7 @@ const BY_ID: Record<string, SQLDialect> = {
   postgresql: PostgreSQL,
   sqlite: SQLite,
   mssql: MSSQL,
+  plsql: PLSQL,
   standard: StandardSQL,
 }
 

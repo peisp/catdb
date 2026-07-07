@@ -264,6 +264,7 @@ function formatterLanguage() {
     case 'postgresql': return 'postgresql' as const
     case 'sqlite': return 'sqlite' as const
     case 'mssql': return 'transactsql' as const
+    case 'plsql': return 'plsql' as const
     default: return 'sql' as const
   }
 }
