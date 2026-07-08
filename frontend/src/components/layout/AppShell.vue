@@ -312,7 +312,7 @@ function onOpenTablesOverview(payload: { db: string; schema?: string }) {
 @media (prefers-color-scheme: dark) {
   .main { background: rgb(0, 0, 0, 0.5); }
 }
-.main.win { background: #fff; }
+.main.win { background: #EEEEEE; }
 @media (prefers-color-scheme: dark) {
   .main.win { background: #1e1e1e; }
 }
