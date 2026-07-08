@@ -730,7 +730,6 @@ function onSplitDown(e: PointerEvent) {
 /* ---- Splitter ---- */
 
 .splitter {
-  background: var(--n-divider-color);
   cursor: row-resize;
   transition: background-color 120ms ease-out;
   position: relative;
@@ -758,6 +757,7 @@ function onSplitDown(e: PointerEvent) {
 /* ---- Result / Summary tab bar ---- */
 .result-tabs {
   display: flex;
+  padding: 0px 6px;
   gap: 0;
   flex: 0 0 auto;
   border-bottom: 1px solid var(--n-divider-color);
