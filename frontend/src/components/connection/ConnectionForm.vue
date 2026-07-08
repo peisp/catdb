@@ -381,7 +381,7 @@ function selectOptions(opts: string[]) {
       >
         <div class="header-row">
           <n-form-item :label="$t('connection.form.name')" required class="header-item header-item-grow">
-            <n-input v-model:value="name" size="small" placeholder="My MySQL" />
+            <n-input v-model:value="name" size="small" placeholder="My DataBase" />
           </n-form-item>
           <n-form-item :label="$t('connection.form.group')" class="header-item header-item-group">
             <!-- Native HTML <select> — the system's own dropdown chrome

@@ -318,6 +318,7 @@ onMounted(() => {
 <style scoped>
 .sidebar { display: flex; flex-direction: column; height: 100%; }
 .header {
+  --wails-draggable: drag;
   display: flex;
   align-items: center;
   padding: 6px 10px;
