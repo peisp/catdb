@@ -417,6 +417,8 @@ const TYPE_OPTIONS = [
   min-height: 0;
   overflow: hidden;
   font-size: 12px;
+  margin: 6px 6px;
+  background-color: var(--app-content-bg);
 }
 
 /* ---- sidebar ---- */

@@ -204,8 +204,8 @@ const ACTIONS = [
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  padding-left: 6px;
-  padding-right: 6px;
+  margin: 6px 6px;
+  background-color: var(--app-content-bg);
 }
 .fk-table-wrap {
   flex: 1 1 auto;
