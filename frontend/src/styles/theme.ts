@@ -74,4 +74,16 @@ export const themeOverrides: GlobalThemeOverrides = {
   },
 }
 
-export const darkThemeOverrides: GlobalThemeOverrides = themeOverrides
+// Dark mode reuses everything but the button borders: the light-gray hairlines
+// (#c0c0c0…) read as "too white" against the dark #333 toolbars. Swap in dim
+// borders that sit just above the surface instead of glowing off it.
+export const darkThemeOverrides: GlobalThemeOverrides = {
+  ...themeOverrides,
+  Button: {
+    ...themeOverrides.Button,
+    border: '1px solid #4a4a4a',
+    borderHover: '1px solid #5a5a5a',
+    borderPressed: '1px solid #666666',
+    borderFocus: '1px solid #5a5a5a',
+  },
+}
