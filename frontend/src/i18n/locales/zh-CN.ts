@@ -211,6 +211,8 @@ export default {
   tableBrowser: {
     readOnlyTag: '只读 · 无主键',
     readOnlyBanner: '该表没有主键或唯一键，已禁用编辑以避免产生歧义的 UPDATE/DELETE 语句。',
+    keylessTag: '无唯一键 · 整行匹配',
+    keylessBanner: '该表没有主键或唯一键，编辑和删除将按整行原值匹配 —— 若存在两行完全相同的数据，会同时被影响。',
     browseFailed: '浏览失败: {error}',
     rowInserted: '已插入行',
     insertFailed: '插入失败: {error}',

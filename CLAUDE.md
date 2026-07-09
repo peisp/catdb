@@ -56,7 +56,7 @@ frontend/src/
 1. **隔离 Wails API**：Go 侧所有 `application.*` 调用只允许出现在 `wailsbridge/`；前端组件只能调 `frontend/src/api/`，禁止直接 import 生成的 `bindings/`。理由：alpha 期 breaking change 时只改一处。
 2. **Service 生命周期方法用 v3 命名**：`ServiceName() / ServiceStartup(ctx, opts) error / ServiceShutdown() error`。**绝不要用 v2 的 `OnStartup`/`OnShutdown`**（训练数据里大量 v2 示例是错的）。
 3. **长任务必须吃 ctx**：Service 方法首参 `context.Context`，查询一律 `QueryContext/ExecContext(ctx, ...)`。前端取消 promise → ctx 取消 → 查询中断。禁止写不可取消的阻塞查询。
-4. **SQL 一律参数化**：永远用占位符 + args，**禁止字符串拼接用户值**。表数据的 UPDATE/DELETE **必须基于主键/唯一键**；探测不到唯一键的表 → 标记只读，不生成写语句。
+4. **SQL 一律参数化**：永远用占位符 + args，**禁止字符串拼接用户值**。表数据的 UPDATE/DELETE 优先基于主键/唯一键；探测不到唯一键时降级为**整行匹配**（WHERE 用全部列原值，NULL 用 `IS NULL`，对齐 dbx），仅当列数 ≥2 才启用、否则标记只读。整行匹配的 WHERE 列由前端（`BrowseResult.KeylessEditable` / 各表格组件的 `idCols`）决定；驱动的 `Build*` 只按传入的标识列 map 构造 SQL，**空 map 仍要拒绝**（守住最后一道防线）。注意：整行完全相同的两行会被一并命中（不加 LIMIT，与 dbx 一致），UI 需向用户提示。
 5. **大结果集不许一次性序列化**：后端分批 fetch（`ResultSet.Next(batch)`），行数据用 `[][]any` 数组（不是 `map[string]any`），列元数据单独传一次。大导出走**流式写文件**，不经 IPC 传给前端。
 6. **抽象层不绑定 `database/sql` 类型**：`dbdriver` 接口用自定义 `ResultSet/ColumnMeta`，这样 MySQL 插件内部可用 `*sql.DB`、未来 PG 插件可用 pgx 原生。改接口前先读 ARCHITECTURE.md 的契约说明。
 7. **驱动靠 `init()` 注册**：新驱动在自己包的 `init()` 里 `registry.Register(...)`，并在 `plugins/plugins_all.go` 匿名导入。不要写运行时动态加载（go plugin / Goja），那不是本项目主线。

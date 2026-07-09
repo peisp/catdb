@@ -426,6 +426,12 @@ type BrowseResult struct {
 	Rows         [][]any               `json:"rows"`
 	PrimaryKey   []string              `json:"primaryKey"`
 	HasUniqueKey bool                  `json:"hasUniqueKey"`
+	// KeylessEditable reports that the table has no primary/unique key but is
+	// still editable via a full-row match (every column in the WHERE clause).
+	// True only when a real key is absent AND the row has ≥2 columns (a single
+	// column is too weak an identifier). The front-end uses this to keep the
+	// grid editable and build the row identifier from all columns.
+	KeylessEditable bool `json:"keylessEditable"`
 	// SQL is the dialect-paginated statement that actually ran. Surfaced to
 	// the UI so users can see/copy what catdb executed on their behalf.
 	SQL string `json:"sql"`
@@ -523,6 +529,9 @@ func (s *MetadataService) BrowseTable(ctx context.Context, connID, db, schema, t
 		if pk, perr := ed.PrimaryKeys(ctx, db, schema, table); perr == nil {
 			out.PrimaryKey = pk
 			out.HasUniqueKey = len(pk) > 0
+			// No key, but a full-row match can still uniquely-enough locate a
+			// row when there are ≥2 columns — mirror dbx's keyless editing.
+			out.KeylessEditable = len(pk) == 0 && len(out.Columns) >= 2
 		}
 	}
 	return out, nil

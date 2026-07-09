@@ -217,6 +217,9 @@ export default {
     readOnlyTag: 'read-only · no primary key',
     readOnlyBanner:
       'This table has no primary or unique key. Editing is disabled to avoid ambiguous UPDATE/DELETE statements.',
+    keylessTag: 'no unique key · full-row match',
+    keylessBanner:
+      'This table has no primary or unique key. Edits and deletes match the entire original row — if two rows are identical, both are affected.',
     browseFailed: 'Browse failed: {error}',
     rowInserted: 'Row inserted',
     insertFailed: 'Insert failed: {error}',

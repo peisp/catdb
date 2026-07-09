@@ -29,6 +29,7 @@ let ctxState = {
   columnNames: [] as string[],
   tableName: undefined as string | undefined,
   pkColumns: [] as string[],
+  idColumns: [] as string[],
   connId: undefined as string | undefined,
   db: undefined as string | undefined,
   table: undefined as string | undefined,
@@ -40,6 +41,9 @@ export interface ActiveGridContext {
   selection: SelectionRange | null
   tableName?: string
   pkColumns?: string[]
+  /** Row-identifier columns used to locate a row (PK, or all columns when the
+   *  table is keyless-but-editable). Empty → read-only. */
+  idColumns?: string[]
   connId?: string
   db?: string
   table?: string
@@ -53,6 +57,7 @@ export function setActiveGridContext(p: ActiveGridContext): void {
     columnNames: p.columnNames,
     tableName: p.tableName,
     pkColumns: p.pkColumns ?? [],
+    idColumns: p.idColumns ?? [],
     connId: p.connId,
     db: p.db,
     table: p.table,
@@ -100,22 +105,23 @@ export function installGridContextMenuListener(): void {
   // ---- 设置为NULL ----
 
   on('ctx:grid-set-null', async () => {
-    const { rows, columnNames, pkColumns, connId, db, table } = ctxState
+    const { rows, columnNames, pkColumns, idColumns, connId, db, table } = ctxState
     const sel = ctxSel.selection.value
     const { message } = createDiscreteApi(['message'])
 
     // Can't edit from SQL results (no connId/db/table context)
     if (!sel || !connId || !db || !table || !rows.length) return
 
-    // Table has no primary key → can't build UPDATE statements
-    if (!pkColumns.length) return
+    // No row identifier (no PK and not keyless-editable) → read-only, bail.
+    if (!idColumns.length) return
 
     const minR = Math.min(sel.startRow, sel.endRow)
     const maxR = Math.max(sel.startRow, sel.endRow)
     const minC = Math.min(sel.startCol, sel.endCol)
     const maxC = Math.max(sel.startCol, sel.endCol)
 
-    // Check if any selected column is a primary-key column
+    // A real PK column can't be set to NULL. Keyless tables have no PK, so
+    // every column may be nulled (its old value still keys the WHERE clause).
     for (let c = minC; c <= maxC; c++) {
       if (pkColumns.includes(columnNames[c])) {
         message.warning(t('grid.pkCannotBeNull'))

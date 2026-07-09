@@ -75,6 +75,8 @@ interface PendingChange {
 const pendingChanges = ref<Map<string, PendingChange>>(new Map())
 const deletedRows = ref<Set<number>>(new Set())
 const pkColumns = ref<string[]>([])
+// 连接是否具备行编辑能力（getPrimaryKey 成功即代表驱动有 Editor）。
+const editorAvailable = ref(false)
 const saving = ref(false)
 const dirtyCells = computed(() => new Set(pendingChanges.value.keys()))
 const dirtyRows = computed(() => {
@@ -85,13 +87,22 @@ const dirtyRows = computed(() => {
   return s
 })
 const hasPending = computed(() => pendingChanges.value.size > 0)
+// 无主键但结果 ≥2 列 → 整行匹配可编辑（对齐 dbx，与 TableBrowser 一致）。
+const keylessEditable = computed(() =>
+  editorAvailable.value && pkColumns.value.length === 0 && props.columns.length >= 2 && !!props.editTable,
+)
+// 定位一行用的标识列：有主键用主键；否则无键整行匹配用全部结果列。
+const idCols = computed<string[]>(() => {
+  if (pkColumns.value.length) return pkColumns.value
+  return keylessEditable.value ? colNames() : []
+})
 const editable = computed(() => {
   if (!props.editTable || saving.value) return false
-  if (pkColumns.value.length === 0) return false
-  // All PK columns must be present in the result (case-insensitive,
+  if (idCols.value.length === 0) return false
+  // All identifier columns must be present in the result (case-insensitive,
   // matching MySQL's case-insensitive column names).
   const names = new Set(props.columns.map((c) => c.name.toLowerCase()))
-  return pkColumns.value.every((k) => names.has(k.toLowerCase()))
+  return idCols.value.every((k) => names.has(k.toLowerCase()))
 })
 
 function colNames(): string[] { return props.columns.map((c) => c.name) }
@@ -112,6 +123,7 @@ function onCellContextMenu(p: { row: number; col: number }) {
     selection: sel.selection.value,
     tableName: fullName,
     pkColumns: pkColumns.value,
+    idColumns: idCols.value,
     connId: et ? props.connId : undefined,
     db: et?.db,
     table: et?.table,
@@ -171,7 +183,7 @@ function pkValuesOf(rowIdx: number): Record<string, any> {
   const map: Record<string, any> = {}
   const row = props.rows[rowIdx]
   if (!row) return map
-  for (const k of pkColumns.value) {
+  for (const k of idCols.value) {
     const i = colIndex(k)
     if (i < 0) continue
     const pending = pendingChanges.value.get(`${rowIdx}:${i}`)
@@ -267,13 +279,16 @@ watch(() => props.editTable, async (et) => {
   deletedRows.value = new Set()
   if (!et) {
     pkColumns.value = []
+    editorAvailable.value = false
     return
   }
   try {
     const pks = await editApi.getPrimaryKey(props.connId, et.db, et.table)
     pkColumns.value = pks
+    editorAvailable.value = true
   } catch {
     pkColumns.value = []
+    editorAvailable.value = false
   }
 }, { immediate: true })
 </script>

@@ -246,6 +246,15 @@ export class BrowseResult {
     "hasUniqueKey": boolean;
 
     /**
+     * KeylessEditable reports that the table has no primary/unique key but is
+     * still editable via a full-row match (every column in the WHERE clause).
+     * True only when a real key is absent AND the row has ≥2 columns (a single
+     * column is too weak an identifier). The front-end uses this to keep the
+     * grid editable and build the row identifier from all columns.
+     */
+    "keylessEditable": boolean;
+
+    /**
      * SQL is the dialect-paginated statement that actually ran. Surfaced to
      * the UI so users can see/copy what catdb executed on their behalf.
      */
@@ -264,6 +273,9 @@ export class BrowseResult {
         }
         if (!("hasUniqueKey" in $$source)) {
             this["hasUniqueKey"] = false;
+        }
+        if (!("keylessEditable" in $$source)) {
+            this["keylessEditable"] = false;
         }
         if (!("sql" in $$source)) {
             this["sql"] = "";

@@ -76,9 +76,16 @@ const orderByName = computed(() => {
 const columns = computed<ColumnMeta[]>(() => browse.value?.columns ?? [])
 const rows = computed<any[][]>(() => browse.value?.rows ?? [])
 const pk = computed<string[]>(() => browse.value?.primaryKey ?? [])
+// 无主键/唯一键但列数 ≥2 → 后端标记为「整行匹配」可编辑（对齐 dbx）。
+const keylessEditable = computed(() => browse.value?.keylessEditable ?? false)
+// 定位一行用的「标识列」：有主键用主键；否则无键整行匹配时用全部列。
+const idCols = computed<string[]>(() => {
+  if (pk.value.length) return pk.value
+  return keylessEditable.value ? columns.value.map((c) => c.name) : []
+})
 const readOnly = computed(() => {
   if (!browse.value) return false  // 数据还没加载到，不显示只读提示
-  return !browse.value.hasUniqueKey
+  return !browse.value.hasUniqueKey && !keylessEditable.value
 })
 
 // ---- add row state ----
@@ -161,6 +168,7 @@ function onCellContextMenu(p: { row: number; col: number }) {
     table: props.table,
     tableName: fullTableName(),
     pkColumns: pk.value,
+    idColumns: idCols.value,
   })
 }
 
@@ -316,7 +324,7 @@ function pkValuesOf(rowIdx: number): Record<string, any> {
   const map: Record<string, any> = {}
   const row = rows.value[rowIdx]
   if (!row) return map
-  for (const k of pk.value) {
+  for (const k of idCols.value) {
     const i = columns.value.findIndex((c) => c.name === k)
     if (i < 0) continue
     const pending = pendingChanges.value.get(`${rowIdx}:${i}`)
@@ -644,6 +652,7 @@ async function loadDdl() {
     <div class="toolbar">
       <span class="title mono">{{ db }}.{{ table }}</span>
       <n-tag v-if="readOnly" size="small" type="warning">{{ $t('tableBrowser.readOnlyTag') }}</n-tag>
+      <n-tag v-else-if="keylessEditable" size="small" type="warning">{{ $t('tableBrowser.keylessTag') }}</n-tag>
       <n-tag v-else size="small" type="info">PK: {{ pk.join(', ') }}</n-tag>
       <span class="grow"/>
       <template v-if="addingRow">
@@ -680,6 +689,9 @@ async function loadDdl() {
 
     <n-alert v-if="readOnly" type="warning" :show-icon="false" class="banner">
       {{ $t('tableBrowser.readOnlyBanner') }}
+    </n-alert>
+    <n-alert v-else-if="keylessEditable" type="warning" :show-icon="false" class="banner">
+      {{ $t('tableBrowser.keylessBanner') }}
     </n-alert>
 
     <div class="data-area">
