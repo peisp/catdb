@@ -33,6 +33,13 @@ type UIDialect struct {
 	// none (Postgres "public"). Empty for drivers without a schema level.
 	DefaultSchema string `json:"defaultSchema,omitempty"`
 
+	// NamespaceTerm names what ListDatabases returns — the object tree's
+	// top-level container and the query tab's namespace dropdown. Stable key
+	// the front-end localizes and picks node icons by: "database"
+	// (MySQL/Postgres/SQLite) or "schema" (DM, where the schema level sits in
+	// the database position). Empty means "database".
+	NamespaceTerm string `json:"namespaceTerm,omitempty"`
+
 	// Keywords are dialect-specific keywords/phrases offered by completion in
 	// addition to the front-end's generic ANSI set.
 	Keywords []string `json:"keywords,omitempty"`

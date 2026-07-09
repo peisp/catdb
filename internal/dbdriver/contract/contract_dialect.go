@@ -146,6 +146,11 @@ func TestUIDialect(t *testing.T, d dbdriver.Driver) {
 	if ui.IdentQuote == "" {
 		t.Fatal("UIDialect.IdentQuote is empty")
 	}
+	switch ui.NamespaceTerm {
+	case "", "database", "schema":
+	default:
+		t.Fatalf("UIDialect.NamespaceTerm %q is not a known term", ui.NamespaceTerm)
+	}
 	validKinds := map[string]bool{
 		"length": true, "displayWidth": true, "precisionScale": true,
 		"fractionalSeconds": true, "enumValues": true, "none": true,

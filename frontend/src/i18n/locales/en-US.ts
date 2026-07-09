@@ -366,17 +366,19 @@ export default {
     notConnected: 'Not Connected',
     refreshTree: 'Refresh Object Tree',
     refreshFailed: 'Refresh failed: {error}',
+    // Keys naming the tree's top-level container carry a `.database`/`.schema`
+    // variant picked by the driver's UIDialect.NamespaceTerm.
     schemaFilter: {
-      title: 'Schemas',
-      tooltip: 'Select schemas to show',
-      allSchemas: 'All Schemas',
+      title: { database: 'Databases', schema: 'Schemas' },
+      tooltip: { database: 'Select databases to show', schema: 'Select schemas to show' },
+      all: { database: 'All Databases', schema: 'All Schemas' },
       filter: 'Filter',
-      searchPlaceholder: 'Filter schemas…',
-      refresh: 'Refresh schemas',
+      searchPlaceholder: { database: 'Filter databases…', schema: 'Filter schemas…' },
+      refresh: { database: 'Refresh databases', schema: 'Refresh schemas' },
       collapse: 'Collapse',
       expand: 'Expand',
       close: 'Close',
-      empty: 'No schemas',
+      empty: { database: 'No databases', schema: 'No schemas' },
     },
   },
   // Connection sidebar (components/connection/ConnectionSidebar.vue).
@@ -403,8 +405,10 @@ export default {
     run: 'Run',
     runSelection: 'Run Selection',
     format: 'Format',
-    schema: 'Schema',
-    noSchemas: 'No schemas',
+    // Namespace-dropdown copy — `.database`/`.schema` variant picked by the
+    // driver's UIDialect.NamespaceTerm.
+    namespace: { database: 'Database', schema: 'Schema' },
+    noNamespaces: { database: 'No databases', schema: 'No schemas' },
     rowsCount: '{n} rows',
     rowsCountPartial: '{n}+ rows (not fully loaded)',
     rowsCountOfTotal: '{n} / {total} rows',

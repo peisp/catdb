@@ -12,6 +12,7 @@ func (driver) UIDialect() dbdriver.UIDialect {
 		StringBackslashEscapes: false,
 		SystemSchemas:          []string{"pg_catalog", "information_schema", "pg_toast"},
 		DefaultSchema:          "public",
+		NamespaceTerm:          "database",
 		Keywords: []string{
 			"RETURNING", "ILIKE", "SIMILAR TO", "OFFSET", "FETCH FIRST",
 			"ON CONFLICT", "DO NOTHING", "DO UPDATE SET", "LATERAL",

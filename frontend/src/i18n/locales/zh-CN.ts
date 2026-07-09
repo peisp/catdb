@@ -358,17 +358,19 @@ export default {
     notConnected: '未连接',
     refreshTree: '刷新对象树',
     refreshFailed: '刷新失败: {error}',
+    // 涉及顶层容器名称的 key 按驱动 UIDialect.NamespaceTerm 取
+    // `.database`/`.schema` 变体。
     schemaFilter: {
-      title: '架构',
-      tooltip: '选择要显示的架构',
-      allSchemas: '所有架构',
+      title: { database: '数据库', schema: '模式' },
+      tooltip: { database: '选择要显示的数据库', schema: '选择要显示的模式' },
+      all: { database: '所有数据库', schema: '所有模式' },
       filter: '筛选',
-      searchPlaceholder: '筛选架构…',
-      refresh: '刷新架构列表',
+      searchPlaceholder: { database: '筛选数据库…', schema: '筛选模式…' },
+      refresh: { database: '刷新数据库列表', schema: '刷新模式列表' },
       collapse: '收起',
       expand: '展开',
       close: '关闭',
-      empty: '无架构',
+      empty: { database: '无数据库', schema: '无模式' },
     },
   },
   // 连接侧栏（components/connection/ConnectionSidebar.vue）。
@@ -395,8 +397,10 @@ export default {
     run: '运行',
     runSelection: '运行选中',
     format: '格式化',
-    schema: '数据库',
-    noSchemas: '无可用数据库',
+    // 命名空间下拉文案——按驱动 UIDialect.NamespaceTerm 取
+    // `.database`/`.schema` 变体。
+    namespace: { database: '数据库', schema: '模式' },
+    noNamespaces: { database: '无可用数据库', schema: '无可用模式' },
     rowsCount: '{n} 行',
     rowsCountPartial: '{n}+ 行（未加载完）',
     rowsCountOfTotal: '{n} / {total} 行',

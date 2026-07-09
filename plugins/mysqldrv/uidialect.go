@@ -11,7 +11,8 @@ func (driver) UIDialect() dbdriver.UIDialect {
 		EditorDialect:          "mysql",
 		IdentQuote:             "`",
 		StringBackslashEscapes: true,
-		SystemSchemas: []string{"information_schema", "mysql", "performance_schema", "sys"},
+		SystemSchemas:          []string{"information_schema", "mysql", "performance_schema", "sys"},
+		NamespaceTerm:          "database",
 		Keywords: []string{
 			"AUTO_INCREMENT", "ENGINE", "CHARSET", "COLLATE", "UNSIGNED",
 			"SHOW TABLES", "SHOW DATABASES", "SHOW CREATE TABLE", "SHOW COLUMNS FROM",

@@ -697,6 +697,15 @@ export class UIDialect {
     "defaultSchema"?: string;
 
     /**
+     * NamespaceTerm names what ListDatabases returns — the object tree's
+     * top-level container and the query tab's namespace dropdown. Stable key
+     * the front-end localizes and picks node icons by: "database"
+     * (MySQL/Postgres/SQLite) or "schema" (DM, where the schema level sits in
+     * the database position). Empty means "database".
+     */
+    "namespaceTerm"?: string;
+
+    /**
      * Keywords are dialect-specific keywords/phrases offered by completion in
      * addition to the front-end's generic ANSI set.
      */
@@ -781,37 +790,37 @@ export class UIDialect {
      */
     static createFrom($$source: any = {}): UIDialect {
         const $$createField3_0 = $$createType0;
-        const $$createField5_0 = $$createType0;
-        const $$createField6_0 = $$createType6;
-        const $$createField7_0 = $$createType8;
-        const $$createField8_0 = $$createType10;
-        const $$createField9_0 = $$createType12;
-        const $$createField13_0 = $$createType13;
-        const $$createField15_0 = $$createType0;
+        const $$createField6_0 = $$createType0;
+        const $$createField7_0 = $$createType6;
+        const $$createField8_0 = $$createType8;
+        const $$createField9_0 = $$createType10;
+        const $$createField10_0 = $$createType12;
+        const $$createField14_0 = $$createType13;
+        const $$createField16_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("systemSchemas" in $$parsedSource) {
             $$parsedSource["systemSchemas"] = $$createField3_0($$parsedSource["systemSchemas"]);
         }
         if ("keywords" in $$parsedSource) {
-            $$parsedSource["keywords"] = $$createField5_0($$parsedSource["keywords"]);
+            $$parsedSource["keywords"] = $$createField6_0($$parsedSource["keywords"]);
         }
         if ("functions" in $$parsedSource) {
-            $$parsedSource["functions"] = $$createField6_0($$parsedSource["functions"]);
+            $$parsedSource["functions"] = $$createField7_0($$parsedSource["functions"]);
         }
         if ("snippets" in $$parsedSource) {
-            $$parsedSource["snippets"] = $$createField7_0($$parsedSource["snippets"]);
+            $$parsedSource["snippets"] = $$createField8_0($$parsedSource["snippets"]);
         }
         if ("typeGroups" in $$parsedSource) {
-            $$parsedSource["typeGroups"] = $$createField8_0($$parsedSource["typeGroups"]);
+            $$parsedSource["typeGroups"] = $$createField9_0($$parsedSource["typeGroups"]);
         }
         if ("typeFormats" in $$parsedSource) {
-            $$parsedSource["typeFormats"] = $$createField9_0($$parsedSource["typeFormats"]);
+            $$parsedSource["typeFormats"] = $$createField10_0($$parsedSource["typeFormats"]);
         }
         if ("autoIncrement" in $$parsedSource) {
-            $$parsedSource["autoIncrement"] = $$createField13_0($$parsedSource["autoIncrement"]);
+            $$parsedSource["autoIncrement"] = $$createField14_0($$parsedSource["autoIncrement"]);
         }
         if ("indexTypes" in $$parsedSource) {
-            $$parsedSource["indexTypes"] = $$createField15_0($$parsedSource["indexTypes"]);
+            $$parsedSource["indexTypes"] = $$createField16_0($$parsedSource["indexTypes"]);
         }
         return new UIDialect($$parsedSource as Partial<UIDialect>);
     }

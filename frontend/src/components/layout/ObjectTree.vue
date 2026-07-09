@@ -28,6 +28,7 @@ import { setActiveTableContext } from '../../api/tableContextMenu'
 import { setActiveTreeContext } from '../../api/treeContextMenu'
 import { system as systemApi } from '../../api'
 import { t } from '../../i18n'
+import { namespaceTermOf } from '../../api/dialect'
 import AppIcon from '../shared/AppIcon.vue'
 import databaseIcon from '../../assets/icons/database.svg?raw'
 import table2Icon from '../../assets/icons/table-2.svg?raw'
@@ -58,7 +59,10 @@ function renderPrefix({ option }: { option: TreeOption }) {
       ? h('span', { class: 'tree-pk' }, '🔑')
       : h(AppIcon, { src: tableOfContentsIcon })
   }
-  const src = KIND_ICONS[meta.kind]
+  // 顶层节点按驱动的 NamespaceTerm 取 icon：DM 等驱动的顶层实为 schema。
+  const src = meta.kind === 'database' && nsTerm.value === 'schema'
+    ? KIND_ICONS.schema
+    : KIND_ICONS[meta.kind]
   return src ? h(AppIcon, { src }) : null
 }
 
@@ -79,6 +83,12 @@ const message = useMessage()
 // driver; the tree inserts schema nodes when true.
 const hasSchemas = computed(
   () => !!connStore.driverByName.get(props.connection.driver)?.capabilities?.schemas,
+)
+
+// What the tree's top level lists (UIDialect.NamespaceTerm) — picks the node
+// icon and the `.database`/`.schema` variant of the filter panel's copy.
+const nsTerm = computed(() =>
+  namespaceTermOf(connStore.driverByName.get(props.connection.driver)?.ui),
 )
 
 // Whether the driver implements the DatabaseEditor extension (CREATE/ALTER
@@ -692,7 +702,7 @@ onBeforeUnmount(() => {
         @update:show="onPanelShow"
       >
         <template #trigger>
-          <span class="schema-trigger" :title="$t('objectTree.schemaFilter.tooltip')">
+          <span class="schema-trigger" :title="$t(`objectTree.schemaFilter.tooltip.${nsTerm}`)">
             <span class="st-count">{{ triggerLabel }}</span>
             <svg class="st-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M4 6l4 4 4-4" />
@@ -701,14 +711,14 @@ onBeforeUnmount(() => {
         </template>
         <div class="schema-panel">
           <div class="sp-head">
-            <span class="sp-title">{{ $t('objectTree.schemaFilter.title') }}</span>
+            <span class="sp-title">{{ $t(`objectTree.schemaFilter.title.${nsTerm}`) }}</span>
             <span class="sp-spacer" />
             <button
               class="sp-ico"
               type="button"
               :class="{ spinning: schemaBusy }"
               :disabled="schemaBusy"
-              :title="$t('objectTree.schemaFilter.refresh')"
+              :title="$t(`objectTree.schemaFilter.refresh.${nsTerm}`)"
               @click="onRefreshSchemas"
             >
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -745,7 +755,7 @@ onBeforeUnmount(() => {
               :disabled="totalCount === 0"
               @update:checked="toggleAll"
             >
-              {{ $t('objectTree.schemaFilter.allSchemas') }}
+              {{ $t(`objectTree.schemaFilter.all.${nsTerm}`) }}
             </n-checkbox>
             <span class="sp-count">{{ selectedCount }}/{{ totalCount }}</span>
             <span class="sp-spacer" />
@@ -768,7 +778,7 @@ onBeforeUnmount(() => {
               size="tiny"
               v-model:value="searchText"
               clearable
-              :placeholder="$t('objectTree.schemaFilter.searchPlaceholder')"
+              :placeholder="$t(`objectTree.schemaFilter.searchPlaceholder.${nsTerm}`)"
             />
           </div>
           <div v-show="!listCollapsed" class="sp-list">
@@ -785,7 +795,7 @@ onBeforeUnmount(() => {
                     </n-checkbox>
                   </label>
                 </template>
-                <div v-else class="sp-empty">{{ $t('objectTree.schemaFilter.empty') }}</div>
+                <div v-else class="sp-empty">{{ $t(`objectTree.schemaFilter.empty.${nsTerm}`) }}</div>
               </n-scrollbar>
             </n-spin>
           </div>

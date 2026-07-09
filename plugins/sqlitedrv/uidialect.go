@@ -8,6 +8,7 @@ func (driver) UIDialect() dbdriver.UIDialect {
 	return dbdriver.UIDialect{
 		EditorDialect: "sqlite",
 		IdentQuote:    `"`,
+		NamespaceTerm: "database",
 		Keywords: []string{
 			"PRAGMA", "VACUUM", "ANALYZE", "REINDEX", "ATTACH DATABASE", "DETACH DATABASE",
 			"AUTOINCREMENT", "WITHOUT ROWID", "STRICT", "IF NOT EXISTS", "IF EXISTS",

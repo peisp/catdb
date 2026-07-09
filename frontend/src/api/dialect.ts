@@ -83,6 +83,15 @@ export async function uiDialectForConnection(connId: string): Promise<UIDialect>
 
 // ---- descriptor-driven helpers ----------------------------------------------
 
+/** What the tree's top-level container is (UIDialect.NamespaceTerm) — drives
+ *  UI copy (i18n keys nested under `.database` / `.schema`) and node icons. */
+export type NamespaceTerm = 'database' | 'schema'
+
+/** The dialect's namespace term, defaulting to 'database' when undeclared. */
+export function namespaceTermOf(d: UIDialect | undefined | null): NamespaceTerm {
+  return d?.namespaceTerm === 'schema' ? 'schema' : 'database'
+}
+
 /** Quote an identifier with the dialect's quote character (doubling embedded ones). */
 export function quoteIdentWith(d: UIDialect, name: string): string {
   const q = d.identQuote || '"'

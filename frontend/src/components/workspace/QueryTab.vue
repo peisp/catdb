@@ -32,7 +32,7 @@ import { format } from 'sql-formatter'
 import { useQueryStore } from '../../stores/query'
 import { useMetadataStore } from '../../stores/metadata'
 import type { Capabilities } from '../../api/query'
-import { genericUIDialect, uiDialectForDriver, type UIDialect } from '../../api/dialect'
+import { genericUIDialect, namespaceTermOf, uiDialectForDriver, type UIDialect } from '../../api/dialect'
 import type { CompletionCatalog, SchemaTable } from '../../editor/sqlCompletion'
 import { t } from '../../i18n'
 
@@ -61,6 +61,10 @@ const uiDialect = ref<UIDialect>(genericUIDialect())
 watch(() => props.driver, async (d) => {
   uiDialect.value = d ? await uiDialectForDriver(d) : genericUIDialect()
 }, { immediate: true })
+
+// What the toolbar dropdown lists (UIDialect.NamespaceTerm) — picks the
+// `.database`/`.schema` variant of its placeholder/empty copy.
+const nsTerm = computed(() => namespaceTermOf(uiDialect.value))
 
 const currentDb = ref<string | null>(null)
 /** SchemaTable[] view of one cached snapshot, or null if not loaded yet. */
@@ -489,7 +493,7 @@ function onSplitDown(e: PointerEvent) {
           :disabled="tab.status === 'running' || dbOptions.length === 0"
           class="schema-select"
         >
-          <option value="" disabled>{{ dbOptions.length ? $t('queryTab.schema') : $t('queryTab.noSchemas') }}</option>
+          <option value="" disabled>{{ dbOptions.length ? $t(`queryTab.namespace.${nsTerm}`) : $t(`queryTab.noNamespaces.${nsTerm}`) }}</option>
           <option v-for="opt in dbOptions" :key="opt.value" :value="opt.value">
             {{ opt.label }}
           </option>

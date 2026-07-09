@@ -15,6 +15,9 @@ func (driver) UIDialect() dbdriver.UIDialect {
 		SystemSchemas:          []string{"SYS", "SYSAUDITOR", "SYSSSO", "CTISYS"},
 		// No fixed default schema — each user lands in their own.
 		DefaultSchema: "",
+		// The tree's top level lists schemas (the schema level collapsed into
+		// the database position) — label and icon them as schemas.
+		NamespaceTerm: "schema",
 		Keywords: []string{
 			"IDENTITY", "TOP", "LIMIT", "OFFSET", "ROWNUM",
 			"MERGE INTO", "CONNECT BY", "START WITH", "PRIOR",
