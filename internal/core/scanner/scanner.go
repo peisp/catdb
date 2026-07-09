@@ -176,7 +176,7 @@ func convert(raw sql.RawBytes, t *sql.ColumnType) any {
 		return false
 
 	case name == "DATE":
-		if t, ok := tryParseTime(string(raw), "2006-01-02"); ok {
+		if t, ok := tryParseTime(string(raw), dateLayouts...); ok {
 			return t.Format("2006-01-02")
 		}
 		return string(raw)
@@ -185,13 +185,13 @@ func convert(raw sql.RawBytes, t *sql.ColumnType) any {
 		return string(raw)
 
 	case name == "DATETIME" || strings.HasPrefix(name, "DATETIME"):
-		if t, ok := tryParseTime(string(raw), "2006-01-02 15:04:05.999999", "2006-01-02 15:04:05"); ok {
+		if t, ok := tryParseTime(string(raw), datetimeLayouts...); ok {
 			return t.Format("2006-01-02 15:04:05.999999")
 		}
 		return string(raw)
 
 	case name == "TIMESTAMP" || strings.HasPrefix(name, "TIMESTAMP"):
-		if t, ok := tryParseTime(string(raw), "2006-01-02 15:04:05.999999", "2006-01-02 15:04:05"); ok {
+		if t, ok := tryParseTime(string(raw), datetimeLayouts...); ok {
 			return t.Format("2006-01-02 15:04:05.999999")
 		}
 		return string(raw)
@@ -224,6 +224,24 @@ func convert(raw sql.RawBytes, t *sql.ColumnType) any {
 		return string(raw)
 	}
 }
+
+// datetimeLayouts covers the textual forms a datetime/timestamp cell can
+// arrive in. database/sql serializes a driver's time.Time into RawBytes as
+// RFC3339Nano (with a "T" and zone) — the Dameng driver hits this path — so we
+// must accept the "T" forms alongside the space-separated ones MySQL/SQLite
+// emit, then normalize to a single space format for display and edit round-trips.
+var datetimeLayouts = []string{
+	"2006-01-02 15:04:05.999999999",
+	"2006-01-02 15:04:05",
+	time.RFC3339Nano,
+	time.RFC3339,
+	"2006-01-02T15:04:05.999999999",
+	"2006-01-02T15:04:05",
+}
+
+// dateLayouts additionally accepts full datetime forms so a DATE column that a
+// driver hands back as a midnight time.Time still parses down to the date.
+var dateLayouts = append([]string{"2006-01-02"}, datetimeLayouts...)
 
 func tryParseTime(s string, layouts ...string) (time.Time, bool) {
 	for _, l := range layouts {

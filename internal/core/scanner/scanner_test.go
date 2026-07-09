@@ -50,6 +50,21 @@ func convertWithName(raw sql.RawBytes, name string) any {
 		return string(raw) == "1"
 	case name == "JSON":
 		return string(raw)
+	case name == "DATE":
+		if t, ok := tryParseTime(string(raw), dateLayouts...); ok {
+			return t.Format("2006-01-02")
+		}
+		return string(raw)
+	case name == "DATETIME" || strings.HasPrefix(name, "DATETIME"):
+		if t, ok := tryParseTime(string(raw), datetimeLayouts...); ok {
+			return t.Format("2006-01-02 15:04:05.999999")
+		}
+		return string(raw)
+	case name == "TIMESTAMP" || strings.HasPrefix(name, "TIMESTAMP"):
+		if t, ok := tryParseTime(string(raw), datetimeLayouts...); ok {
+			return t.Format("2006-01-02 15:04:05.999999")
+		}
+		return string(raw)
 	case name == "VARCHAR" || name == "TEXT":
 		return string(raw)
 	default:
@@ -81,6 +96,28 @@ func TestConvert_Strings(t *testing.T) {
 	got := convertByName("VARCHAR", sql.RawBytes("hello"))
 	if got != "hello" {
 		t.Errorf("VARCHAR conversion: got %v", got)
+	}
+}
+
+func TestConvert_Datetime(t *testing.T) {
+	// The RFC3339 ("T", zone) forms are what database/sql hands us when a
+	// driver returns time.Time (e.g. Dameng) — they must normalize to the same
+	// space-separated string the space forms already produce, so display and
+	// edit round-trips (keyless WHERE) don't ship a "T" the DB rejects.
+	cases := []struct{ name, raw, want string }{
+		{"TIMESTAMP", "2026-07-09T23:52:08.611768Z", "2026-07-09 23:52:08.611768"},
+		{"TIMESTAMP", "2026-07-09T23:52:08.611768+08:00", "2026-07-09 23:52:08.611768"},
+		{"TIMESTAMP", "2026-07-09 23:52:08.611768", "2026-07-09 23:52:08.611768"},
+		{"DATETIME", "2026-07-09T23:52:08", "2026-07-09 23:52:08"},
+		{"DATETIME", "2026-07-09 23:52:08", "2026-07-09 23:52:08"},
+		{"DATE", "2026-07-09T00:00:00Z", "2026-07-09"},
+		{"DATE", "2026-07-09", "2026-07-09"},
+	}
+	for _, c := range cases {
+		got := convertByName(c.name, sql.RawBytes(c.raw))
+		if got != c.want {
+			t.Errorf("%s/%q = %v, want %q", c.name, c.raw, got, c.want)
+		}
 	}
 }
 
