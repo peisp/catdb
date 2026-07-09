@@ -139,6 +139,14 @@ func RegisterContextMenus(app *application.App) {
 	treeDb.Add(tr("ctx.refresh")).OnClick(emitContextEvent("ctx:tree-refresh-db"))
 	treeDb.Update()
 
+	// Variant without 「新建/编辑数据库」 for drivers that don't implement the
+	// DatabaseEditor extension (Capabilities.databaseEditor == false, e.g.
+	// SQLite). The front-end picks this menu for such connections.
+	treeDbBasic := application.NewContextMenu("catdb-tree-database-basic")
+	treeDbBasic.Add(tr("ctx.tree.newTable")).OnClick(emitContextEvent("ctx:tree-new-table"))
+	treeDbBasic.Add(tr("ctx.refresh")).OnClick(emitContextEvent("ctx:tree-refresh-db"))
+	treeDbBasic.Update()
+
 	// Schema node (schema-ful drivers, e.g. Postgres) — create a table inside
 	// the schema, or refresh its Tables/Views groups.
 	treeSchema := application.NewContextMenu("catdb-tree-schema")

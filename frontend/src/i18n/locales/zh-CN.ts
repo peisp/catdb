@@ -141,12 +141,21 @@ export default {
         sshTunnel_privateKeyPass: '私钥口令',
         sshTunnel_useAgent: '使用 ssh-agent',
         sshTunnel_knownHostsPath: 'known_hosts 路径',
+        // SQLite（驱动作用域 key：`<driver>_<字段 key>` 优先于共享 key）。
+        sqlite_database: '数据库文件',
+        sqlite_params_mode: '打开模式',
+        sqlite_params_busyTimeout: '锁等待超时（毫秒）',
+        sqlite_params_foreignKeys: '强制外键约束',
       },
       // 驱动 ConnectionSchema 帮助/提示文本，按字段 key（点 → "_"）索引。
       help: {
         database: '初始 schema；留空则连接到服务器级别',
         params_timeout: 'Go 时长字符串（如 15s、1m）',
         sshTunnel_knownHostsPath: '默认 ~/.ssh/known_hosts（主机密钥校验所需）',
+        sqlite_database: 'SQLite 数据库文件路径；使用 :memory: 表示内存数据库',
+        sqlite_params_mode: 'rwc：读写，不存在则创建；rw：读写，必须已存在；ro：只读',
+        sqlite_params_busyTimeout: '另一连接持有写锁时的等待毫秒数',
+        sqlite_params_foreignKeys: '启用外键约束检查（PRAGMA foreign_keys）',
       },
     },
   },

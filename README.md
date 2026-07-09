@@ -4,7 +4,7 @@
 
 > A cross-platform desktop database management tool.
 
-Currently supports **MySQL** and **PostgreSQL**; more databases are added through compile-time registered driver plugins.
+Currently supports **MySQL**, **PostgreSQL** and **SQLite**; more databases are added through compile-time registered driver plugins.
 
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)
 ![go](https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go&logoColor=white)
@@ -26,7 +26,7 @@ Currently supports **MySQL** and **PostgreSQL**; more databases are added throug
 
 ## ✨ Features
 
-- **Connection management**: create / edit / group / test / persist MySQL and PostgreSQL connections; passwords live in the OS keyring and are never written to disk in plaintext; SSL and SSH tunnels supported.
+- **Connection management**: create / edit / group / test / persist MySQL / PostgreSQL / SQLite connections; passwords live in the OS keyring and are never written to disk in plaintext; SSL and SSH tunnels supported.
 - **SQL editor** (CodeMirror 6):
   - Per-dialect keyword highlighting and uppercase completion
   - Metadata-driven database / table / column completion (including cross-database `db.table.col`)
@@ -57,9 +57,10 @@ Currently supports **MySQL** and **PostgreSQL**; more databases are added throug
 |---|---|
 | MySQL | ✅ |
 | PostgreSQL | ✅ |
+| SQLite | ✅ |
 | Windows + macOS | ✅ |
 | Linux (GTK3) | runs, not guaranteed |
-| SQLite / SQL Server / … | ⬜ interface reserved, waiting for plugins |
+| SQL Server / … | ⬜ interface reserved, waiting for plugins |
 | Data transfer / structure sync / data sync | ✅ same-driver; cross-driver (heterogeneous) roadmap in [`docs/异构数据库同步与传输方案.md`](docs/异构数据库同步与传输方案.md) |
 | Runtime dynamic plugins (go plugin / Goja) | ⬜ not on the roadmap |
 | ER diagrams | ⬜ future iteration |
@@ -78,7 +79,7 @@ Currently supports **MySQL** and **PostgreSQL**; more databases are added throug
 | Result table | [`@tanstack/vue-table`](https://tanstack.com/table) + [`@tanstack/vue-virtual`](https://tanstack.com/virtual) |
 | MySQL driver | `github.com/go-sql-driver/mysql` |
 | PostgreSQL driver | [`github.com/jackc/pgx/v5`](https://github.com/jackc/pgx) (native + pgxpool) |
-| Local config | [`modernc.org/sqlite`](https://gitlab.com/cznic/sqlite) (pure Go, **no CGO SQLite**) |
+| SQLite driver / local config | [`modernc.org/sqlite`](https://gitlab.com/cznic/sqlite) (pure Go, **no CGO SQLite**) |
 | Credential storage | [`github.com/zalando/go-keyring`](https://github.com/zalando/go-keyring) |
 | Excel export | [`github.com/xuri/excelize/v2`](https://github.com/qax-os/excelize) |
 | SSH tunnel | `golang.org/x/crypto/ssh` |
@@ -163,8 +164,10 @@ catdb/
 │   ├── plugins_all.go       # build-tag-controlled anonymous import aggregation
 │   ├── plugins_mysql.go
 │   ├── plugins_postgres.go
+│   ├── plugins_sqlite.go
 │   ├── mysqldrv/            # MySQL driver implementation
-│   └── postgresdrv/         # PostgreSQL driver implementation (pgx native, per-database pools)
+│   ├── postgresdrv/         # PostgreSQL driver implementation (pgx native, per-database pools)
+│   └── sqlitedrv/           # SQLite driver implementation (modernc.org/sqlite, pure Go)
 └── frontend/
     └── src/
         ├── api/             # frontend anti-corruption layer: wraps bindings + events, components only call api/
