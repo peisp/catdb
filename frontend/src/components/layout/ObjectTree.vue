@@ -34,12 +34,13 @@ import table2Icon from '../../assets/icons/table-2.svg?raw'
 import scanEyeIcon from '../../assets/icons/scan-eye.svg?raw'
 import fileCodeCornerFromIcon from '../../assets/icons/file-code-corner.svg?raw'
 import tableOfContentsIcon from '../../assets/icons/table-of-contents.svg?raw'
+import schemaIcon from '../../assets/icons/schema.svg?raw'
 
 // Per-kind node icon (lucide). Group nodes share their category's icon; the
 // column leaf keeps n-tree's default switcher-only look.
 const KIND_ICONS: Partial<Record<TreeMeta['kind'], string>> = {
   database: databaseIcon,
-  schema: databaseIcon,
+  schema: schemaIcon,
   tableGroup: table2Icon,
   viewGroup: scanEyeIcon,
   queryGroup: fileCodeCornerFromIcon,
