@@ -33,6 +33,11 @@ type Capabilities struct {
 	Views            bool `json:"views"`
 	Transactions     bool `json:"transactions"`
 	ExplainPlan      bool `json:"explainPlan"`
+	// DatabaseEditor reports whether the driver's Metadata implements the
+	// optional DatabaseEditor extension (CREATE/ALTER DATABASE). The UI hides
+	// the 「新建/编辑数据库」 actions when false (e.g. SQLite, which has no such
+	// statement — a database is a file).
+	DatabaseEditor bool `json:"databaseEditor"`
 }
 
 // SSLConfig is the framework-agnostic SSL/TLS profile passed to drivers.

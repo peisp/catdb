@@ -46,6 +46,7 @@ func (driver) Capabilities() dbdriver.Capabilities {
 		Views:            true,
 		Transactions:     true,
 		ExplainPlan:      true,
+		DatabaseEditor:   true, // metadata implements DatabaseEditor (see dbeditor.go)
 	}
 }
 

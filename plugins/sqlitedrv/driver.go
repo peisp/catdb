@@ -39,7 +39,8 @@ func (driver) Capabilities() dbdriver.Capabilities {
 		Triggers:         true,
 		Views:            true,
 		Transactions:     true,
-		ExplainPlan:      true, // EXPLAIN QUERY PLAN
+		ExplainPlan:      true,  // EXPLAIN QUERY PLAN
+		DatabaseEditor:   false, // no CREATE/ALTER DATABASE — a database is a file
 	}
 }
 

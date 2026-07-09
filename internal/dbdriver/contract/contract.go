@@ -58,6 +58,7 @@ func Run(t *testing.T, ctx context.Context, d dbdriver.Driver, cfg dbdriver.Conn
 	t.Run("Query/Scalar", func(t *testing.T) { testQueryScalar(t, ctx, conn) })
 	t.Run("Query/Cancel", func(t *testing.T) { testQueryCancel(t, ctx, conn, fx) })
 	t.Run("Metadata", func(t *testing.T) { testMetadata(t, ctx, d, conn, fx) })
+	t.Run("DatabaseEditor", func(t *testing.T) { testDatabaseEditor(t, ctx, d, conn) })
 	t.Run("Edit", func(t *testing.T) { testEdit(t, ctx, d, conn, fx) })
 	t.Run("DDL", func(t *testing.T) { testDDL(t, ctx, d, conn) })
 	t.Run("Dialect", func(t *testing.T) { testDialect(t, ctx, d, conn, fx) })
@@ -119,6 +120,28 @@ func testQueryCancel(t *testing.T, ctx context.Context, c dbdriver.Connection, f
 	if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(tctx.Err(), context.DeadlineExceeded) {
 		// The driver may wrap the error; accept any cancel-shaped failure.
 		t.Logf("note: driver returned %v (not DeadlineExceeded directly)", err)
+	}
+}
+
+// testDatabaseEditor asserts the driver's Capabilities.DatabaseEditor flag
+// matches whether its Metadata implements the optional DatabaseEditor
+// extension. A mismatch means the UI would either offer a 「新建数据库」 form
+// that fails at call time (capability true, interface missing) or hide one
+// that would work (capability false, interface present).
+func testDatabaseEditor(t *testing.T, ctx context.Context, d dbdriver.Driver, c dbdriver.Connection) {
+	m := c.Metadata()
+	if m == nil {
+		t.Fatal("Metadata() returned nil")
+	}
+	ed, ok := m.(dbdriver.DatabaseEditor)
+	if want := d.Capabilities().DatabaseEditor; ok != want {
+		t.Fatalf("Capabilities.DatabaseEditor = %v but Metadata implements DatabaseEditor = %v — they must agree", want, ok)
+	}
+	// When advertised, the option-fields descriptor must actually load.
+	if ok {
+		if _, err := ed.DatabaseOptionFields(ctx); err != nil {
+			t.Fatalf("DatabaseOptionFields: %v", err)
+		}
 	}
 }
 

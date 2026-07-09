@@ -16,6 +16,14 @@ export class Capabilities {
     "transactions": boolean;
     "explainPlan": boolean;
 
+    /**
+     * DatabaseEditor reports whether the driver's Metadata implements the
+     * optional DatabaseEditor extension (CREATE/ALTER DATABASE). The UI hides
+     * the 「新建/编辑数据库」 actions when false (e.g. SQLite, which has no such
+     * statement — a database is a file).
+     */
+    "databaseEditor": boolean;
+
     /** Creates a new Capabilities instance. */
     constructor($$source: Partial<Capabilities> = {}) {
         if (!("schemas" in $$source)) {
@@ -35,6 +43,9 @@ export class Capabilities {
         }
         if (!("explainPlan" in $$source)) {
             this["explainPlan"] = false;
+        }
+        if (!("databaseEditor" in $$source)) {
+            this["databaseEditor"] = false;
         }
 
         Object.assign(this, $$source);
