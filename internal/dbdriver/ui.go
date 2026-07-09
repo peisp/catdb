@@ -14,8 +14,8 @@ import "context"
 // technical reference text shown as-is.
 type UIDialect struct {
 	// EditorDialect selects the CodeMirror SQL dialect by id:
-	// "mysql" | "mariadb" | "postgresql" | "sqlite" | "mssql" | "standard".
-	// Unknown ids fall back to "standard".
+	// "mysql" | "mariadb" | "postgresql" | "sqlite" | "mssql" | "plsql" |
+	// "standard". Unknown ids fall back to "standard".
 	EditorDialect string `json:"editorDialect"`
 
 	// IdentQuote is the identifier quote character ("`", "\"", "[").

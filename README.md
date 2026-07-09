@@ -4,7 +4,7 @@
 
 > A cross-platform desktop database management tool.
 
-Currently supports **MySQL**, **PostgreSQL** and **SQLite**; more databases are added through compile-time registered driver plugins.
+Currently supports **MySQL**, **PostgreSQL**, **SQLite** and **DM (Dameng)**; more databases are added through compile-time registered driver plugins.
 
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)
 ![go](https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go&logoColor=white)
@@ -58,6 +58,7 @@ Currently supports **MySQL**, **PostgreSQL** and **SQLite**; more databases are 
 | MySQL | ✅ |
 | PostgreSQL | ✅ |
 | SQLite | ✅ |
+| DM (Dameng) | ✅ |
 | Windows + macOS | ✅ |
 | Linux (GTK3) | runs, not guaranteed |
 | SQL Server / … | ⬜ interface reserved, waiting for plugins |
@@ -79,6 +80,7 @@ Currently supports **MySQL**, **PostgreSQL** and **SQLite**; more databases are 
 | Result table | [`@tanstack/vue-table`](https://tanstack.com/table) + [`@tanstack/vue-virtual`](https://tanstack.com/virtual) |
 | MySQL driver | `github.com/go-sql-driver/mysql` |
 | PostgreSQL driver | [`github.com/jackc/pgx/v5`](https://github.com/jackc/pgx) (native + pgxpool) |
+| DM (Dameng) driver | [`gitee.com/chunanyong/dm`](https://gitee.com/chunanyong/dm) (official Go driver mirror, pure Go) |
 | SQLite driver / local config | [`modernc.org/sqlite`](https://gitlab.com/cznic/sqlite) (pure Go, **no CGO SQLite**) |
 | Credential storage | [`github.com/zalando/go-keyring`](https://github.com/zalando/go-keyring) |
 | Excel export | [`github.com/xuri/excelize/v2`](https://github.com/qax-os/excelize) |
@@ -165,9 +167,11 @@ catdb/
 │   ├── plugins_mysql.go
 │   ├── plugins_postgres.go
 │   ├── plugins_sqlite.go
+│   ├── plugins_dm.go
 │   ├── mysqldrv/            # MySQL driver implementation
 │   ├── postgresdrv/         # PostgreSQL driver implementation (pgx native, per-database pools)
-│   └── sqlitedrv/           # SQLite driver implementation (modernc.org/sqlite, pure Go)
+│   ├── sqlitedrv/           # SQLite driver implementation (modernc.org/sqlite, pure Go)
+│   └── dmdrv/               # DM (Dameng) driver implementation (official Go driver, schemas as databases)
 └── frontend/
     └── src/
         ├── api/             # frontend anti-corruption layer: wraps bindings + events, components only call api/

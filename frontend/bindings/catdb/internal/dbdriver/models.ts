@@ -668,8 +668,8 @@ export class UIAutoIncrement {
 export class UIDialect {
     /**
      * EditorDialect selects the CodeMirror SQL dialect by id:
-     * "mysql" | "mariadb" | "postgresql" | "sqlite" | "mssql" | "standard".
-     * Unknown ids fall back to "standard".
+     * "mysql" | "mariadb" | "postgresql" | "sqlite" | "mssql" | "plsql" |
+     * "standard". Unknown ids fall back to "standard".
      */
     "editorDialect": string;
 

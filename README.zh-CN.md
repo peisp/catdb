@@ -4,7 +4,7 @@
 
 > 一个跨平台的桌面数据库管理工具。
 
-目前支持 **MySQL**、**PostgreSQL** 与 **SQLite**；其他数据库通过编译期注册的插件接口扩展，逐步跟进。
+目前支持 **MySQL**、**PostgreSQL**、**SQLite** 与 **达梦（DM）**；其他数据库通过编译期注册的插件接口扩展，逐步跟进。
 
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)
 ![go](https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go&logoColor=white)
@@ -58,6 +58,7 @@
 | MySQL | ✅ |
 | PostgreSQL | ✅ |
 | SQLite | ✅ |
+| 达梦（DM） | ✅ |
 | Windows + macOS | ✅ |
 | Linux (GTK3) | 可跑但不保证 |
 | SQL Server / … | ⬜ 接口预留，等插件 |
@@ -79,6 +80,7 @@
 | 结果表格 | [`@tanstack/vue-table`](https://tanstack.com/table) + [`@tanstack/vue-virtual`](https://tanstack.com/virtual) |
 | MySQL 驱动 | `github.com/go-sql-driver/mysql` |
 | PostgreSQL 驱动 | [`github.com/jackc/pgx/v5`](https://github.com/jackc/pgx)（原生 + pgxpool） |
+| 达梦（DM）驱动 | [`gitee.com/chunanyong/dm`](https://gitee.com/chunanyong/dm)（官方 Go 驱动镜像，纯 Go） |
 | SQLite 驱动 / 本地配置 | [`modernc.org/sqlite`](https://gitlab.com/cznic/sqlite)（纯 Go，**禁止 CGO SQLite**） |
 | 凭据存储 | [`github.com/zalando/go-keyring`](https://github.com/zalando/go-keyring) |
 | Excel 导出 | [`github.com/xuri/excelize/v2`](https://github.com/qax-os/excelize) |
@@ -164,9 +166,11 @@ catdb/
 │   ├── plugins_mysql.go
 │   ├── plugins_postgres.go
 │   ├── plugins_sqlite.go
+│   ├── plugins_dm.go
 │   ├── mysqldrv/            # MySQL 驱动实现
 │   ├── postgresdrv/         # PostgreSQL 驱动实现（pgx 原生，按库独立连接池）
-│   └── sqlitedrv/           # SQLite 驱动实现（modernc.org/sqlite，纯 Go）
+│   ├── sqlitedrv/           # SQLite 驱动实现（modernc.org/sqlite，纯 Go）
+│   └── dmdrv/               # 达梦（DM）驱动实现（官方 Go 驱动，模式映射为数据库层级）
 └── frontend/
     └── src/
         ├── api/             # 前端防腐层：封装绑定 + 事件，组件只调 api/
