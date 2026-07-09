@@ -30,6 +30,39 @@ func TestLooksLikeRowsQuery(t *testing.T) {
 	}
 }
 
+func TestExtractTableRef(t *testing.T) {
+	cases := []struct {
+		sql           string
+		defaultSchema string
+		wantDB        string
+		wantTable     string // "" = expect nil
+	}{
+		{"SELECT * FROM t", "mydb", "mydb", "t"},
+		{"SELECT * FROM db1.t", "", "db1", "t"},
+		{"SELECT * FROM `db1`.`t`", "", "db1", "t"},
+		// ANSI double-quoted identifiers (DM/Postgres/Oracle style).
+		{`SELECT * FROM "OPERATION_LOG"`, "SYSDBA", "SYSDBA", "OPERATION_LOG"},
+		{`SELECT * FROM "S1"."T1"`, "", "S1", "T1"},
+		// No default namespace for an unqualified name → nil.
+		{"SELECT * FROM t", "", "", ""},
+		// Multi-table / aggregate → nil.
+		{"SELECT * FROM a JOIN b ON a.id=b.id", "d", "", ""},
+		{"SELECT x, COUNT(*) FROM t GROUP BY x", "d", "", ""},
+	}
+	for _, c := range cases {
+		got := extractTableRef(c.sql, c.defaultSchema)
+		if c.wantTable == "" {
+			if got != nil {
+				t.Errorf("extractTableRef(%q, %q) = %+v, want nil", c.sql, c.defaultSchema, got)
+			}
+			continue
+		}
+		if got == nil || got.DB != c.wantDB || got.Table != c.wantTable {
+			t.Errorf("extractTableRef(%q, %q) = %+v, want {%s %s}", c.sql, c.defaultSchema, got, c.wantDB, c.wantTable)
+		}
+	}
+}
+
 func TestIsCountableQuery(t *testing.T) {
 	cases := map[string]bool{
 		"SELECT * FROM t":                    true,

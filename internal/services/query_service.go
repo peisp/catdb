@@ -946,7 +946,8 @@ func skipWS(s string, i int) int {
 }
 
 // readQualIdent reads a qualified SQL identifier at position i in s, handling
-// backtick quoting and db.table dot notation. Returns up to 2 parts.
+// backtick and double-quote quoting (MySQL vs ANSI dialects like DM/Postgres)
+// and db.table dot notation. Returns up to 2 parts.
 func readQualIdent(s string, i int) []string {
 	var parts []string
 	for len(parts) < 2 && i < len(s) {
@@ -955,14 +956,15 @@ func readQualIdent(s string, i int) []string {
 			break
 		}
 		var ident string
-		if s[i] == '`' {
+		if s[i] == '`' || s[i] == '"' {
+			q := s[i]
 			i++
-			for i < len(s) && s[i] != '`' {
+			for i < len(s) && s[i] != q {
 				ident += string(s[i])
 				i++
 			}
 			if i < len(s) {
-				i++ // skip closing backtick
+				i++ // skip closing quote
 			}
 		} else {
 			start := i
