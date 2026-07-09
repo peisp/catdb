@@ -25,13 +25,16 @@
        data grid). Light = macOS textBackgroundColor (white); dark = DataGrip-
        style #333. MUST stay in sync with editorSurface in styles/theme.ts, which
        feeds the canvas grid + CodeMirror (they can't read this CSS var). */
-    --app-content-bg: #ffffff;
+    --app-content-bg: #f3f3f3;
+
+    --n-divider-color: rgba(0, 0, 0, 0.12);
 }
 
 @media (prefers-color-scheme: dark) {
     :root {
         --n-border-color: rgba(255, 255, 255, 0.2);
         --app-content-bg: #333333;
+        --n-divider-color: rgba(255, 255, 255, 0.2);
     }
 }
 

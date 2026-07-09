@@ -252,16 +252,38 @@ func (s *ConnectionService) validateDraft(d ConnectionDraft, requireName bool) e
 	if d.Driver == "" {
 		return fmt.Errorf("ConnectionService: driver is required")
 	}
-	if _, err := registry.Get(d.Driver); err != nil {
+	drv, err := registry.Get(d.Driver)
+	if err != nil {
 		return err
 	}
-	if d.Host == "" {
-		return fmt.Errorf("ConnectionService: host is required")
-	}
-	if d.User == "" {
-		return fmt.Errorf("ConnectionService: user is required")
+	// Required-ness comes from the driver's ConnectionSchema — embedded
+	// databases (SQLite) have no host/user at all.
+	for _, f := range drv.ConnectionSchema() {
+		if f.Required && draftFieldEmpty(d, f.Key) {
+			return fmt.Errorf("ConnectionService: %s is required", f.Key)
+		}
 	}
 	return nil
+}
+
+// draftFieldEmpty reports whether the draft value addressed by a
+// ConnectionSchema field key is unset. Password is never validated here —
+// edits legitimately leave it blank (the stored keyring value is kept).
+func draftFieldEmpty(d ConnectionDraft, key string) bool {
+	switch key {
+	case "host":
+		return d.Host == ""
+	case "port":
+		return d.Port == 0
+	case "user":
+		return d.User == ""
+	case "database":
+		return d.Database == ""
+	}
+	if k, ok := strings.CutPrefix(key, "params."); ok {
+		return d.Params[k] == ""
+	}
+	return false
 }
 
 func (s *ConnectionService) draftToConfig(d ConnectionDraft) dbdriver.ConnConfig {

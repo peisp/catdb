@@ -424,7 +424,10 @@ const newApplyDisabled = computed(() => {
       <!-- DDL (read-only). Hidden in 'new' mode — the AlterSqlPanel already
            shows the CREATE TABLE statement for every tab. -->
       <n-tab-pane v-if="mode !== 'new'" name="ddl" tab="DDL" display-directive="show:lazy">
-        <DdlPanel variant="tab" :ddl="ddl" :dialect="dialect" />
+        <div class="tab-body-ddl">
+          <DdlPanel variant="tab" :ddl="ddl" :dialect="dialect" />
+        </div>
+
       </n-tab-pane>
     </n-tabs>
   </n-spin>
@@ -565,6 +568,12 @@ const newApplyDisabled = computed(() => {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+
+.tab-body-ddl {
+  height: 100%;
+  margin: 6px 6px;
+  background-color: var(--app-content-bg);
 }
 
 </style>

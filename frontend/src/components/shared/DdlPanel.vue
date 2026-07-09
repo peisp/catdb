@@ -50,6 +50,7 @@ function initDdlEditor() {
       extensions: [
         sql({ dialect: cmSqlDialect((props.dialect ?? genericUIDialect()).editorDialect) }),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        EditorState.readOnly.of(true),
         EditorView.editable.of(false),
         EditorView.lineWrapping,
         EditorView.theme({

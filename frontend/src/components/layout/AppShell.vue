@@ -152,11 +152,6 @@ function onOpenTablesOverview(payload: { db: string; schema?: string }) {
 <template>
   <div class="root">
     <div class="shell">
-      <!-- Sidebar drag strip: invisible, covers the sidebar top so the
-           user can drag the window from the sidebar area. Only present
-           when the sidebar is visible. -->
-      <div v-if="sidebarVisible" class="sidebar-drag"></div>
-
       <!-- Floating controls overlay: sidebar toggle. Absolutely positioned
            so the sidebar can extend all the way to the top of the window
            (demo pattern). On macOS, offset right of the system traffic
@@ -261,20 +256,6 @@ function onOpenTablesOverview(payload: { db: string; schema?: string }) {
   flex-direction: row;
 }
 
-/* Tiny drag strip at the top-left corner for dragging the window when
-   clicking the empty space near the sidebar toggle. The toolbar handles
-   dragging for the right pane; this just covers the area around the
-   sidebar toggle button so the user doesn't hit a dead zone. */
-.sidebar-drag {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 150px;
-  height: 50px;
-  z-index: 5;
-  --wails-draggable: drag;
-}
-
 /* Floating controls overlay (toggle button). Stays anchored to .shell
    regardless of sidebar collapsed state, so the button visually floats
    over whichever pane is below — matching the macOS demo. */
@@ -331,7 +312,7 @@ function onOpenTablesOverview(payload: { db: string; schema?: string }) {
 @media (prefers-color-scheme: dark) {
   .main { background: rgb(0, 0, 0, 0.5); }
 }
-.main.win { background: #fff; }
+.main.win { background: #EEEEEE; }
 @media (prefers-color-scheme: dark) {
   .main.win { background: #1e1e1e; }
 }

@@ -92,6 +92,7 @@ function init() {
       extensions: [
         sql({ dialect: cmSqlDialect((props.dialect ?? genericUIDialect()).editorDialect) }),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        EditorState.readOnly.of(true),
         EditorView.editable.of(false),
         EditorView.theme({
           '&': { height: '100%', fontSize: '12px' },

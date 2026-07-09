@@ -40,5 +40,7 @@ function commit() {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  margin: 6px 6px;
+  background-color: var(--app-content-bg);
 }
 </style>

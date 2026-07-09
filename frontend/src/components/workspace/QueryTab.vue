@@ -430,19 +430,19 @@ function onSplitDown(e: PointerEvent) {
   <div class="qt">
     <div class="toolbar">
       <n-space :size="8" align="center">
-        <n-button size="small" type="primary" :disabled="tab.status === 'running'" @click="runFull">
+        <n-button size="tiny" type="primary" :disabled="tab.status === 'running'" @click="runFull">
           {{ $t('queryTab.run') }}
         </n-button>
-        <n-button size="small" :disabled="tab.status === 'running'" @click="run">
+        <n-button size="tiny" :disabled="tab.status === 'running'" @click="run">
           {{ $t('queryTab.runSelection') }}
         </n-button>
-        <n-button size="small" :disabled="tab.status === 'running'" @click="formatSql">
+        <n-button size="tiny" :disabled="tab.status === 'running'" @click="formatSql">
           {{ $t('queryTab.format') }}
         </n-button>
-        <n-button size="small" :disabled="tab.status === 'running'" @click="saveQuery">
+        <n-button size="tiny" :disabled="tab.status === 'running'" @click="saveQuery">
           {{ $t('common.save') }}
         </n-button>
-        <n-button v-if="caps?.explainPlan" size="small" :disabled="tab.status === 'running'" @click="explain">
+        <n-button v-if="caps?.explainPlan" size="tiny" :disabled="tab.status === 'running'" @click="explain">
           EXPLAIN
         </n-button>
         <!-- Transaction controls -->
@@ -450,7 +450,7 @@ function onSplitDown(e: PointerEvent) {
           <span class="sep" />
           <span class="txn-group">
             <n-button
-              size="small"
+              size="tiny"
               quaternary
               :type="hasTxn ? 'warning' : 'default'"
               :disabled="tab.status === 'running'"
@@ -461,7 +461,7 @@ function onSplitDown(e: PointerEvent) {
             </n-button>
             <n-button
               v-if="!isAutoCommit"
-              size="small"
+              size="tiny"
               quaternary
               type="success"
               :disabled="!hasTxn || tab.status === 'running'"
@@ -472,7 +472,7 @@ function onSplitDown(e: PointerEvent) {
             </n-button>
             <n-button
               v-if="!isAutoCommit"
-              size="small"
+              size="tiny"
               quaternary
               type="error"
               :disabled="!hasTxn || tab.status === 'running'"
@@ -503,7 +503,7 @@ function onSplitDown(e: PointerEvent) {
         </span>
       </n-space>
       <n-space :size="6" align="center" class="hint mono">
-        <n-button v-if="tab.status === 'running'" size="small" type="warning" @click="cancel">
+        <n-button v-if="tab.status === 'running'" size="tiny" type="warning" @click="cancel">
           {{ $t('common.cancel') }}
         </n-button>
         <span>{{ modifierKey }}+Enter</span>
@@ -731,7 +731,6 @@ function onSplitDown(e: PointerEvent) {
 /* ---- Splitter ---- */
 
 .splitter {
-  background: var(--n-divider-color);
   cursor: row-resize;
   transition: background-color 120ms ease-out;
   position: relative;
@@ -759,6 +758,7 @@ function onSplitDown(e: PointerEvent) {
 /* ---- Result / Summary tab bar ---- */
 .result-tabs {
   display: flex;
+  padding: 0px 6px;
   gap: 0;
   flex: 0 0 auto;
   border-bottom: 1px solid var(--n-divider-color);

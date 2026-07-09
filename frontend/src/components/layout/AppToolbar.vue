@@ -124,7 +124,7 @@ function openDataSyncDialog() {
 .toolbar { transition: margin-left 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
 .toolbar.sidebar-closed { margin-left: 150px; }
 .toolbar.win.sidebar-closed { margin-left: 50px; }
-.toolbar.win { background: #fff; }
+.toolbar.win { background: #EEEEEE; }
 @media (prefers-color-scheme: dark) {
   .toolbar.win { background: #1e1e1e; }
 }

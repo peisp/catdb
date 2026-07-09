@@ -4,7 +4,7 @@
 
 > 一个跨平台的桌面数据库管理工具。
 
-目前支持 **MySQL**、**PostgreSQL** 与 **达梦（DM）**；其他数据库通过编译期注册的插件接口扩展，逐步跟进。
+目前支持 **MySQL**、**PostgreSQL**、**SQLite** 与 **达梦（DM）**；其他数据库通过编译期注册的插件接口扩展，逐步跟进。
 
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)
 ![go](https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go&logoColor=white)
@@ -26,7 +26,7 @@
 
 ## ✨ 功能特性
 
-- **连接管理**：MySQL / PostgreSQL 连接的新建 / 编辑 / 分组 / 测试 / 持久化；密码走 OS keyring，绝不明文落盘；支持 SSL 与 SSH 隧道。
+- **连接管理**：MySQL / PostgreSQL / SQLite 连接的新建 / 编辑 / 分组 / 测试 / 持久化；密码走 OS keyring，绝不明文落盘；支持 SSL 与 SSH 隧道。
 - **SQL 编辑器**（基于 CodeMirror 6）：
   - 按方言的关键字高亮与大写补全
   - 元数据驱动的库 / 表 / 列自动补全（含跨库 `db.table.col` 完成）
@@ -57,10 +57,11 @@
 |---|---|
 | MySQL | ✅ |
 | PostgreSQL | ✅ |
+| SQLite | ✅ |
 | 达梦（DM） | ✅ |
 | Windows + macOS | ✅ |
 | Linux (GTK3) | 可跑但不保证 |
-| SQLite / SQL Server / … | ⬜ 接口预留，等插件 |
+| SQL Server / … | ⬜ 接口预留，等插件 |
 | 数据传输 / 结构同步 / 数据同步 | ✅ 同构；跨驱动（异构）路线图见 [`docs/异构数据库同步与传输方案.md`](docs/异构数据库同步与传输方案.md) |
 | 运行时动态插件 (go plugin / Goja) | ⬜ 主线不做 |
 | ER 图 | ⬜ 后续迭代 |
@@ -80,7 +81,7 @@
 | MySQL 驱动 | `github.com/go-sql-driver/mysql` |
 | PostgreSQL 驱动 | [`github.com/jackc/pgx/v5`](https://github.com/jackc/pgx)（原生 + pgxpool） |
 | 达梦（DM）驱动 | [`gitee.com/chunanyong/dm`](https://gitee.com/chunanyong/dm)（官方 Go 驱动镜像，纯 Go） |
-| 本地配置 | [`modernc.org/sqlite`](https://gitlab.com/cznic/sqlite)（纯 Go，**禁止 CGO SQLite**） |
+| SQLite 驱动 / 本地配置 | [`modernc.org/sqlite`](https://gitlab.com/cznic/sqlite)（纯 Go，**禁止 CGO SQLite**） |
 | 凭据存储 | [`github.com/zalando/go-keyring`](https://github.com/zalando/go-keyring) |
 | Excel 导出 | [`github.com/xuri/excelize/v2`](https://github.com/qax-os/excelize) |
 | SSH 隧道 | `golang.org/x/crypto/ssh` |
@@ -164,9 +165,11 @@ catdb/
 │   ├── plugins_all.go       # 通过 build-tag 控制的匿名导入聚合
 │   ├── plugins_mysql.go
 │   ├── plugins_postgres.go
+│   ├── plugins_sqlite.go
 │   ├── plugins_dm.go
 │   ├── mysqldrv/            # MySQL 驱动实现
 │   ├── postgresdrv/         # PostgreSQL 驱动实现（pgx 原生，按库独立连接池）
+│   ├── sqlitedrv/           # SQLite 驱动实现（modernc.org/sqlite，纯 Go）
 │   └── dmdrv/               # 达梦（DM）驱动实现（官方 Go 驱动，模式映射为数据库层级）
 └── frontend/
     └── src/

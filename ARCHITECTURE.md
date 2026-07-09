@@ -39,7 +39,7 @@
 └───────────────────────────┬───────────────────────────────────┘
 ┌───────────────────────────┴───────────────────────────────────┐
 │  驱动插件层  plugins/*  +  internal/dbdriver(接口) + registry   │
-│  [MySQL✓] [PostgreSQL✓] [DM✓] [SQLite] [...]  各实现 Driver 接口 │
+│  [MySQL✓] [PostgreSQL✓] [SQLite✓] [DM✓] [...]  各实现 Driver 接口 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -227,7 +227,7 @@ import _ "yourapp/plugins/mysqldrv"
 | MySQL | go-sql-driver/mysql | `*sql.DB` | 元数据走 information_schema；DDL 用 `SHOW CREATE TABLE` |
 | PostgreSQL | jackc/pgx/v5 | **pgx 原生 + pgxpool**（性能更优） | SSH 隧道需重写 `LookupFunc`（见 §6.2） |
 | 达梦 DM | gitee.com/chunanyong/dm | `*sql.DB` | 模式折叠进数据库层级（同 MySQL 模型）；元数据走 ALL_*/SYSOBJECTS；DDL 用 `TABLEDEF()`；不支持 REPEATABLE READ |
-| SQLite | modernc.org/sqlite | `*sql.DB` | 纯 Go，无 CGO |
+| SQLite | modernc.org/sqlite | `*sql.DB` | 纯 Go，无 CGO；元数据走 `pragma_*` 表值函数（可参数化）；类型归一化折叠到 5 种亲和性；ALTER 仅 ADD/DROP/RENAME COLUMN（其余需重建表，生成器直接报错）；契约测试免 Docker |
 | SQL Server | microsoft/go-mssqldb | `*sql.DB` | 分页 `OFFSET..FETCH` |
 | Redis/Mongo | go-redis / mongo-driver | 独立 `KVDriver`/`DocDriver` | 不套 SQL 接口，前端独立 UI |
 

@@ -146,12 +146,21 @@ export default {
         sshTunnel_privateKeyPass: 'Private key passphrase',
         sshTunnel_useAgent: 'Use ssh-agent',
         sshTunnel_knownHostsPath: 'Known hosts path',
+        // SQLite (driver-scoped keys: `<driver>_<field key>` wins over the shared key).
+        sqlite_database: 'Database file',
+        sqlite_params_mode: 'Open mode',
+        sqlite_params_busyTimeout: 'Busy timeout (ms)',
+        sqlite_params_foreignKeys: 'Enforce foreign keys',
       },
       // Driver ConnectionSchema help/hint text, keyed by field key (dots → "_").
       help: {
         database: 'Initial schema; leave blank to connect at server level',
         params_timeout: 'Go duration string (e.g. 15s, 1m)',
         sshTunnel_knownHostsPath: 'Defaults to ~/.ssh/known_hosts (required for host-key verification)',
+        sqlite_database: 'Path to the SQLite database file; use :memory: for an in-memory database',
+        sqlite_params_mode: 'rwc: read-write, create if missing; rw: read-write, must exist; ro: read-only',
+        sqlite_params_busyTimeout: 'Milliseconds to wait when another connection holds the write lock',
+        sqlite_params_foreignKeys: 'Enable foreign-key constraint enforcement (PRAGMA foreign_keys)',
       },
     },
   },

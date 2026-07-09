@@ -34,12 +34,13 @@ import table2Icon from '../../assets/icons/table-2.svg?raw'
 import scanEyeIcon from '../../assets/icons/scan-eye.svg?raw'
 import fileCodeCornerFromIcon from '../../assets/icons/file-code-corner.svg?raw'
 import tableOfContentsIcon from '../../assets/icons/table-of-contents.svg?raw'
+import schemaIcon from '../../assets/icons/schema.svg?raw'
 
 // Per-kind node icon (lucide). Group nodes share their category's icon; the
 // column leaf keeps n-tree's default switcher-only look.
 const KIND_ICONS: Partial<Record<TreeMeta['kind'], string>> = {
   database: databaseIcon,
-  schema: databaseIcon,
+  schema: schemaIcon,
   tableGroup: table2Icon,
   viewGroup: scanEyeIcon,
   queryGroup: fileCodeCornerFromIcon,
@@ -78,6 +79,13 @@ const message = useMessage()
 // driver; the tree inserts schema nodes when true.
 const hasSchemas = computed(
   () => !!connStore.driverByName.get(props.connection.driver)?.capabilities?.schemas,
+)
+
+// Whether the driver implements the DatabaseEditor extension (CREATE/ALTER
+// DATABASE). Gates the header 「新建数据库」 button and the database-node
+// context-menu variant; false for SQLite (a database is a file).
+const supportsDatabaseEditor = computed(
+  () => !!connStore.driverByName.get(props.connection.driver)?.capabilities?.databaseEditor,
 )
 
 // allRootNodes holds the database node objects for every schema on the
@@ -510,7 +518,7 @@ function onContextMenu(event: MouseEvent, node: TreeOption) {
         db: m.db,
         onRefreshDb: () => refreshDatabase(),
       })
-      setMenu('catdb-tree-database')
+      setMenu(supportsDatabaseEditor.value ? 'catdb-tree-database' : 'catdb-tree-database-basic')
       break
     case 'schema':
       if (!m.db) return
@@ -785,6 +793,7 @@ onBeforeUnmount(() => {
       </n-popover>
       <div class="actions">
         <n-button
+          v-if="supportsDatabaseEditor"
           class="hbtn"
           size="tiny"
           quaternary

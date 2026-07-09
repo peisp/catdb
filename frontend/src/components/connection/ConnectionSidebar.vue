@@ -317,7 +317,12 @@ onMounted(() => {
 
 <style scoped>
 .sidebar { display: flex; flex-direction: column; height: 100%; }
+.sidebar.win { background: var(--app-content-bg); }
+@media (prefers-color-scheme: dark) {
+  .sidebar.win { background: #1e1e1e; }
+}
 .header {
+  --wails-draggable: drag;
   display: flex;
   align-items: center;
   padding: 6px 10px;
