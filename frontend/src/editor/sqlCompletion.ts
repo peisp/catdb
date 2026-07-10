@@ -294,12 +294,15 @@ function aliasCandidates(name: string): string[] {
   const out: string[] = []
   if (words.length > 1) {
     const initials = words.map((w) => w[0]).join('')
-    if (initials.length >= 2) out.push(initials.slice(0, 2))
-    if (initials.length >= 3) out.push(initials.slice(0, 3))
+    if (initials.length >= 2) {
+      // Prefer full initials (version_daily_stats → vds,
+      // version_daily_stats_awaw → vdsa); shorter forms are collision fallbacks.
+      out.push(initials, initials.slice(0, 3), initials.slice(0, 2))
+    }
   }
   const w0 = words[0] ?? ''
   out.push(w0.slice(0, 1), w0.slice(0, 2), w0.slice(0, 3))
-  return out.filter(Boolean)
+  return [...new Set(out.filter(Boolean))]
 }
 
 export function generateAlias(name: string, existing: Set<string>): string {
