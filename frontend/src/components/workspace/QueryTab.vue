@@ -498,13 +498,6 @@ function onSplitDown(e: PointerEvent) {
             {{ opt.label }}
           </option>
         </select>
-        <span class="sep" />
-        <n-tag size="small" :type="statusBadge.type">{{ $t(statusBadge.key) }}</n-tag>
-        <span v-if="tab.elapsedMs > 0" class="mono mute">{{ tab.elapsedMs }} ms</span>
-        <span v-if="rowsLabel" class="mono mute">{{ $t(rowsLabel.key, { n: rowsLabel.n, total: rowsLabel.total }) }}</span>
-        <span v-if="!tab.isResultSet && tab.execAffected !== null" class="mono mute">
-          {{ $t('queryTab.affectedCount', { n: tab.execAffected }) }}
-        </span>
       </n-space>
       <n-space :size="6" align="center" class="hint mono">
         <n-button v-if="tab.status === 'running'" size="tiny" type="warning" @click="cancel">
@@ -542,22 +535,32 @@ function onSplitDown(e: PointerEvent) {
         />
 
         <div class="result-slot">
-          <!-- Result / Summary toggle bar (shown when there are results) -->
-          <div v-if="tab.status === 'done' && (tab.isResultSet || tab.execAffected !== null)" class="result-tabs">
-            <button
-              class="result-tab"
-              :class="{ active: showResultView }"
-              @click="showResultView = true"
-            >
-              {{ $t('queryTab.resultTab') }}
-            </button>
-            <button
-              class="result-tab"
-              :class="{ active: !showResultView }"
-              @click="showResultView = false"
-            >
-              {{ $t('queryTab.summaryTab') }}
-            </button>
+          <!-- Result / Summary toggle bar + execution status (always visible with the pane) -->
+          <div class="result-tabs">
+            <template v-if="tab.status === 'done' && (tab.isResultSet || tab.execAffected !== null)">
+              <button
+                class="result-tab"
+                :class="{ active: showResultView }"
+                @click="showResultView = true"
+              >
+                {{ $t('queryTab.resultTab') }}
+              </button>
+              <button
+                class="result-tab"
+                :class="{ active: !showResultView }"
+                @click="showResultView = false"
+              >
+                {{ $t('queryTab.summaryTab') }}
+              </button>
+            </template>
+            <span class="result-status">
+              <n-tag size="small" :type="statusBadge.type">{{ $t(statusBadge.key) }}</n-tag>
+              <span v-if="tab.elapsedMs > 0" class="mono mute">{{ tab.elapsedMs }} ms</span>
+              <span v-if="rowsLabel" class="mono mute">{{ $t(rowsLabel.key, { n: rowsLabel.n, total: rowsLabel.total }) }}</span>
+              <span v-if="!tab.isResultSet && tab.execAffected !== null" class="mono mute">
+                {{ $t('queryTab.affectedCount', { n: tab.execAffected }) }}
+              </span>
+            </span>
           </div>
 
           <!-- Error alerts always visible -->
@@ -725,7 +728,14 @@ function onSplitDown(e: PointerEvent) {
   display: flex;
   flex-direction: column;
 }
-.alert { flex: 0 0 auto; margin: 6px 6px 0; }
+.alert {
+  flex: 0 0 auto;
+  margin: 6px 6px 0;
+  /* 错误信息可选中复制（全局默认 user-select: none）。 */
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
 /* basis: 0 → result table can NEVER push the result-slot taller than its
    grid track. All vertical scrolling lives inside ResultTable's .scroller. */
 .result-table { flex: 1 1 0; min-width: 0; min-height: 0; }
@@ -784,6 +794,16 @@ function onSplitDown(e: PointerEvent) {
 .result-tab.active {
   opacity: 1;
   border-bottom-color: var(--n-primary-color, #18a058);
+}
+/* 执行状态（原 toolbar）— 靠右排布，无 tab 按钮时撑起栏高。 */
+.result-tabs { min-height: 27px; }
+.result-status {
+  margin-left: auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px;
 }
 
 /* ---- Execution summary ---- */

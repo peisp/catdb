@@ -565,7 +565,7 @@ export const useQueryStore = defineStore('query', () => {
         t.txnId = await queryApi.beginTransaction(t.connId, t.db ?? '')
       } catch (e: any) {
         t.status = 'error'
-        t.errorMessage = String(e)
+        t.errorMessage = formatError(e)
         return
       }
     }
@@ -761,7 +761,18 @@ export const useQueryStore = defineStore('query', () => {
 
 function formatError(e: any): string {
   if (!e) return 'unknown error'
-  if (e instanceof Error) return e.message
-  if (typeof e === 'string') return e
-  try { return JSON.stringify(e) } catch { return String(e) }
+  let s: string
+  if (e instanceof Error) s = e.message
+  else if (typeof e === 'string') s = e
+  else { try { s = JSON.stringify(e) } catch { s = String(e) } }
+  // Wails 绑定错误整体是一个 CallError JSON（{message, cause, kind}），
+  // 用户只需要看 message。
+  const trimmed = s.trim()
+  if (trimmed.startsWith('{')) {
+    try {
+      const o = JSON.parse(trimmed)
+      if (o && typeof o.message === 'string' && o.message) return o.message
+    } catch { /* 不是 JSON，原样展示 */ }
+  }
+  return s
 }
