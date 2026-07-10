@@ -176,6 +176,9 @@ function onDocKeyDown(e: KeyboardEvent) {
   // 焦点在 CodeMirror / input / textarea 中时不拦截 Cmd+C，让本地复制正常工作
   const el = e.target as HTMLElement | null
   if (el?.closest?.('.cm-editor') || el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA') return
+  // 网格失焦（点击 DDL 面板等其他区域后）释放 Cmd+C，让原生复制选中文本
+  const active = document.activeElement
+  if (!active || !rootRef.value.contains(active)) return
   if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'c') {
     e.preventDefault()
     copyToClipboard(sel.formatTSV(rows.value))
