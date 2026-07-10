@@ -17,6 +17,7 @@ import { createDiscreteApi } from 'naive-ui'
 import { confirm } from './dialogs'
 import { t } from '../i18n'
 import { quoteIdentWith, uiDialectForConnection } from './dialect'
+import { getConnection } from './connections'
 import { useQueryStore } from '../stores/query'
 import { useMetadataStore } from '../stores/metadata'
 import { runQuery } from './query'
@@ -46,11 +47,15 @@ function displayName(ctx: ActiveCtx): string {
   return [ctx.db, ctx.schema, ctx.table].filter(Boolean).join('.')
 }
 
-// DDL below must run in the table's own database: schema-ful drivers
-// (Postgres) reject three-part names that reference a sibling database, so
-// route via QueryOptions.DefaultDatabase (a no-op for single-db drivers).
-function runOpts(ctx: ActiveCtx) {
-  return { defaultDatabase: ctx.db }
+// DDL below must run in the table's own database. Schema-ful drivers
+// (Postgres) treat databases as isolation boundaries → route the session via
+// defaultDatabase; on the rest (MySQL/DM) ctx.db IS the namespace →
+// defaultSchema (USE / SET SCHEMA), otherwise unqualified names like the
+// RENAME TO target fail with "No database selected".
+async function runOpts(ctx: ActiveCtx): Promise<{ defaultDatabase?: string; defaultSchema?: string }> {
+  const { driver } = await getConnection(ctx.connId)
+  const caps = await useQueryStore().loadCapabilities(driver)
+  return caps.schemas ? { defaultDatabase: ctx.db } : { defaultSchema: ctx.db }
 }
 
 let active: ActiveCtx | null = null
@@ -86,7 +91,7 @@ export async function renameTable(ctx: ActiveCtx): Promise<void> {
     await runQuery(
       ctx.connId,
       `ALTER TABLE ${qualify(d, ctx)} RENAME TO ${quoteIdentWith(d, newName)}`,
-      runOpts(ctx),
+      await runOpts(ctx),
     )
     // Re-point any open tabs at the new name so titles + future
     // openTableTab lookups stay consistent.
@@ -154,7 +159,7 @@ export function installTableContextMenuListener(): void {
     if (choice !== 'truncate') return
     try {
       const d = await uiDialectForConnection(ctx.connId)
-      await runQuery(ctx.connId, `TRUNCATE TABLE ${qualify(d, ctx)}`, runOpts(ctx))
+      await runQuery(ctx.connId, `TRUNCATE TABLE ${qualify(d, ctx)}`, await runOpts(ctx))
       message.success(t('table.truncate.success', { name: ctx.table }))
       await ctx.onAfterMutate?.()
     } catch (e) {
@@ -177,7 +182,7 @@ export function installTableContextMenuListener(): void {
     if (choice !== 'drop') return
     try {
       const d = await uiDialectForConnection(ctx.connId)
-      await runQuery(ctx.connId, `DROP TABLE ${qualify(d, ctx)}`, runOpts(ctx))
+      await runQuery(ctx.connId, `DROP TABLE ${qualify(d, ctx)}`, await runOpts(ctx))
       message.success(t('table.drop.success', { name: ctx.table }))
       useMetadataStore().invalidateTables(ctx.connId, ctx.db, ctx.schema ?? '')
       await ctx.onAfterMutate?.()
