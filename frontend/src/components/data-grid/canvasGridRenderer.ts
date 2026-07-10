@@ -269,7 +269,7 @@ export function drawGrid(o: DrawGridOptions): void {
       } else if (o.hover && o.hover.row === r && o.hover.col === c) {
         ctx.fillStyle = theme.hoverFill
         ctx.fillRect(x, y, w, rh)
-      } else if (r % 2 === 1) {
+      } else if (r % 2 === 0) {
         ctx.fillStyle = theme.zebraFill
         ctx.fillRect(x, y, w, rh)
       }
