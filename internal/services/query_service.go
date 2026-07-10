@@ -145,6 +145,8 @@ type QueryRunResult struct {
 	// Exec-style statement and the caller should look at ExecResult instead.
 	IsResultSet bool                 `json:"isResultSet"`
 	ExecResult  *dbdriver.ExecResult `json:"execResult,omitempty"`
+	// StatementCount is how many statements the submitted script was split into.
+	StatementCount int `json:"statementCount"`
 	// EditTable is non-nil when the result targets a single identifiable table.
 	// The front-end uses this to enable inline editing on the result grid.
 	EditTable *TableRef `json:"editTable,omitempty"`
@@ -259,10 +261,11 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 		releaseTx(tx, nil)
 		teardown()
 		return QueryRunResult{
-			ElapsedMs:   time.Since(start).Milliseconds(),
-			IsResultSet: false,
-			ExecResult:  &res,
-			Done:        true,
+			ElapsedMs:      time.Since(start).Milliseconds(),
+			IsResultSet:    false,
+			ExecResult:     &res,
+			Done:           true,
+			StatementCount: len(stmts),
 		}, nil
 	}
 
@@ -294,12 +297,13 @@ func (s *QueryService) RunQuery(ctx context.Context, connID, sqlText string, opt
 
 	cols := rs.Columns()
 	out := QueryRunResult{
-		Columns:     cols,
-		Rows:        rows,
-		RowsTotal:   len(rows),
-		Done:        done,
-		ElapsedMs:   time.Since(start).Milliseconds(),
-		IsResultSet: true,
+		Columns:        cols,
+		Rows:           rows,
+		RowsTotal:      len(rows),
+		Done:           done,
+		ElapsedMs:      time.Since(start).Milliseconds(),
+		IsResultSet:    true,
+		StatementCount: len(stmts),
 	}
 	out.EditTable = extractTableRef(final, opts.DefaultSchema)
 
@@ -486,12 +490,13 @@ func (s *QueryService) Explain(ctx context.Context, connID, sqlText string, opts
 	}
 	releaseTx(tx, nil)
 	return QueryRunResult{
-		Columns:     rs.Columns(),
-		Rows:        rows,
-		RowsTotal:   len(rows),
-		Done:        true,
-		ElapsedMs:   time.Since(start).Milliseconds(),
-		IsResultSet: true,
+		Columns:        rs.Columns(),
+		Rows:           rows,
+		RowsTotal:      len(rows),
+		Done:           true,
+		ElapsedMs:      time.Since(start).Milliseconds(),
+		IsResultSet:    true,
+		StatementCount: 1,
 	}, nil
 }
 

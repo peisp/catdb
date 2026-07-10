@@ -1131,6 +1131,11 @@ export class QueryRunResult {
     "execResult"?: dbdriver$0.ExecResult | null;
 
     /**
+     * StatementCount is how many statements the submitted script was split into.
+     */
+    "statementCount": number;
+
+    /**
      * EditTable is non-nil when the result targets a single identifiable table.
      * The front-end uses this to enable inline editing on the result grid.
      */
@@ -1159,6 +1164,9 @@ export class QueryRunResult {
         if (!("isResultSet" in $$source)) {
             this["isResultSet"] = false;
         }
+        if (!("statementCount" in $$source)) {
+            this["statementCount"] = 0;
+        }
 
         Object.assign(this, $$source);
     }
@@ -1170,7 +1178,7 @@ export class QueryRunResult {
         const $$createField1_0 = $$createType8;
         const $$createField2_0 = $$createType10;
         const $$createField8_0 = $$createType28;
-        const $$createField9_0 = $$createType30;
+        const $$createField10_0 = $$createType30;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
             $$parsedSource["columns"] = $$createField1_0($$parsedSource["columns"]);
@@ -1182,7 +1190,7 @@ export class QueryRunResult {
             $$parsedSource["execResult"] = $$createField8_0($$parsedSource["execResult"]);
         }
         if ("editTable" in $$parsedSource) {
-            $$parsedSource["editTable"] = $$createField9_0($$parsedSource["editTable"]);
+            $$parsedSource["editTable"] = $$createField10_0($$parsedSource["editTable"]);
         }
         return new QueryRunResult($$parsedSource as Partial<QueryRunResult>);
     }

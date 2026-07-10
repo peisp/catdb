@@ -630,7 +630,7 @@ function onSplitDown(e: PointerEvent) {
               </div>
               <div class="summary-item">
                 <span class="summary-label">{{ $t('queryTab.execStatements') }}</span>
-                <span class="summary-value mono">1</span>
+                <span class="summary-value mono">{{ tab.statementCount || 1 }}</span>
               </div>
             </div>
             <div class="summary-sql">
@@ -847,6 +847,10 @@ function onSplitDown(e: PointerEvent) {
   margin-top: 4px;
 }
 .summary-sql pre {
+  /* SQL 可选中复制（全局默认 user-select: none）。 */
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
   font-size: 12px;
   background: var(--n-color);
   border: 1px solid var(--n-border-color);

@@ -91,6 +91,8 @@ export interface QueryTab {
   elapsedMs: number
   execAffected: number | null
   execLastInsertId: number | null
+  // 提交脚本被拆分出的语句数（后端 sqlscript.Split 的结果）。
+  statementCount: number
 
   status: QueryStatus
   errorMessage: string
@@ -127,6 +129,7 @@ function freshTab(connId: string, opts?: { kind?: TabKind; title?: string; db?: 
     elapsedMs: 0,
     execAffected: null,
     execLastInsertId: null,
+    statementCount: 0,
     editTable: undefined,
     status: 'idle',
     errorMessage: '',
@@ -514,6 +517,7 @@ export const useQueryStore = defineStore('query', () => {
     t.elapsedMs = 0
     t.execAffected = null
     t.execLastInsertId = null
+    t.statementCount = 0
     t.errorMessage = ''
   }
 
@@ -529,6 +533,7 @@ export const useQueryStore = defineStore('query', () => {
       t.execAffected = res.execResult.rowsAffected ?? 0
       t.execLastInsertId = res.execResult.lastInsertId ?? 0
     }
+    t.statementCount = res.statementCount || 1
     t.status = 'done'
     t.editTable = res.editTable ?? undefined
   }
