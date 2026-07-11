@@ -6,7 +6,7 @@ import "catdb/internal/dbdriver"
 // MySQL knowledge the front-end needs (type catalog, completion functions,
 // snippets, …) — ported out of the former hard-coded lists in
 // frontend/src/lib/alterPlan.ts and frontend/src/editor/sqlCompletion.ts.
-func (driver) UIDialect() dbdriver.UIDialect {
+func (Driver) UIDialect() dbdriver.UIDialect {
 	return dbdriver.UIDialect{
 		EditorDialect:          "mysql",
 		IdentQuote:             "`",

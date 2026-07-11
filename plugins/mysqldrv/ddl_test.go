@@ -11,18 +11,21 @@ func strp(s string) *string { return &s }
 
 func TestFormatDefaultExpr(t *testing.T) {
 	cases := map[string]string{
-		"":                    "''",
-		"NULL":                "NULL",
-		"null":                "NULL",
-		"CURRENT_TIMESTAMP":   "CURRENT_TIMESTAMP",
-		"0":                   "0",
-		"-1.5":                "-1.5",
-		"1e-3":                "1e-3",
-		"(uuid())":            "(uuid())",
-		"hello":               "'hello'",
-		"it's":                "'it''s'",
-		`back\slash`:          `'back\\slash'`,
-		"1970-01-01 00:00:00": "'1970-01-01 00:00:00'",
+		"":                     "''",
+		"NULL":                 "NULL",
+		"null":                 "NULL",
+		"CURRENT_TIMESTAMP":    "CURRENT_TIMESTAMP",
+		"CURRENT_TIMESTAMP(6)": "CURRENT_TIMESTAMP(6)",
+		"current_timestamp(3)": "CURRENT_TIMESTAMP(3)",
+		"CURRENT_TIMESTAMP(x)": "'CURRENT_TIMESTAMP(x)'",
+		"0":                    "0",
+		"-1.5":                 "-1.5",
+		"1e-3":                 "1e-3",
+		"(uuid())":             "(uuid())",
+		"hello":                "'hello'",
+		"it's":                 "'it''s'",
+		`back\slash`:           `'back\\slash'`,
+		"1970-01-01 00:00:00":  "'1970-01-01 00:00:00'",
 	}
 	for in, want := range cases {
 		if got := formatDefaultExpr(in); got != want {

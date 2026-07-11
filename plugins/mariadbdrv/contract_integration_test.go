@@ -1,14 +1,14 @@
 //go:build integration
 
-// Integration test: spins a real MySQL via testcontainers and runs the shared
-// dbdriver contract suite against mysqldrv.
+// Integration test: spins a real MariaDB via testcontainers and runs the shared
+// dbdriver contract suite against mariadbdrv.
 //
 // Run locally:
 //
-//	go test -tags=integration ./plugins/mysqldrv/...
+//	go test -tags=integration ./plugins/mariadbdrv/...
 //
 // Requires Docker (testcontainers connects to the local daemon).
-package mysqldrv
+package mariadbdrv
 
 import (
 	"context"
@@ -16,23 +16,23 @@ import (
 	"testing"
 	"time"
 
-	tcmysql "github.com/testcontainers/testcontainers-go/modules/mysql"
+	tcmariadb "github.com/testcontainers/testcontainers-go/modules/mariadb"
 
 	"catdb/internal/dbdriver"
 	"catdb/internal/dbdriver/contract"
 )
 
-func TestMySQLContract(t *testing.T) {
+func TestMariaDBContract(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	container, err := tcmysql.Run(ctx, "mysql:8.0",
-		tcmysql.WithDatabase("test"),
-		tcmysql.WithUsername("root"),
-		tcmysql.WithPassword("secret"),
+	container, err := tcmariadb.Run(ctx, "mariadb:11",
+		tcmariadb.WithDatabase("test"),
+		tcmariadb.WithUsername("root"),
+		tcmariadb.WithPassword("secret"),
 	)
 	if err != nil {
-		t.Fatalf("start mysql container: %v", err)
+		t.Fatalf("start mariadb container: %v", err)
 	}
 	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
 
@@ -53,7 +53,7 @@ func TestMySQLContract(t *testing.T) {
 		Database: "test",
 	}
 
-	contract.Run(t, ctx, Driver{}, cfg, contract.Fixtures{
+	contract.Run(t, ctx, driver{}, cfg, contract.Fixtures{
 		SleepSQL: "SELECT SLEEP(2)",
 		CreateTableSQL: func(qualified string) string {
 			return fmt.Sprintf(`CREATE TABLE %s (

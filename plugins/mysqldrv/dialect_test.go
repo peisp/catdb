@@ -10,7 +10,7 @@ import (
 // TestUIDialectDescriptor runs the shared static validation (no live DB) so
 // descriptor mistakes surface in plain unit tests, not just integration runs.
 func TestUIDialectDescriptor(t *testing.T) {
-	contract.TestUIDialect(t, driver{})
+	contract.TestUIDialect(t, Driver{})
 }
 
 func TestQuoteIdentifier(t *testing.T) {
@@ -43,9 +43,15 @@ func TestPaginate(t *testing.T) {
 func TestNormalizeType(t *testing.T) {
 	d := dialect{}
 	cases := map[string]string{
-		"varchar(255)":           "VARCHAR(255)",
-		"decimal(10, 2)":         "DECIMAL(10,2)",
-		"int(10) unsigned":       "INT(10) UNSIGNED",
+		"varchar(255)":   "VARCHAR(255)",
+		"decimal(10, 2)": "DECIMAL(10,2)",
+		// Integer display width is stripped (MySQL 8.0 drops it, MariaDB keeps
+		// it) so both introspect to the same canonical type.
+		"int(10) unsigned":       "INT UNSIGNED",
+		"int(11)":                "INT",
+		"bigint(20)":             "BIGINT",
+		"tinyint(4)":             "TINYINT",
+		"tinyint(1)":             "TINYINT(1)", // conventional BOOLEAN marker: kept
 		"int unsigned zerofill":  "INT UNSIGNED",
 		"enum('a','b')":          "ENUM('a','b')",
 		"datetime(6)":            "DATETIME(6)",

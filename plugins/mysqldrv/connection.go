@@ -17,6 +17,7 @@ type connection struct {
 	tunnel      *tunnel.Tunnel
 	tlsClean    func()
 	dialerClean func()
+	mariadb     bool // server flavor, sniffed once in Open (see metadata.mariadb)
 }
 
 func (c *connection) Ping(ctx context.Context) error {
@@ -79,7 +80,7 @@ func (c *connection) Metadata() dbdriver.Metadata {
 	if c == nil || c.db == nil {
 		return nil
 	}
-	return metadata{db: c.db}
+	return metadata{db: c.db, mariadb: c.mariadb}
 }
 
 func (c *connection) Editor() dbdriver.Editor {
@@ -118,4 +119,3 @@ func sqlTxOptions(opts *dbdriver.TxOptions) *sql.TxOptions {
 	}
 	return &sql.TxOptions{Isolation: iso, ReadOnly: opts.ReadOnly}
 }
-

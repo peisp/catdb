@@ -37,8 +37,15 @@ func formatDefaultExpr(raw string) string {
 	if trimmed == "" {
 		return "''"
 	}
-	if defaultKeywords[strings.ToUpper(trimmed)] {
-		return strings.ToUpper(trimmed)
+	up := strings.ToUpper(trimmed)
+	if defaultKeywords[up] {
+		return up
+	}
+	// CURRENT_TIMESTAMP(6) — fractional-seconds form, also a bare keyword.
+	if rest, ok := strings.CutPrefix(up, "CURRENT_TIMESTAMP("); ok &&
+		strings.HasSuffix(rest, ")") &&
+		strings.Trim(strings.TrimSuffix(rest, ")"), "0123456789") == "" {
+		return up
 	}
 	// Functional defaults like (CURRENT_TIMESTAMP) or (UUID()) — keep verbatim.
 	if strings.HasPrefix(trimmed, "(") && strings.HasSuffix(trimmed, ")") {

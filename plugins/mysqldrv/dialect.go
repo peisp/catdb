@@ -46,6 +46,13 @@ func (dialect) NormalizeType(nativeType string) string {
 		}
 		params = strings.Join(parts, ",")
 	}
+	// Integer display width (int(11), bigint(20), tinyint(4)…) is cosmetic and
+	// deprecated: MySQL 8.0 drops it from COLUMN_TYPE, MariaDB still reports it.
+	// Strip it so both introspect to the same normalized type and schema-diff
+	// converges. TINYINT(1) is kept — it's the conventional BOOLEAN marker.
+	if baseTypeIsInteger(base) && !(base == "TINYINT" && params == "1") {
+		params = ""
+	}
 	out := base
 	if params != "" {
 		out += "(" + params + ")"
@@ -54,6 +61,14 @@ func (dialect) NormalizeType(nativeType string) string {
 		out += " UNSIGNED"
 	}
 	return out
+}
+
+func baseTypeIsInteger(base string) bool {
+	switch strings.ToUpper(base) {
+	case "TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT":
+		return true
+	}
+	return false
 }
 
 func baseTypeSupportsUnsigned(base string) bool {

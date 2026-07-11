@@ -1,12 +1,14 @@
 // Driver-type → brand logo (raw SVG for AppIcon). Drivers without a logo
 // fall back to the generic database-zap icon.
 import mysqlLogo from './mysql.svg?raw'
+import mariadbLogo from './mariadb.svg?raw'
 import postgresqlLogo from './postgresql.svg?raw'
 import sqliteLogo from './sqlite.svg?raw'
 import databaseZapIcon from '../icons/database-zap.svg?raw'
 
 const LOGOS: Record<string, string> = {
   mysql: mysqlLogo,
+  mariadb: mariadbLogo,
   postgres: postgresqlLogo,
   sqlite: sqliteLogo,
 }

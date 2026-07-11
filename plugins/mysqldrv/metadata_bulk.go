@@ -65,10 +65,7 @@ func (m metadata) ListAllColumns(ctx context.Context, db, schema string) (map[st
 		c.Length = length
 		c.Precision = precision
 		c.Scale = scale
-		if defaultVal.Valid {
-			s := defaultVal.String
-			c.Default = &s
-		}
+		c.Default = normalizeColumnDefault(defaultVal, m.mariadb)
 		c.IsPrimaryKey = strings.EqualFold(columnKey, "PRI")
 		c.IsAutoIncrement = strings.Contains(strings.ToLower(extra), "auto_increment")
 		c.Comment = comment

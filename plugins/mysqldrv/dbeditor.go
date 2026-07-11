@@ -2,6 +2,7 @@ package mysqldrv
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -50,11 +51,18 @@ func (m metadata) DatabaseOptionFields(ctx context.Context) ([]dbdriver.Database
 	defer cRows.Close()
 	optionsBy := map[string][]string{}
 	for cRows.Next() {
-		var name, charset string
+		// MariaDB's information_schema.COLLATIONS has rows with a NULL
+		// CHARACTER_SET_NAME (charset-agnostic collations); MySQL never does.
+		// Use NullString and skip the unattached ones.
+		var name string
+		var charset sql.NullString
 		if err := cRows.Scan(&name, &charset); err != nil {
 			return nil, err
 		}
-		optionsBy[charset] = append(optionsBy[charset], name)
+		if !charset.Valid {
+			continue
+		}
+		optionsBy[charset.String] = append(optionsBy[charset.String], name)
 	}
 	if err := cRows.Err(); err != nil {
 		return nil, err

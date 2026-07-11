@@ -16,6 +16,10 @@ import (
 // exception — it's what the UI's DDL pane actually wants to display.
 type metadata struct {
 	db *sql.DB
+	// mariadb: the server is MariaDB (sniffed once in Open). MariaDB >=10.2.7
+	// stores COLUMN_DEFAULT as SQL expression text where MySQL reports bare
+	// values; normalizeColumnDefault canonicalizes based on this flag.
+	mariadb bool
 }
 
 // On MySQL, "schema" is the same concept as "database". We accept either
@@ -27,6 +31,86 @@ func resolveDB(db, schema string) string {
 		return schema
 	}
 	return db
+}
+
+// normalizeColumnDefault canonicalizes a COLUMN_DEFAULT to the MySQL bare-value
+// convention that schema-diff and ddl.go's formatDefaultExpr expect. MariaDB
+// (>=10.2.7) stores defaults as SQL expression text: string literals arrive
+// quoted and escaped ('abc', doubled inner quotes, 'a\\b'), keyword defaults
+// lowercase with parens (current_timestamp()), and "no default" on a nullable
+// column is the literal string NULL. MySQL values pass through untouched —
+// there a bare NULL string is a genuine user default of the four characters
+// "NULL".
+func normalizeColumnDefault(raw sql.NullString, mariadb bool) *string {
+	if !raw.Valid {
+		return nil
+	}
+	s := raw.String
+	if mariadb {
+		switch {
+		case s == "NULL":
+			return nil
+		case len(s) >= 2 && strings.HasPrefix(s, "'") && strings.HasSuffix(s, "'"):
+			s = unescapeSQLString(s[1 : len(s)-1])
+		default:
+			if ts, ok := canonicalCurrentTimestamp(s); ok {
+				s = ts
+			}
+		}
+	}
+	return &s
+}
+
+// unescapeSQLString reverses MySQL string-literal escaping inside an already
+// unquoted default: doubled quotes and the backslash escapes quoteString emits.
+func unescapeSQLString(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		switch {
+		case s[i] == '\\' && i+1 < len(s):
+			i++
+			switch s[i] {
+			case 'n':
+				b.WriteByte('\n')
+			case 't':
+				b.WriteByte('\t')
+			case 'r':
+				b.WriteByte('\r')
+			case '0':
+				b.WriteByte(0)
+			case 'b':
+				b.WriteByte('\b')
+			case 'Z':
+				b.WriteByte(26)
+			default: // \\ \' \" and unknown escapes → the char itself
+				b.WriteByte(s[i])
+			}
+		case s[i] == '\'' && i+1 < len(s) && s[i+1] == '\'':
+			b.WriteByte('\'')
+			i++
+		default:
+			b.WriteByte(s[i])
+		}
+	}
+	return b.String()
+}
+
+// canonicalCurrentTimestamp maps MariaDB's lowercase function form onto the
+// keyword form MySQL reports: current_timestamp() → CURRENT_TIMESTAMP,
+// current_timestamp(6) → CURRENT_TIMESTAMP(6).
+func canonicalCurrentTimestamp(s string) (string, bool) {
+	up := strings.ToUpper(strings.TrimSpace(s))
+	if up == "CURRENT_TIMESTAMP" || up == "CURRENT_TIMESTAMP()" {
+		return "CURRENT_TIMESTAMP", true
+	}
+	if inner, ok := strings.CutPrefix(up, "CURRENT_TIMESTAMP("); ok && strings.HasSuffix(inner, ")") {
+		digits := strings.TrimSuffix(inner, ")")
+		if digits != "" && strings.Trim(digits, "0123456789") == "" {
+			return up, true
+		}
+	}
+	return "", false
 }
 
 func (m metadata) ListDatabases(ctx context.Context) ([]string, error) {
@@ -75,7 +159,7 @@ func (m metadata) ListTables(ctx context.Context, db, schema string) ([]dbdriver
 		var engine, collation string
 		t.Schema = d
 		if err := rows.Scan(&t.Name, &engine, &t.Comment, &t.Rows,
-				&t.DataLength, &t.CreateTime, &t.UpdateTime, &collation); err != nil {
+			&t.DataLength, &t.CreateTime, &t.UpdateTime, &collation); err != nil {
 			return nil, err
 		}
 		if engine != "" || collation != "" {
@@ -156,17 +240,17 @@ func (m metadata) ListColumns(ctx context.Context, db, schema, table string) ([]
 	var out []dbdriver.ColumnMeta
 	for rows.Next() {
 		var (
-			c             dbdriver.ColumnMeta
-			columnType    string
-			dataType      string
-			isNullable    string
-			defaultVal    sql.NullString
-			length        int64
-			precision     int64
-			scale         int64
-			columnKey     string
-			extra         string
-			comment       string
+			c          dbdriver.ColumnMeta
+			columnType string
+			dataType   string
+			isNullable string
+			defaultVal sql.NullString
+			length     int64
+			precision  int64
+			scale      int64
+			columnKey  string
+			extra      string
+			comment    string
 		)
 		if err := rows.Scan(&c.Name, &columnType, &dataType, &isNullable, &defaultVal,
 			&length, &precision, &scale, &columnKey, &extra, &comment); err != nil {
@@ -178,10 +262,7 @@ func (m metadata) ListColumns(ctx context.Context, db, schema, table string) ([]
 		c.Length = length
 		c.Precision = precision
 		c.Scale = scale
-		if defaultVal.Valid {
-			s := defaultVal.String
-			c.Default = &s
-		}
+		c.Default = normalizeColumnDefault(defaultVal, m.mariadb)
 		c.IsPrimaryKey = strings.EqualFold(columnKey, "PRI")
 		c.IsAutoIncrement = strings.Contains(strings.ToLower(extra), "auto_increment")
 		c.Comment = comment

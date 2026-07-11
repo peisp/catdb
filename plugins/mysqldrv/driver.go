@@ -5,7 +5,9 @@
 //
 // Registration is automatic — main.go anonymously imports catdb/plugins,
 // which (eventually) blank-imports catdb/plugins/mysqldrv (see
-// plugins/plugins_mysql.go).
+// plugins/plugins_mysql.go). The registry.Register call itself lives in
+// register.go so a protocol-compatible fork (MariaDB) can embed Driver
+// without pulling in a duplicate "mysql" registry entry.
 package mysqldrv
 
 import (
@@ -13,27 +15,26 @@ import (
 	"database/sql"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
 
 	"catdb/internal/dbdriver"
-	"catdb/internal/registry"
 	"catdb/internal/tunnel"
 )
 
-func init() {
-	registry.Register(driver{})
-}
-
 const driverName = "mysql"
 
-type driver struct{}
+// Driver implements dbdriver.Driver against go-sql-driver/mysql. It is exported
+// so protocol-compatible fork drivers (MariaDB) can embed it and reuse the full
+// implementation, overriding only their identity and editor dialect.
+type Driver struct{}
 
-func (driver) Name() string    { return driverName }
-func (driver) Version() string { return "0.1.0" }
+func (Driver) Name() string    { return driverName }
+func (Driver) Version() string { return "0.1.0" }
 
-func (driver) Capabilities() dbdriver.Capabilities {
+func (Driver) Capabilities() dbdriver.Capabilities {
 	return dbdriver.Capabilities{
 		Schemas:          false, // MySQL: schema == database, so don't surface a separate schema level
 		StoredProcedures: true,
@@ -45,11 +46,11 @@ func (driver) Capabilities() dbdriver.Capabilities {
 	}
 }
 
-func (driver) Dialect() dbdriver.Dialect { return dialect{} }
+func (Driver) Dialect() dbdriver.Dialect { return dialect{} }
 
 // ConnectionSchema describes the form fields the front-end renders.
 // Adding/removing fields here automatically updates the connection form.
-func (driver) ConnectionSchema() []dbdriver.ConnParamField {
+func (Driver) ConnectionSchema() []dbdriver.ConnParamField {
 	// Group is a stable, locale-independent key ("general"/"advanced"/"ssl"/
 	// "ssh"); the front-end localizes it (connection.form.groups.*). Label/Help
 	// are the English baseline — the front-end localizes them per field key with
@@ -86,7 +87,7 @@ func (driver) ConnectionSchema() []dbdriver.ConnParamField {
 // Open builds the DSN, sets up TLS/SSH as required, opens a *sql.DB pool, and
 // pings it through ctx. On any error the partially-opened resources are
 // cleaned up.
-func (driver) Open(ctx context.Context, cfg dbdriver.ConnConfig) (dbdriver.Connection, error) {
+func (Driver) Open(ctx context.Context, cfg dbdriver.ConnConfig) (dbdriver.Connection, error) {
 	var (
 		tlsName  string
 		tlsClean func()
@@ -164,10 +165,17 @@ func (driver) Open(ctx context.Context, cfg dbdriver.ConnConfig) (dbdriver.Conne
 		return nil, fmt.Errorf("mysqldrv: ping: %w", err)
 	}
 
+	// Flavor sniff, once per pool: MariaDB stores column defaults as SQL
+	// expression text where MySQL reports bare values (metadata canonicalizes
+	// them). Best-effort — on error assume MySQL conventions.
+	var version string
+	_ = db.QueryRowContext(ctx, "SELECT VERSION()").Scan(&version)
+
 	return &connection{
 		db:          db,
 		tunnel:      t,
 		tlsClean:    tlsClean,
 		dialerClean: dialerClean,
+		mariadb:     strings.Contains(strings.ToLower(version), "mariadb"),
 	}, nil
 }

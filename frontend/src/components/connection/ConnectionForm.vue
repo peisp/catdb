@@ -78,7 +78,7 @@ const message = useMessage()
 
 // Display order for the driver rail: mainstream databases first, then the
 // rest in registry (alphabetical) order.
-const DRIVER_ORDER = ['mysql', 'postgres', 'sqlite']
+const DRIVER_ORDER = ['mysql', 'mariadb', 'postgres', 'sqlite']
 const driverList = computed(() => {
   const rank = (n: string) => {
     const i = DRIVER_ORDER.indexOf(n)
