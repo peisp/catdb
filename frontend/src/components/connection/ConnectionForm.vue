@@ -426,9 +426,13 @@ function selectOptions(opts: string[]) {
         </div>
       </n-form>
 
-      <!-- Segmented control: centered in the window via the rail container. -->
+      <!-- Segmented control: centered in the window via the rail container.
+           Keyed by driver: the segment capsule only re-measures on value
+           change, so a driver switch that keeps the same activeGroup would
+           leave a stale-sized capsule overlapping the new tab layout. -->
       <div class="tabs-wrap">
         <n-tabs
+          :key="selectedDriver?.name ?? ''"
           v-model:value="activeGroup"
           type="segment"
           size="small"
