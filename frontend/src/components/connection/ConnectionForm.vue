@@ -76,7 +76,16 @@ const emit = defineEmits<{
 const store = useConnectionsStore()
 const message = useMessage()
 
-const driverList = computed(() => store.drivers)
+// Display order for the driver rail: mainstream databases first, then the
+// rest in registry (alphabetical) order.
+const DRIVER_ORDER = ['mysql', 'postgres', 'sqlite']
+const driverList = computed(() => {
+  const rank = (n: string) => {
+    const i = DRIVER_ORDER.indexOf(n)
+    return i === -1 ? DRIVER_ORDER.length : i
+  }
+  return [...store.drivers].sort((a, b) => rank(a.name) - rank(b.name))
+})
 const driverLocked = computed(() => !!props.initial)
 
 function pickInitialDriver(): DriverInfo | null {
