@@ -23,7 +23,7 @@ import { setActiveConnectionContext } from '../../api/connectionContextMenu'
 import { setActiveGroupContext } from '../../api/sidebarContextMenu'
 import { t } from '../../i18n'
 import AppIcon from '../shared/AppIcon.vue'
-import databaseZapIcon from '../../assets/icons/database-zap.svg?raw'
+import { driverLogo } from '../../assets/logo'
 
 const emit = defineEmits<{
   (e: 'select', conn: ConnectionProfile): void
@@ -285,7 +285,7 @@ onMounted(() => {
               @contextmenu="onRowCtx($event, c)"
           >
             <span class="dot" :class="{ live: store.isLive(c.id) }" />
-            <AppIcon :src="databaseZapIcon" />
+            <AppIcon :src="driverLogo(c.driver)" />
             <span class="row-name">{{ c.name }}</span>
             <span class="row-driver mono">{{ c.driver }}</span>
           </div>

@@ -29,6 +29,8 @@ import {
 import type { ConnectionDraft, ConnectionProfile, DriverInfo } from '../../api/connections'
 import { useConnectionsStore } from '../../stores/connections'
 import { t, i18n } from '../../i18n'
+import AppIcon from '../shared/AppIcon.vue'
+import { driverLogo } from '../../assets/logo'
 
 // Localize a driver-provided schema string (group/label/help) by key, falling
 // back to the driver's own (English baseline) text when no translation exists.
@@ -374,7 +376,7 @@ function selectOptions(opts: string[]) {
           :disabled="driverLocked && selectedDriver?.name !== d.name"
           @click="selectDriver(d)"
         >
-          <span class="rail-dot" :class="{ active: selectedDriver?.name === d.name }" />
+          <AppIcon :src="driverLogo(d.name)" :size="14" />
           <span class="rail-name">{{ d.name }}</span>
         </button>
         <div v-if="driverList.length === 0" class="rail-empty">{{ $t('connection.form.noDrivers') }}</div>
@@ -625,14 +627,6 @@ function selectOptions(opts: string[]) {
   opacity: 0.35;
   cursor: not-allowed;
 }
-.rail-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex: 0 0 auto;
-  background: rgba(127, 127, 127, 0.35);
-}
-.rail-dot.active { background: #18a058; }
 .rail-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rail-empty {
   padding: 6px 8px;
