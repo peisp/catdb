@@ -36,6 +36,11 @@ function tabTitle(title: string): string {
   return title.replace(TITLE_EMOJI_RE, '')
 }
 
+// 带表对象的 tab（table/structure）分两行：第一行库（含 schema），第二行表名。
+function tabDbLine(t: QueryTabInfo): string {
+  return [t.db, t.schema].filter(Boolean).join('.')
+}
+
 const props = defineProps<{ connId: string }>()
 const store = useQueryStore()
 const themeVars = useThemeVars()
@@ -240,7 +245,11 @@ function openCtx(t: QueryTabInfo) {
         @contextmenu.prevent="openCtx(t)"
       >
         <AppIcon :src="TAB_ICONS[t.kind]" :size="13" />
-        <span class="tab-text">{{ tabTitle(t.title) }}</span>
+        <span v-if="t.db && t.table" class="tab-text tab-text-stacked">
+          <span class="tab-db">{{ tabDbLine(t) }}</span>
+          <span class="tab-table">{{ t.table }}</span>
+        </span>
+        <span v-else class="tab-text">{{ tabTitle(t.title) }}</span>
         <span v-if="!t.pinned" class="tab-tail" :class="{ dirty: store.isQueryDirty(t) }">
           <span class="tab-dot" aria-hidden="true" />
           <button class="tab-close" :aria-label="$t('common.close')" @click.stop="close(t)" @mousedown.stop>
@@ -278,7 +287,7 @@ function openCtx(t: QueryTabInfo) {
 .tabbar {
   position: relative;
   display: flex;
-  height: 32px;
+  height: 40px;
   flex: 0 0 auto;
   min-width: 0;
   border-bottom: 1px solid var(--n-border-color);
@@ -358,6 +367,22 @@ function openCtx(t: QueryTabInfo) {
   text-overflow: ellipsis;
   min-width: 0;
   flex: 1 1 auto;
+}
+
+/* 双行 tab：库名一行（浅灰、字号更小），表名一行。两行各自截断。 */
+.tab-text-stacked {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.25;
+}
+.tab-text-stacked > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tab-db {
+  font-size: 10px;
+  opacity: 0.55;
 }
 
 /* Tail slot: close button at rest; when the tab is dirty a dot takes its
