@@ -463,6 +463,9 @@ export default {
     version: '版本 {version}',
     checkForUpdates: '检查更新',
     devBuildNoUpdate: '开发版本不支持检查更新。',
+    updateChannel: '更新通道',
+    updateChannelStable: '稳定版',
+    updateChannelBeta: '测试版 (Beta)',
   },
   // 数据库编辑子窗口（components/database/DatabaseEditorWindow.vue）。
   databaseEditor: {

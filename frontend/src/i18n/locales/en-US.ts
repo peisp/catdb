@@ -471,6 +471,9 @@ export default {
     version: 'Version {version}',
     checkForUpdates: 'Check for Updates',
     devBuildNoUpdate: 'Update check is unavailable in development builds.',
+    updateChannel: 'Update Channel',
+    updateChannelStable: 'Stable',
+    updateChannelBeta: 'Beta',
   },
   // Database editor child window (components/database/DatabaseEditorWindow.vue).
   databaseEditor: {

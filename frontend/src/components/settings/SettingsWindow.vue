@@ -5,10 +5,11 @@
 // Layout mirrors ConnectionEditorWindow/ConnectionForm: a titlebar on top, then
 // a two-column body — a left category rail + a right settings panel. Categories:
 // 语言 (Language) and 关于 (About, incl. check-for-updates).
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { Window } from '@wailsio/runtime'
 import { NButton, useMessage } from 'naive-ui'
 import { settings as settingsApi } from '../../api'
+import type { UpdateChannel } from '../../api/update'
 import { i18n, setLocale, isSupportedLocale, t as tr } from '../../i18n'
 import { useUpdatesStore } from '../../stores/updates'
 import UpdateDialog from '../update/UpdateDialog.vue'
@@ -50,6 +51,21 @@ function onLocaleChange(e: Event) {
 // --- About panel ---
 const appVersion = (import.meta.env.VITE_APP_VERSION as string) || 'dev'
 const checking = ref(false)
+const isDevBuild = updates.currentVersion === 'dev'
+
+// Update channel options — computed so labels re-resolve on language switch.
+const CHANNEL_OPTIONS = computed(() => [
+  { value: 'stable' as UpdateChannel, label: tr('settingsWindow.updateChannelStable') },
+  { value: 'beta' as UpdateChannel, label: tr('settingsWindow.updateChannelBeta') },
+])
+function onChannelChange(e: Event) {
+  const value = (e.target as HTMLSelectElement).value as UpdateChannel
+  if (value !== 'stable' && value !== 'beta') return
+  void updates.setChannel(value)
+}
+
+// Load the persisted channel so the select reflects the effective value.
+onMounted(() => { void updates.loadChannel() })
 async function onCheckUpdate() {
   if (updates.currentVersion === 'dev') {
     message.info(tr('settingsWindow.devBuildNoUpdate'))
@@ -136,6 +152,17 @@ async function onCheckUpdate() {
           <div class="about-head">
             <span class="app-name">catdb</span>
             <span class="app-version">{{ $t('settingsWindow.version', { version: appVersion }) }}</span>
+          </div>
+          <div class="field about-channel">
+            <label class="field-label">{{ $t('settingsWindow.updateChannel') }}</label>
+            <select
+              class="native-select"
+              :value="updates.channel"
+              :disabled="isDevBuild"
+              @change="onChannelChange"
+            >
+              <option v-for="o in CHANNEL_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</option>
+            </select>
           </div>
           <div class="about-actions">
             <n-button size="small" :loading="checking" @click="onCheckUpdate">
@@ -302,6 +329,10 @@ async function onCheckUpdate() {
   border-color: var(--n-border-color-focus, #18a058);
   box-shadow: 0 0 0 2px rgba(24, 160, 88, 0.18);
 }
+.native-select:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 .hint {
   margin: 10px 0 0;
   font-size: 12px;
@@ -320,6 +351,9 @@ async function onCheckUpdate() {
 .app-version {
   font-size: 12px;
   opacity: 0.6;
+}
+.about-channel {
+  margin-top: 16px;
 }
 .about-actions {
   margin-top: 16px;

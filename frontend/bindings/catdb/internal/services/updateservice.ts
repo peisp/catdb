@@ -47,6 +47,14 @@ export function DownloadUpdate(currentVersion: string): $CancellablePromise<void
 }
 
 /**
+ * GetChannel returns the effective update channel for the given running
+ * version ("stable" | "beta").
+ */
+export function GetChannel(currentVersion: string): $CancellablePromise<string> {
+    return $Call.ByName("catdb/internal/services.UpdateService.GetChannel", currentVersion);
+}
+
+/**
  * GetLastCheckDate returns the timestamp (ISO 8601) of the last successful
  * update check, or "" if none.
  */
@@ -69,6 +77,13 @@ export function GetSkippedVersion(): $CancellablePromise<string> {
  */
 export function RestartAndInstall(): $CancellablePromise<void> {
     return $Call.ByName("catdb/internal/services.UpdateService.RestartAndInstall");
+}
+
+/**
+ * SetChannel persists the user's update channel choice.
+ */
+export function SetChannel(channel: string): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.UpdateService.SetChannel", channel);
 }
 
 /**

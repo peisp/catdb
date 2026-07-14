@@ -17,10 +17,16 @@ func TestCompareVersions(t *testing.T) {
 		{"2.0.0", "1.99.99", 1},
 		{"1.2", "1.2.0", 0},
 		{"1.2.0", "1.2", 0},
-		{"1.2.3", "1.2.3-rc1", 1},   // release > prerelease
+		{"1.2.3", "1.2.3-rc1", 1}, // release > prerelease
 		{"1.2.3-rc1", "1.2.3", -1},
 		{"1.2.3-rc1", "1.2.3-rc2", -1},
-		{"dev", "1.0.0", -1}, // dev parses to 0 — anything > 0 wins
+		{"1.2.3-beta.2", "1.2.3-beta.10", -1}, // numeric suffix segments compare as numbers
+		{"1.2.3-beta.10", "1.2.3-beta.2", 1},
+		{"1.2.3-beta.1", "1.2.3-rc.1", -1}, // beta < rc
+		{"1.2.3-beta", "1.2.3-beta.1", -1}, // fewer segments rank lower
+		{"1.2.3-beta.1", "1.2.3-beta.1", 0},
+		{"0.2.0-beta.1", "0.1.9", 1}, // higher numerics beat prerelease-ness
+		{"dev", "1.0.0", -1},         // dev parses to 0 — anything > 0 wins
 	}
 	for _, c := range cases {
 		got := CompareVersions(c.a, c.b)

@@ -24,6 +24,25 @@ import (
 // DefaultRepo is the GitHub repo we poll for releases.
 const DefaultRepo = "peisp/catdb"
 
+// Channel selects which releases the updater considers.
+type Channel string
+
+const (
+	// ChannelStable only sees full releases (GitHub /releases/latest).
+	ChannelStable Channel = "stable"
+	// ChannelBeta sees the highest version among all published releases,
+	// prereleases included — so beta users still get stable updates.
+	ChannelBeta Channel = "beta"
+)
+
+// ParseChannel maps a stored setting to a Channel, defaulting to stable.
+func ParseChannel(s string) Channel {
+	if s == string(ChannelBeta) {
+		return ChannelBeta
+	}
+	return ChannelStable
+}
+
 // ReleaseAsset is one downloadable file attached to a release.
 type ReleaseAsset struct {
 	Name        string `json:"name"`
@@ -56,31 +75,104 @@ func (r *Release) Version() string {
 // poison every later check until the process restarts.
 const fetchCacheTTL = 10 * time.Minute
 
+type cacheEntry struct {
+	rel *Release
+	at  time.Time
+}
+
 var (
-	cacheMu   sync.RWMutex
-	cachedRel *Release
-	cachedAt  time.Time
+	cacheMu sync.RWMutex
+	cache   = map[string]cacheEntry{} // keyed by repo + "|" + channel
 )
 
-// FetchLatest queries GitHub for the most recent NON-prerelease, NON-draft
-// release of the given repo (owner/name). Returns ErrNoRelease if the repo
+// FetchLatest queries GitHub for the newest published release visible to the
+// given channel. Stable uses /releases/latest (GitHub already excludes
+// prereleases and drafts there); beta lists recent releases and picks the
+// highest version among them, prereleases included — so beta users still get
+// stable releases when those are newest. Returns ErrNoRelease if the repo
 // has no published releases.
 //
-// The result is cached in-memory so that repeated calls (e.g. during dev
-// HMR) are free after the first.
-func FetchLatest(ctx context.Context, repo string) (*Release, error) {
+// The result is cached in-memory per repo+channel so that repeated calls
+// (e.g. during dev HMR) are free after the first.
+func FetchLatest(ctx context.Context, repo string, ch Channel) (*Release, error) {
 	if repo == "" {
 		repo = DefaultRepo
 	}
+	if ch == "" {
+		ch = ChannelStable
+	}
+	key := repo + "|" + string(ch)
 
 	cacheMu.RLock()
-	if cachedRel != nil && time.Since(cachedAt) < fetchCacheTTL {
-		r := cachedRel
+	if e, ok := cache[key]; ok && time.Since(e.at) < fetchCacheTTL {
 		cacheMu.RUnlock()
-		return r, nil
+		return e.rel, nil
 	}
 	cacheMu.RUnlock()
+
+	var rel *Release
+	var err error
+	if ch == ChannelBeta {
+		rel, err = fetchBestOfAll(ctx, repo)
+	} else {
+		rel, err = fetchStableLatest(ctx, repo)
+	}
+	if err != nil {
+		return nil, err
+	}
+	cacheMu.Lock()
+	cache[key] = cacheEntry{rel: rel, at: time.Now()}
+	cacheMu.Unlock()
+	return rel, nil
+}
+
+func fetchStableLatest(ctx context.Context, repo string) (*Release, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
+	body, err := githubGet(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+	defer body.Close()
+	var r Release
+	if err := json.NewDecoder(body).Decode(&r); err != nil {
+		return nil, fmt.Errorf("updater: decode release: %w", err)
+	}
+	return &r, nil
+}
+
+// fetchBestOfAll lists recent releases (stable + prerelease) and returns the
+// highest version among them. 20 releases of lookback is plenty: the newest
+// relevant release is always near the top of the reverse-chronological list.
+func fetchBestOfAll(ctx context.Context, repo string) (*Release, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=20", repo)
+	body, err := githubGet(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+	defer body.Close()
+	var list []Release
+	if err := json.NewDecoder(body).Decode(&list); err != nil {
+		return nil, fmt.Errorf("updater: decode releases: %w", err)
+	}
+	var best *Release
+	for i := range list {
+		r := &list[i]
+		if r.Draft {
+			continue
+		}
+		if best == nil || CompareVersions(r.Version(), best.Version()) > 0 {
+			best = r
+		}
+	}
+	if best == nil {
+		return nil, ErrNoRelease
+	}
+	return best, nil
+}
+
+// githubGet performs a GitHub API GET and returns the response body on 200.
+// The caller must close it.
+func githubGet(ctx context.Context, url string) (io.ReadCloser, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -93,25 +185,16 @@ func FetchLatest(ctx context.Context, repo string) (*Release, error) {
 	if err != nil {
 		return nil, fmt.Errorf("updater: GitHub API: %w", err)
 	}
-	defer resp.Body.Close()
-
 	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
 		return nil, ErrNoRelease
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		resp.Body.Close()
 		return nil, fmt.Errorf("updater: GitHub API %d: %s", resp.StatusCode, string(body))
 	}
-
-	var r Release
-	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
-		return nil, fmt.Errorf("updater: decode release: %w", err)
-	}
-	cacheMu.Lock()
-	cachedRel = &r
-	cachedAt = time.Now()
-	cacheMu.Unlock()
-	return &r, nil
+	return resp.Body, nil
 }
 
 // ErrNoRelease means the repo exists but has no published release.
@@ -168,10 +251,46 @@ func CompareVersions(a, b string) int {
 	if sb == "" {
 		return -1
 	}
-	if sa < sb {
-		return -1
+	return compareSuffix(sa, sb)
+}
+
+// compareSuffix orders prerelease suffixes semver-style: dot-separated
+// segments, numeric segments compared as numbers (so beta.10 > beta.2),
+// numeric segments rank below alphanumeric ones, fewer segments rank lower.
+func compareSuffix(sa, sb string) int {
+	as := strings.Split(sa, ".")
+	bs := strings.Split(sb, ".")
+	for i := 0; i < len(as) && i < len(bs); i++ {
+		x, y := as[i], bs[i]
+		if x == y {
+			continue
+		}
+		xn, xErr := strconv.Atoi(x)
+		yn, yErr := strconv.Atoi(y)
+		switch {
+		case xErr == nil && yErr == nil:
+			if xn < yn {
+				return -1
+			}
+			return 1
+		case xErr == nil:
+			return -1
+		case yErr == nil:
+			return 1
+		default:
+			if x < y {
+				return -1
+			}
+			return 1
+		}
 	}
-	return 1
+	switch {
+	case len(as) < len(bs):
+		return -1
+	case len(as) > len(bs):
+		return 1
+	}
+	return 0
 }
 
 // PickAsset returns the asset for the current OS/arch. Naming convention is

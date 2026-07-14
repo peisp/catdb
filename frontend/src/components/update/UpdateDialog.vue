@@ -11,7 +11,7 @@
 // We never auto-close on success because the app is about to quit — the panel
 // rendering "应用即将退出以完成更新" is the last thing the user sees.
 import { computed, watch } from 'vue'
-import { NModal, NButton, NProgress, NSpace, NAlert } from 'naive-ui'
+import { NModal, NButton, NProgress, NSpace, NAlert, NTag } from 'naive-ui'
 import MarkdownIt from 'markdown-it'
 import { useUpdatesStore } from '../../stores/updates'
 import { system as systemApi } from '../../api'
@@ -131,6 +131,7 @@ function onNotesClick(e: MouseEvent) {
     <div class="meta">
       <div class="version-row">
         <span class="ver new">v{{ updates.latestVersion }}</span>
+        <n-tag v-if="updates.prerelease" size="tiny" :bordered="false" round type="warning">Beta</n-tag>
         <span class="ver from">{{ $t('update.currentVersion', { version: updates.currentVersion }) }}</span>
       </div>
       <div v-if="publishedAtPretty" class="published">{{ $t('update.publishedAt', { date: publishedAtPretty }) }}</div>

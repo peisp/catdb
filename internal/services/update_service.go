@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,6 +20,12 @@ const settingsKeySkippedVersion = "updater.skipped_version"
 // successful check; the frontend gates automatic re-checks on a minimum
 // interval (older builds stored a plain YYYY-MM-DD, still parseable).
 const settingsKeyLastCheckDate = "updater.last_check_date"
+
+// settingsKeyChannel stores the user's update channel ("stable" | "beta").
+// Unset means: derive from the running build — a prerelease build (version
+// contains "-") defaults to beta so beta.2 reaches beta.1 users, a plain
+// X.Y.Z build defaults to stable.
+const settingsKeyChannel = "updater.channel"
 
 // Update progress event sent over the bridge while a download is in flight.
 // Phase is one of: "downloading", "downloaded", "installing", "ready", "error".
@@ -77,6 +84,36 @@ type UpdateCheckResult struct {
 	HasAsset bool `json:"hasAsset"`
 	// Skipped is true when LatestVersion equals the user-skipped version.
 	Skipped bool `json:"skipped"`
+	// Prerelease is true when the matched release is a GitHub prerelease —
+	// the UI badges it as Beta.
+	Prerelease bool `json:"prerelease"`
+}
+
+// effectiveChannel resolves the update channel: explicit user setting wins;
+// otherwise a prerelease build defaults to beta, a stable build to stable.
+func (s *UpdateService) effectiveChannel(ctx context.Context, currentVersion string) updater.Channel {
+	stored, _ := s.store.GetSetting(ctx, settingsKeyChannel)
+	if stored != "" {
+		return updater.ParseChannel(stored)
+	}
+	if strings.Contains(currentVersion, "-") {
+		return updater.ChannelBeta
+	}
+	return updater.ChannelStable
+}
+
+// GetChannel returns the effective update channel for the given running
+// version ("stable" | "beta").
+func (s *UpdateService) GetChannel(ctx context.Context, currentVersion string) (string, error) {
+	return string(s.effectiveChannel(ctx, currentVersion)), nil
+}
+
+// SetChannel persists the user's update channel choice.
+func (s *UpdateService) SetChannel(ctx context.Context, channel string) error {
+	if channel != string(updater.ChannelStable) && channel != string(updater.ChannelBeta) {
+		return fmt.Errorf("updater: invalid channel %q", channel)
+	}
+	return s.store.SetSetting(ctx, settingsKeyChannel, channel)
 }
 
 // CheckForUpdate compares the latest GitHub release to currentVersion. Returns
@@ -87,7 +124,7 @@ func (s *UpdateService) CheckForUpdate(ctx context.Context, currentVersion strin
 	if currentVersion == "dev" {
 		return UpdateCheckResult{CurrentVersion: "dev"}, nil
 	}
-	rel, err := updater.FetchLatest(ctx, s.repo)
+	rel, err := updater.FetchLatest(ctx, s.repo, s.effectiveChannel(ctx, currentVersion))
 	if err != nil {
 		return UpdateCheckResult{}, err
 	}
@@ -99,6 +136,7 @@ func (s *UpdateService) CheckForUpdate(ctx context.Context, currentVersion strin
 		LatestVersion:  rel.Version(),
 		ReleaseNotes:   rel.Body,
 		ReleaseURL:     rel.HTMLURL,
+		Prerelease:     rel.Prerelease,
 	}
 	if !rel.PublishedAt.IsZero() {
 		res.PublishedAt = rel.PublishedAt.Format(time.RFC3339)
@@ -159,7 +197,7 @@ func (s *UpdateService) emitProgress(phase, code string, extra map[string]any) {
 // in phase "downloaded" — installing/restarting waits for the user to call
 // RestartAndInstall explicitly.
 func (s *UpdateService) DownloadUpdate(ctx context.Context, currentVersion string) error {
-	rel, err := updater.FetchLatest(ctx, s.repo)
+	rel, err := updater.FetchLatest(ctx, s.repo, s.effectiveChannel(ctx, currentVersion))
 	if err != nil {
 		s.emitProgress("error", "fetch-failed", map[string]any{"error": err.Error()})
 		return err

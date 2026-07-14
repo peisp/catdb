@@ -1700,6 +1700,12 @@ export class UpdateCheckResult {
      */
     "skipped": boolean;
 
+    /**
+     * Prerelease is true when the matched release is a GitHub prerelease —
+     * the UI badges it as Beta.
+     */
+    "prerelease": boolean;
+
     /** Creates a new UpdateCheckResult instance. */
     constructor($$source: Partial<UpdateCheckResult> = {}) {
         if (!("available" in $$source)) {
@@ -1728,6 +1734,9 @@ export class UpdateCheckResult {
         }
         if (!("skipped" in $$source)) {
             this["skipped"] = false;
+        }
+        if (!("prerelease" in $$source)) {
+            this["prerelease"] = false;
         }
 
         Object.assign(this, $$source);

@@ -4,6 +4,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { update as updateApi } from '../api'
+import type { UpdateChannel } from '../api/update'
 
 export type UpdatePhase = 'idle' | 'downloading' | 'downloaded' | 'installing' | 'ready' | 'error'
 
@@ -26,8 +27,16 @@ export const useUpdatesStore = defineStore('updates', () => {
   const hasAsset = ref(false)
   const available = ref(false)
   const skipped = ref(false)
+  // Whether the latest release is a GitHub prerelease (Beta). Set from each
+  // check result; UpdateDialog shows a "Beta" badge when true.
+  const prerelease = ref(false)
   const lastCheckedAt = ref<number | null>(null)
   const lastError = ref('')
+
+  // Effective update channel ('stable' | 'beta'). Loaded from Go on first use
+  // (skipped in dev builds); the user can switch it in the settings window.
+  const channel = ref<UpdateChannel>('stable')
+  let channelLoaded = false
 
   // dialog visibility — UpdateDialog binds to this. Setting true brings the
   // dialog up; setting false closes it without affecting any other state.
@@ -54,6 +63,29 @@ export const useUpdatesStore = defineStore('updates', () => {
     })
   }
 
+  // loadChannel fills `channel` from the persisted setting once. No-op in dev
+  // builds (no backend call) and after the first successful load.
+  async function loadChannel(): Promise<void> {
+    if (channelLoaded) return
+    if (currentVersion.value === 'dev') { channelLoaded = true; return }
+    try {
+      channel.value = await updateApi.getChannel(currentVersion.value)
+      channelLoaded = true
+    } catch {
+      // Non-fatal — keep the default 'stable' and retry on next call.
+    }
+  }
+
+  // setChannel persists the user's choice and re-checks immediately. The forced
+  // check bypasses the min-interval throttle so switching channels reflects the
+  // new channel's latest release right away.
+  async function setChannel(ch: UpdateChannel): Promise<void> {
+    await updateApi.setChannel(ch)
+    channel.value = ch
+    channelLoaded = true
+    void check(true)
+  }
+
   // force=true performs a real check unconditionally — used by the manual
   // "check for updates" click. The default (false) keeps the min-interval
   // throttle for the automatic checks (startup + 8h background timer).
@@ -75,6 +107,10 @@ export const useUpdatesStore = defineStore('updates', () => {
       }
     }
 
+    // Make sure the effective channel is loaded before checking so the store
+    // exposes it consistently once any check has run.
+    await loadChannel()
+
     lastError.value = ''
     try {
       const res = await updateApi.checkForUpdate(currentVersion.value)
@@ -88,6 +124,7 @@ export const useUpdatesStore = defineStore('updates', () => {
       hasAsset.value = res.hasAsset
       available.value = res.available
       skipped.value = res.skipped
+      prerelease.value = res.prerelease
       lastCheckedAt.value = Date.now()
       return res.available
     } catch (e) {
@@ -171,6 +208,8 @@ export const useUpdatesStore = defineStore('updates', () => {
     hasAsset,
     available,
     skipped,
+    prerelease,
+    channel,
     lastCheckedAt,
     lastError,
     dialogOpen,
@@ -180,6 +219,8 @@ export const useUpdatesStore = defineStore('updates', () => {
     errorCode,
     hasBadge,
     check,
+    loadChannel,
+    setChannel,
     startAutoCheck,
     skipCurrent,
     download,

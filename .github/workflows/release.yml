@@ -41,12 +41,16 @@ jobs:
       - name: Inject version from git tag
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          echo "Version: $VERSION"
+          # Info.plist (CFBundleShortVersionString) wants numeric X.Y.Z — strip
+          # any prerelease suffix. The full semver lives in asset filenames and
+          # VITE_APP_VERSION (what the in-app updater compares against).
+          NUMERIC_VERSION="${VERSION%%-*}"
+          echo "Version: $VERSION (numeric: $NUMERIC_VERSION)"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "VITE_APP_VERSION=$VERSION" >> "$GITHUB_ENV"
 
           # Update config.yml with the tag version (macOS sed needs -i '')
-          sed -i '' "s/version: \".*\"/version: \"$VERSION\"/" build/config.yml
+          sed -i '' "s/version: \".*\"/version: \"$NUMERIC_VERSION\"/" build/config.yml
 
           # Regenerate Info.plist / info.json from updated config
           (cd build && wails3 update build-assets \
@@ -123,10 +127,14 @@ jobs:
       - name: Inject version from git tag
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          echo "Version: $VERSION"
+          # The .syso/NSIS version resources (VIProductVersion) want numeric
+          # X.Y.Z — strip any prerelease suffix. The full semver lives in asset
+          # filenames and VITE_APP_VERSION (what the in-app updater compares).
+          NUMERIC_VERSION="${VERSION%%-*}"
+          echo "Version: $VERSION (numeric: $NUMERIC_VERSION)"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "VITE_APP_VERSION=$VERSION" >> "$GITHUB_ENV"
-          sed -i "s/version: \".*\"/version: \"$VERSION\"/" build/config.yml
+          sed -i "s/version: \".*\"/version: \"$NUMERIC_VERSION\"/" build/config.yml
           (cd build && wails3 update build-assets \
             -name catdb -binaryname catdb -config config.yml -dir .)
 
@@ -211,8 +219,14 @@ jobs:
 
           HEADER
 
-          # Get the previous tag (excluding current one)
-          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${GITHUB_REF_NAME}$" | head -1 || true)
+          # Changelog baseline: a stable release diffs from the last stable
+          # tag (so it spans every beta in between); a prerelease diffs from
+          # the last tag of any kind.
+          if [[ "$GITHUB_REF_NAME" != *-* ]]; then
+            PREV_TAG=$(git tag --sort=-version:refname | grep -v -- '-' | grep -v "^${GITHUB_REF_NAME}$" | head -1 || true)
+          else
+            PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${GITHUB_REF_NAME}$" | head -1 || true)
+          fi
 
           if [ -n "$PREV_TAG" ]; then
             git log --pretty=format:"* %s (%h)" "${PREV_TAG}..HEAD" >> release-notes.md
@@ -238,7 +252,14 @@ jobs:
             echo "ERROR: no assets found!" >&2
             exit 1
           fi
+          # A suffixed tag (v0.2.0-beta.1) publishes as a GitHub prerelease:
+          # /releases/latest ignores it, so stable-channel users never see it.
+          FLAGS=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            FLAGS+=(--prerelease)
+          fi
           gh release create "${{ github.ref_name }}" \
             --title "${{ github.ref_name }}" \
             --notes-file release-notes.md \
+            "${FLAGS[@]}" \
             "${ASSETS[@]}"

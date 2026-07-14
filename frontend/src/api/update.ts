@@ -7,6 +7,8 @@
 import { UpdateService } from '../../bindings/catdb/internal/services'
 import { on } from './events'
 
+export type UpdateChannel = 'stable' | 'beta'
+
 export type UpdateCheckResult = {
   available: boolean
   latestVersion: string
@@ -17,6 +19,7 @@ export type UpdateCheckResult = {
   assetName: string
   hasAsset: boolean
   skipped: boolean
+  prerelease: boolean
 }
 
 export type UpdateProgressPhase = 'downloading' | 'downloaded' | 'installing' | 'ready' | 'error'
@@ -34,6 +37,14 @@ export type UpdateProgress = {
 
 export function checkForUpdate(currentVersion: string): Promise<UpdateCheckResult> {
   return UpdateService.CheckForUpdate(currentVersion) as unknown as Promise<UpdateCheckResult>
+}
+
+export function getChannel(currentVersion: string): Promise<UpdateChannel> {
+  return UpdateService.GetChannel(currentVersion) as unknown as Promise<UpdateChannel>
+}
+
+export function setChannel(channel: UpdateChannel): Promise<void> {
+  return UpdateService.SetChannel(channel) as unknown as Promise<void>
 }
 
 export function getSkippedVersion(): Promise<string> {
