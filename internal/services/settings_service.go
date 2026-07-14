@@ -32,5 +32,8 @@ func (s *SettingsService) SetLocale(ctx context.Context, locale string) error {
 		return err
 	}
 	wailsbridge.SetMenuLocale(locale)
+	// Broadcast so every window's WebView switches locale at runtime, even the
+	// ones that didn't trigger the change (e.g. the settings child window).
+	wailsbridge.Emit("app:locale-changed", map[string]any{"locale": locale})
 	return nil
 }

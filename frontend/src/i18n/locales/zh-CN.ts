@@ -452,6 +452,18 @@ export default {
     maximise: '最大化',
     restore: '还原',
   },
+  // 设置子窗口（components/settings/SettingsWindow.vue）。
+  settingsWindow: {
+    title: '设置',
+    openSettings: '设置',
+    categoryLanguage: '语言',
+    categoryAbout: '关于',
+    uiLanguage: '界面语言',
+    languageHint: '更改立即生效，作用于所有窗口。',
+    version: '版本 {version}',
+    checkForUpdates: '检查更新',
+    devBuildNoUpdate: '开发版本不支持检查更新。',
+  },
   // 数据库编辑子窗口（components/database/DatabaseEditorWindow.vue）。
   databaseEditor: {
     titleCreate: '新建数据库',

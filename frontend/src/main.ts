@@ -39,5 +39,10 @@ systemApi.onSetLocale((locale) => {
   setLocale(locale)
   void settingsApi.setLocale(locale)
 })
+// 任一窗口通过 SettingsService.SetLocale 改语言后，Go 广播 app:locale-changed；
+// 这里只做本窗口的运行时切换，绝不能再调 settingsApi.setLocale（会造成 持久化→广播→持久化 死循环）。
+systemApi.onLocaleChanged(({ locale }) => {
+  if (isSupportedLocale(locale)) setLocale(locale)
+})
 
 app.mount('#app')

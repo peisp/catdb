@@ -138,6 +138,12 @@ func (s *SystemService) OpenDataSyncDialog(_ context.Context) {
 	wailsbridge.OpenChildWindow("data-sync", wailsbridge.Tr("window.dataSync"), "/#/data-sync", 860, 680)
 }
 
+// OpenSettingsWindow opens the app settings as its own native child window,
+// keyed by name "settings".
+func (s *SystemService) OpenSettingsWindow(_ context.Context) {
+	wailsbridge.OpenSettingsWindow()
+}
+
 // OpenExternalURL opens the given URL in the user's default browser.
 // Used by features like the update dialog's "view on GitHub" link — a plain
 // <a target="_blank"> inside the WebView either no-ops or navigates the

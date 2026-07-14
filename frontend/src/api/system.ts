@@ -47,6 +47,13 @@ export function broadcastDatabaseSaved(connId: string, dbName: string): Promise<
 export function openExternalURL(url: string): Promise<void> {
   return SystemService.OpenExternalURL(url) as unknown as Promise<void>
 }
+export function openSettingsWindow(): Promise<void> {
+  return SystemService.OpenSettingsWindow() as unknown as Promise<void>
+}
+export type LocaleChangedPayload = { locale: string }
+export function onLocaleChanged(cb: (p: LocaleChangedPayload) => void): () => void {
+  return on<LocaleChangedPayload>('app:locale-changed', cb)
+}
 
 export type ConnectionSavedPayload = { id: string }
 export function onConnectionSaved(cb: (p: ConnectionSavedPayload) => void): () => void {

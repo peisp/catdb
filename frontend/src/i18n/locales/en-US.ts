@@ -460,6 +460,18 @@ export default {
     maximise: 'Maximise',
     restore: 'Restore',
   },
+  // Settings child window (components/settings/SettingsWindow.vue).
+  settingsWindow: {
+    title: 'Settings',
+    openSettings: 'Settings',
+    categoryLanguage: 'Language',
+    categoryAbout: 'About',
+    uiLanguage: 'Interface Language',
+    languageHint: 'Changes take effect immediately across all windows.',
+    version: 'Version {version}',
+    checkForUpdates: 'Check for Updates',
+    devBuildNoUpdate: 'Update check is unavailable in development builds.',
+  },
   // Database editor child window (components/database/DatabaseEditorWindow.vue).
   databaseEditor: {
     titleCreate: 'New Database',

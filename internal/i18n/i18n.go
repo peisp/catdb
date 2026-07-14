@@ -70,6 +70,7 @@ var messages = map[Locale]map[string]string{
 		"menu.window":         "Window",
 		"menu.help":           "Help",
 		"menu.documentation":  "Documentation",
+		"menu.settings":       "Settings…",
 
 		// --- shared context-menu verbs ---
 		"ctx.open":    "Open",
@@ -118,6 +119,7 @@ var messages = map[Locale]map[string]string{
 		"window.dataTransfer":   "Data Transfer",
 		"window.structureSync":  "Structure Synchronization",
 		"window.dataSync":       "Data Synchronization",
+		"window.settings":       "Settings",
 	},
 	LocaleZH: {
 		"menu.file":           "文件",
@@ -141,6 +143,7 @@ var messages = map[Locale]map[string]string{
 		"menu.window":         "窗口",
 		"menu.help":           "帮助",
 		"menu.documentation":  "文档",
+		"menu.settings":       "设置…",
 
 		"ctx.open":    "打开",
 		"ctx.rename":  "重命名",
@@ -181,5 +184,6 @@ var messages = map[Locale]map[string]string{
 		"window.dataTransfer":   "数据传输",
 		"window.structureSync":  "结构同步",
 		"window.dataSync":       "数据同步",
+		"window.settings":       "设置",
 	},
 }

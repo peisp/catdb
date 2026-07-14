@@ -10,6 +10,7 @@ import fileCodeCornerIcon from '../../assets/icons/file-code-corner.svg?raw'
 import arrowLeftRightIcon from '../../assets/icons/arrow-left-right.svg?raw'
 import tableIcon from '../../assets/icons/table-2.svg?raw'
 import databaseZapIcon from '../../assets/icons/database-zap.svg?raw'
+import settingsIcon from '../../assets/icons/settings.svg?raw'
 
 const queryStore = useQueryStore()
 
@@ -44,6 +45,9 @@ function openStructureSyncDialog() {
 function openDataSyncDialog() {
   void systemApi.openDataSyncDialog()
 }
+function openSettings() {
+  void systemApi.openSettingsWindow()
+}
 </script>
 
 <template>
@@ -69,6 +73,9 @@ function openDataSyncDialog() {
       {{ $t('tabBar.newQuery') }}
     </button>
     <span class="toolbar-spacer"></span>
+    <button type="button" class="toolbar-btn toolbar-btn-icon" :title="$t('settingsWindow.openSettings')" @click="openSettings">
+      <AppIcon :src="settingsIcon" :size="15" />
+    </button>
     <!-- Windows frameless caption buttons (minimise / maximise / close). -->
     <div v-if="isWin" class="window-controls">
       <button type="button" class="win-btn win-btn-min" :title="$t('appShell.minimize')" @click="onWindowCtrl('min')">
@@ -121,6 +128,7 @@ function openDataSyncDialog() {
 .toolbar-btn:hover { background: rgba(127, 127, 127, 0.12); }
 .toolbar-btn:active { background: rgba(127, 127, 127, 0.2); }
 .toolbar-btn:disabled { opacity: 0.35; pointer-events: none; }
+.toolbar-btn-icon { padding: 0; width: 28px; justify-content: center; }
 .toolbar { transition: margin-left 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
 .toolbar.sidebar-closed { margin-left: 150px; }
 .toolbar.win.sidebar-closed { margin-left: 50px; }

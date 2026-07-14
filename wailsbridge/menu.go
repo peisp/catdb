@@ -22,6 +22,13 @@ func BuildApplicationMenu(app *application.App) *application.Menu {
 		appMenu := m.AddSubmenu("catdb")
 		appMenu.AddRole(application.About)
 		appMenu.AddSeparator()
+		// Standard macOS "Settings…" slot with the conventional Cmd+, shortcut.
+		settingsItem := appMenu.Add(tr("menu.settings"))
+		settingsItem.SetAccelerator("Cmd+,")
+		settingsItem.OnClick(func(_ *application.Context) {
+			OpenSettingsWindow()
+		})
+		appMenu.AddSeparator()
 		appMenu.AddRole(application.Hide)
 		appMenu.AddRole(application.HideOthers)
 		appMenu.AddRole(application.UnHide)

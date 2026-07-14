@@ -80,3 +80,10 @@ func OpenChildWindow(name, title, url string, width, height int) {
 		}
 	})
 }
+
+// OpenSettingsWindow opens (or focuses) the settings child window. Single
+// definition shared by SystemService.OpenSettingsWindow and the macOS app
+// menu's "Settings…" item (Cmd+,).
+func OpenSettingsWindow() {
+	OpenChildWindow("settings", tr("window.settings"), "/#/settings", 680, 500)
+}

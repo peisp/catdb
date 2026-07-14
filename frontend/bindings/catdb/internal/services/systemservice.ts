@@ -88,6 +88,14 @@ export function OpenExternalURL(target: string): $CancellablePromise<void> {
 }
 
 /**
+ * OpenSettingsWindow opens the app settings as its own native child window,
+ * keyed by name "settings".
+ */
+export function OpenSettingsWindow(): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.SystemService.OpenSettingsWindow");
+}
+
+/**
  * OpenStructureSyncDialog opens the Structure Synchronization dialog as its
  * own native child window, keyed by name "structure-sync".
  */
