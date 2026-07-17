@@ -116,26 +116,23 @@ function openSettings() {
   height: 26px;
   padding: 0 10px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--catdb-rounded-sm);
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   cursor: default;
   white-space: nowrap;
   transition: background 80ms ease;
 }
-.toolbar-btn:hover { background: rgba(127, 127, 127, 0.12); }
-.toolbar-btn:active { background: rgba(127, 127, 127, 0.2); }
+.toolbar-btn:hover { background: var(--catdb-hover-fill); }
+.toolbar-btn:active { background: var(--catdb-pressed-fill); }
 .toolbar-btn:disabled { opacity: 0.35; pointer-events: none; }
 .toolbar-btn-icon { padding: 0; width: 28px; justify-content: center; }
 .toolbar { transition: margin-left 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
 .toolbar.sidebar-closed { margin-left: 150px; }
 .toolbar.win.sidebar-closed { margin-left: 50px; }
-.toolbar.win { background: #EEEEEE; }
-@media (prefers-color-scheme: dark) {
-  .toolbar.win { background: #1e1e1e; }
-}
+.toolbar.win { background: var(--catdb-surface-chrome); }
 /* Spacer pushes the window controls to the right side of the toolbar. */
 .toolbar-spacer { flex: 1 1 0; min-width: 0; }
 
@@ -167,18 +164,10 @@ function openSettings() {
   height: 14px;
   opacity: 0.75;
 }
-.win-btn:hover { background: rgba(127, 127, 127, 0.15); }
-.win-btn:active { background: rgba(127, 127, 127, 0.25); }
-.win-btn-close:hover { background: rgba(196, 43, 28, 0.9); }
+.win-btn:hover { background: var(--catdb-hover-fill); }
+.win-btn:active { background: var(--catdb-pressed-fill); }
+.win-btn-close:hover { background: var(--catdb-error); }
 .win-btn-close:hover svg { opacity: 1; }
-.win-btn-close:active { background: rgba(180, 30, 20, 0.95); }
+.win-btn-close:active { background: var(--catdb-error); }
 .win-btn-close:active svg { opacity: 1; }
-@media (prefers-color-scheme: dark) {
-  .win-btn:hover { background: rgba(255, 255, 255, 0.1); }
-  .win-btn:active { background: rgba(255, 255, 255, 0.16); }
-  .win-btn-close:hover { background: rgba(196, 43, 28, 0.9); }
-  .win-btn-close:hover svg { opacity: 1; }
-  .win-btn-close:active { background: rgba(180, 30, 20, 0.95); }
-  .win-btn-close:active svg { opacity: 1; }
-}
 </style>

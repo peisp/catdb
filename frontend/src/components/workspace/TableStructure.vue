@@ -445,11 +445,11 @@ const newApplyDisabled = computed(() => {
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border-bottom: 1px solid var(--n-border-color);
+  border-bottom: 1px solid var(--catdb-separator);
   flex: 0 0 auto;
 }
 .new-table-header .ntb-label {
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   opacity: 0.75;
   flex: 0 0 auto;
   white-space: nowrap;
@@ -573,7 +573,7 @@ const newApplyDisabled = computed(() => {
 .tab-body-ddl {
   height: 100%;
   margin: 6px 6px;
-  background-color: var(--app-content-bg);
+  background-color: var(--catdb-surface-content);
 }
 
 </style>

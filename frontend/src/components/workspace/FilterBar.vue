@@ -447,9 +447,9 @@ watch(
   align-items: center;
   gap: 6px;
   padding: 3px 8px;
-  border-bottom: 1px solid var(--n-border-color);
-  background: var(--n-color, transparent);
-  font-size: 12px;
+  border-bottom: 1px solid var(--catdb-separator);
+  background: var(--catdb-surface-chrome);
+  font-size: var(--catdb-fs-small);
   position: relative;
   flex: 0 0 auto;
   z-index: 10;
@@ -463,17 +463,17 @@ watch(
   min-width: 0;
   position: relative;
   border: 1px solid transparent;
-  border-radius: 3px;
+  border-radius: var(--catdb-rounded-sm);
   padding: 0 4px;
   transition: border-color 120ms ease;
 }
 
 .filter-input-wrap.active {
-  border-color: var(--n-primary-color, #18a058);
+  border-color: var(--catdb-accent);
 }
 
 .filter-label {
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
   font-weight: 600;
   opacity: 0.6;
   flex: 0 0 auto;
@@ -493,7 +493,7 @@ watch(
   flex: 1 1 0;
   min-width: 0;
   height: 24px;
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   background: transparent;
   border: none;
   outline: none;
@@ -514,7 +514,7 @@ watch(
   top: 0;
   visibility: hidden;
   white-space: pre;
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   font-family: inherit;
   pointer-events: none;
 }
@@ -530,16 +530,16 @@ watch(
   border: none;
   color: inherit;
   opacity: 0.4;
-  font-size: 13px;
+  font-size: var(--catdb-fs-body);
   line-height: 1;
   cursor: default;
   padding: 0;
-  border-radius: 2px;
+  border-radius: var(--catdb-rounded-xs);
 }
 
 .clear-btn:hover {
   opacity: 0.8;
-  background: rgba(127, 127, 127, 0.12);
+  background: var(--catdb-hover-fill);
 }
 
 .filter-actions {
@@ -557,8 +557,8 @@ watch(
   justify-content: center;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 3px;
-  font-size: 12px;
+  border-radius: var(--catdb-rounded-sm);
+  font-size: var(--catdb-fs-small);
   line-height: 1;
   color: inherit;
   cursor: default;
@@ -567,7 +567,7 @@ watch(
 }
 
 .action-btn:hover {
-  background: var(--n-color-target, rgba(127, 127, 127, 0.12));
+  background: var(--catdb-hover-fill);
 }
 
 .clear-all {
@@ -584,10 +584,10 @@ watch(
   top: 100%;
   margin-top: 2px;
   min-width: 100px;
-  background: var(--n-color, #fff);
-  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.25));
-  border-radius: 3px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  background: var(--catdb-surface-raised);
+  border: 1px solid var(--catdb-separator);
+  border-radius: var(--catdb-rounded-md);
+  box-shadow: var(--catdb-shadow-menu);
   max-height: 200px;
   overflow-y: auto;
   z-index: 100;
@@ -595,14 +595,14 @@ watch(
 
 .completion-item {
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   cursor: default;
   white-space: nowrap;
 }
 
 .completion-item:hover,
 .completion-item.selected {
-  background: var(--n-color-target, rgba(127, 127, 127, 0.12));
+  background: var(--catdb-hover-fill);
 }
 
 /* 历史记录弹窗 */
@@ -614,28 +614,28 @@ watch(
   min-width: 240px;
   max-height: 300px;
   overflow-y: auto;
-  background: var(--n-color, #fff);
-  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.25));
-  border-radius: 3px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  background: var(--catdb-surface-raised);
+  border: 1px solid var(--catdb-separator);
+  border-radius: var(--catdb-rounded-md);
+  box-shadow: var(--catdb-shadow-menu);
   z-index: 100;
 }
 
 .history-header {
   padding: 6px 8px;
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
   font-weight: 600;
   opacity: 0.6;
-  border-bottom: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.15));
+  border-bottom: 1px solid var(--catdb-separator);
   user-select: none;
   -webkit-user-select: none;
 }
 
 .history-item {
   padding: 6px 8px;
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
   cursor: default;
-  border-bottom: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.08));
+  border-bottom: 1px solid var(--catdb-separator);
 }
 
 .history-item:last-child {
@@ -643,7 +643,7 @@ watch(
 }
 
 .history-item:hover {
-  background: var(--n-color-target, rgba(127, 127, 127, 0.12));
+  background: var(--catdb-hover-fill);
 }
 
 .history-item-where {
@@ -652,7 +652,7 @@ watch(
 
 .history-item-order {
   opacity: 0.55;
-  font-size: 10px;
+  font-size: var(--catdb-fs-micro);
   margin-top: 2px;
 }
 

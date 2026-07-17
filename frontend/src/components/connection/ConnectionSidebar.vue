@@ -317,21 +317,18 @@ onMounted(() => {
 
 <style scoped>
 .sidebar { display: flex; flex-direction: column; height: 100%; }
-.sidebar.win { background: var(--app-content-bg); }
-@media (prefers-color-scheme: dark) {
-  .sidebar.win { background: #1e1e1e; }
-}
+.sidebar.win { background: var(--catdb-surface-sidebar); }
 .header {
   --wails-draggable: drag;
   display: flex;
   align-items: center;
   padding: 6px 10px;
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   opacity: 0.7;
 }
-.title { font-size: 11px; }
+.title { font-size: var(--catdb-fs-mini); }
 .list { flex: 1 1 auto; }
 .group {
   padding: 4px 0;
@@ -339,22 +336,22 @@ onMounted(() => {
   /* Inset hairline used as the drag-over indicator. Keep this transparent
      so the layout never shifts when the ring appears. */
   box-shadow: inset 0 0 0 1px transparent;
-  border-radius: 4px;
+  border-radius: var(--catdb-rounded-xs);
   transition: background 80ms ease, box-shadow 80ms ease;
 }
 .group.drag-over {
-  background: rgba(24, 160, 88, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(24, 160, 88, 0.45);
+  background: var(--catdb-accent-soft);
+  box-shadow: inset 0 0 0 1px var(--catdb-accent);
 }
 .group-label {
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
   padding: 4px 10px 2px;
   opacity: 0.55;
   cursor: default;
 }
 .group-empty {
   padding: 2px 10px 6px 22px;
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
   opacity: 0.4;
 }
 
@@ -367,11 +364,11 @@ onMounted(() => {
   width: 100%;
   padding: 2px 4px;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
   color: inherit;
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--n-border-color-focus, #18a058);
+  border-bottom: 1px solid var(--catdb-accent);
   outline: none;
 }
 .new-group-input::placeholder { opacity: 0.4; }
@@ -380,20 +377,20 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
   padding: 4px 10px 4px 14px;
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   height: 24px;
   cursor: default;
 }
 .row:hover { background: var(--n-color-target); }
 .row.dragging { opacity: 0.4; }
 .row-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-driver { font-size: 10px; opacity: 0.5; }
+.row-driver { font-size: var(--catdb-fs-micro); opacity: 0.5; }
 .dot {
-  width: 6px; height: 6px; border-radius: 3px;
-  background: rgba(127,127,127,0.4);
+  width: 6px; height: 6px; border-radius: var(--catdb-rounded-xs);
+  background: var(--catdb-text-tertiary);
   flex: 0 0 auto;
 }
-.dot.live { background: #18a058; }
+.dot.live { background: var(--catdb-accent); }
 
 /* Windows frameless: no top padding on header so content starts flush. */
 .sidebar.win .header { padding-top: 18px; }

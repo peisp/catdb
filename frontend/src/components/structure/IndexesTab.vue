@@ -416,9 +416,9 @@ const TYPE_OPTIONS = [
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   margin: 6px 6px;
-  background-color: var(--app-content-bg);
+  background-color: var(--catdb-surface-content);
 }
 
 /* ---- sidebar ---- */
@@ -428,7 +428,7 @@ const TYPE_OPTIONS = [
   max-width: 50%;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--n-border-color);
+  border-right: 1px solid var(--catdb-separator);
   min-height: 0;
   position: relative;
 }
@@ -437,7 +437,7 @@ const TYPE_OPTIONS = [
   align-items: center;
   justify-content: space-between;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--n-divider-color);
+  border-bottom: 1px solid var(--catdb-separator);
   color: var(--n-text-color-2);
   user-select: none;
 }
@@ -471,7 +471,7 @@ const TYPE_OPTIONS = [
 }
 .ix-item.selected {
   background: var(--n-action-color, var(--n-hover-color));
-  border-left-color: var(--n-color-info, #3b8ee0);
+  border-left-color: var(--catdb-accent);
 }
 .ix-item.is-new .ix-name::before {
   content: '+';
@@ -488,7 +488,7 @@ const TYPE_OPTIONS = [
   flex: 0 0 auto;
 }
 .ix-icon.is-unique {
-  color: var(--n-color-info, #3b8ee0);
+  color: var(--catdb-accent);
 }
 .ix-name {
   flex: 0 1 auto;
@@ -501,7 +501,7 @@ const TYPE_OPTIONS = [
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--n-text-color-3);
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
 }
 
 /* ---- detail pane ---- */
@@ -521,10 +521,10 @@ const TYPE_OPTIONS = [
 }
 .pk-hint {
   padding: 4px 8px;
-  border-radius: 3px;
+  border-radius: var(--catdb-rounded-xs);
   background: var(--n-action-color, var(--n-hover-color));
   color: var(--n-text-color-3);
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
 }
 .row {
   display: flex;
@@ -537,7 +537,7 @@ const TYPE_OPTIONS = [
 .label {
   flex: 0 0 40px;
   color: var(--n-text-color-2);
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
 }
 .inline-check {
   display: inline-flex;
@@ -550,15 +550,15 @@ const TYPE_OPTIONS = [
 .col-wrapper {
   flex: 1 1 auto;
   display: flex;
-  border: 1px solid var(--n-border-color);
-  border-radius: 3px;
+  border: 1px solid var(--catdb-separator);
+  border-radius: var(--catdb-rounded-xs);
   min-height: 160px;
   max-height: 240px;
   overflow: hidden;
   background: var(--n-input-color, var(--n-card-color));
 }
 .col-left {
-  border-right: 1px solid var(--n-border-color);
+  border-right: 1px solid var(--catdb-separator);
   flex: 0 0 130px;
   display: flex;
   flex-direction: column;
@@ -568,7 +568,7 @@ const TYPE_OPTIONS = [
   display: flex;
   gap: 2px;
   padding: 3px 4px;
-  border-bottom: 1px solid var(--n-border-color);
+  border-bottom: 1px solid var(--catdb-separator);
 }
 .col-items {
   flex: 1 1 auto;
@@ -591,13 +591,13 @@ const TYPE_OPTIONS = [
 }
 .col-item.active {
   background: var(--n-action-color, var(--n-hover-color));
-  border-left-color: var(--n-color-info, #3b8ee0);
+  border-left-color: var(--catdb-accent);
 }
 .col-empty {
   padding: 12px;
   text-align: center;
   color: var(--n-text-color-3);
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
 }
 .col-right {
   flex: 1 1 auto;
@@ -610,7 +610,7 @@ const TYPE_OPTIONS = [
 .col-empty-detail {
   margin: auto;
   color: var(--n-text-color-3);
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
 }
 .col-row {
   display: flex;
@@ -632,15 +632,15 @@ const TYPE_OPTIONS = [
   border: 1px solid transparent;
   background: transparent;
   color: var(--n-text-color-2);
-  font-size: 13px;
+  font-size: var(--catdb-fs-body);
   line-height: 1;
-  border-radius: 3px;
+  border-radius: var(--catdb-rounded-sm);
   cursor: pointer;
   padding: 0;
 }
 .icon-btn:hover:not(:disabled) {
   background: var(--n-hover-color);
-  border-color: var(--n-border-color);
+  border-color: var(--catdb-separator);
   color: var(--n-text-color-1);
 }
 .icon-btn:disabled {
@@ -650,13 +650,13 @@ const TYPE_OPTIONS = [
 
 /* ---- native select ---- */
 .native-sel {
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   font-family: inherit;
   flex: 1 1 auto;
   min-width: 0;
   padding: 2px 4px;
-  border: 1px solid var(--n-border-color);
-  border-radius: 3px;
+  border: 1px solid var(--catdb-separator);
+  border-radius: var(--catdb-rounded-sm);
   background: var(--n-input-color, var(--n-card-color));
   color: var(--n-text-color-1);
   outline: none;

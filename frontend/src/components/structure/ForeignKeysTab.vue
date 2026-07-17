@@ -205,7 +205,7 @@ const ACTIONS = [
   min-height: 0;
   overflow: hidden;
   margin: 6px 6px;
-  background-color: var(--app-content-bg);
+  background-color: var(--catdb-surface-content);
 }
 .fk-table-wrap {
   flex: 1 1 auto;
@@ -216,7 +216,7 @@ const ACTIONS = [
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   table-layout: fixed;
 }
 .fk-table thead th {
@@ -225,10 +225,10 @@ const ACTIONS = [
   z-index: 1;
   background: var(--n-color-segment);
   color: var(--n-text-color-2);
-  font-weight: 500;
+  font-weight: 600;
   text-align: left;
   padding: 4px 6px;
-  border-bottom: 1px solid var(--n-divider-color);
+  border-bottom: 1px solid var(--catdb-separator);
   white-space: nowrap;
   user-select: none;
 }
@@ -236,7 +236,7 @@ const ACTIONS = [
 .fk-table tbody td {
   padding: 3px 6px;
   vertical-align: middle;
-  border-bottom: 1px solid var(--n-divider-color);
+  border-bottom: 1px solid var(--catdb-separator);
 }
 .fk-table tbody td.td-idx {
   text-align: right;
@@ -256,19 +256,19 @@ const ACTIONS = [
 }
 .fk-toolbar {
   padding: 6px 8px;
-  border-top: 1px solid var(--n-divider-color);
+  border-top: 1px solid var(--catdb-separator);
   flex: 0 0 auto;
 }
 
 /* ---- native select / input ---- */
 .native-sel,
 .native-input {
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   font-family: inherit;
   width: 100%;
   padding: 2px 4px;
-  border: var(--n-border-color);
-  border-radius: 3px;
+  border: var(--catdb-separator);
+  border-radius: var(--catdb-rounded-sm);
   background: var(--n-input-color, var(--n-card-color));
   color: var(--n-text-color-1);
   outline: none;

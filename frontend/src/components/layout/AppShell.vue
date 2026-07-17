@@ -306,16 +306,9 @@ function onOpenTablesOverview(payload: { db: string; schema?: string }) {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  /* UIColor.systemBackground — light = rgb(255,255,255), dark = rgb(0,0,0) */
-  background: rgb(255, 255, 255, 0.1);
+  background: var(--catdb-surface-content);
 }
-@media (prefers-color-scheme: dark) {
-  .main { background: rgb(0, 0, 0, 0.5); }
-}
-.main.win { background: #EEEEEE; }
-@media (prefers-color-scheme: dark) {
-  .main.win { background: #1e1e1e; }
-}
+.main.win { background: var(--catdb-surface-content); }
 
 /* --- Round liquid-glass sidebar toggle ---
    1. translucent gradient fill (base material)
@@ -369,7 +362,7 @@ function onOpenTablesOverview(payload: { db: string; schema?: string }) {
     0 0 0 0.5px rgba(0, 0, 0, 0.16);
 }
 .sidebar-toggle:focus-visible {
-  outline: 2px solid rgba(10, 132, 255, 0.55);
+  outline: 2px solid var(--catdb-accent);
   outline-offset: 1px;
 }
 .sidebar-toggle .glass-icon {
@@ -465,7 +458,7 @@ function onOpenTablesOverview(payload: { db: string; schema?: string }) {
   min-height: 0;
   overflow: hidden;
   display: flex;
-  border-top: 1px solid var(--n-border-color);
+  border-top: 1px solid var(--catdb-separator);
 }
 .content > * { flex: 1 1 0; min-width: 0; min-height: 0; }
 
@@ -473,7 +466,7 @@ function onOpenTablesOverview(payload: { db: string; schema?: string }) {
 .status {
   flex: 0 0 22px;
   height: 22px;
-  border-top: 1px solid var(--n-border-color);
+  border-top: 1px solid var(--catdb-separator);
   background: var(--n-color, transparent);
 }
 </style>

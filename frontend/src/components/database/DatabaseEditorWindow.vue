@@ -431,8 +431,8 @@ async function onConfirm() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--catdb-fs-small);
+  font-weight: 600;
   letter-spacing: 0.2px;
   opacity: 0.85;
   --wails-draggable: drag;
@@ -468,16 +468,12 @@ async function onConfirm() {
   transition: background 80ms ease;
 }
 .titlebar .win-btn svg { width: 14px; height: 14px; opacity: 0.75; }
-.titlebar .win-btn:hover { background: rgba(127, 127, 127, 0.15); }
-.titlebar .win-btn:active { background: rgba(127, 127, 127, 0.25); }
-.titlebar .win-btn-close:hover { background: rgba(196, 43, 28, 0.9); }
+.titlebar .win-btn:hover { background: var(--catdb-hover-fill); }
+.titlebar .win-btn:active { background: var(--catdb-pressed-fill); }
+.titlebar .win-btn-close:hover { background: var(--catdb-error); }
 .titlebar .win-btn-close:hover svg { opacity: 1; }
-.titlebar .win-btn-close:active { background: rgba(180, 30, 20, 0.95); }
+.titlebar .win-btn-close:active { background: var(--catdb-error); }
 .titlebar .win-btn-close:active svg { opacity: 1; }
-@media (prefers-color-scheme: dark) {
-  .titlebar .win-btn:hover { background: rgba(255, 255, 255, 0.1); }
-  .titlebar .win-btn:active { background: rgba(255, 255, 255, 0.16); }
-}
 
 .body {
   flex: 1 1 0;
@@ -494,10 +490,10 @@ async function onConfirm() {
   align-items: center;
   gap: 8px;
   padding: 20px;
-  font-size: 13px;
+  font-size: var(--catdb-fs-body);
   opacity: 0.8;
 }
-.error { color: var(--n-error-color, #d03050); }
+.error { color: var(--catdb-error); }
 
 .content {
   flex: 1 1 auto;
@@ -523,7 +519,7 @@ async function onConfirm() {
 }
 
 .lbl {
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   opacity: 0.75;
   text-align: right;
 }
@@ -535,13 +531,13 @@ async function onConfirm() {
   margin-top: 4px;
 }
 .ddl-head {
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
   opacity: 0.6;
 }
 .ddl-body {
-  background: rgba(127, 127, 127, 0.08);
-  border: 1px solid var(--n-border-color, rgba(127,127,127,0.18));
-  border-radius: 4px;
+  background: var(--catdb-surface-content);
+  border: 1px solid var(--catdb-control-border);
+  border-radius: var(--catdb-rounded-sm);
   height: 120px;
   min-height: 80px;
   overflow: hidden;
@@ -553,8 +549,8 @@ async function onConfirm() {
 .ddl-body :deep(.cm-gutters) { display: none; }
 
 .err {
-  font-size: 12px;
-  color: #d03050;
+  font-size: var(--catdb-fs-small);
+  color: var(--catdb-error);
   word-break: break-all;
 }
 
@@ -564,7 +560,7 @@ async function onConfirm() {
   justify-content: flex-end;
   gap: 8px;
   padding: 10px 22px 14px;
-  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.18));
+  border-top: 1px solid var(--catdb-separator);
   background: var(--n-color);
 }
 </style>

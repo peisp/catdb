@@ -52,7 +52,7 @@ withDefaults(
 }
 .resize-handle:hover,
 .resize-handle.active {
-  background-color: var(--n-primary-color-hover, rgba(51, 136, 255, 0.3));
+  background-color: var(--catdb-accent-soft);
 }
 .resize-handle::after {
   content: '';
@@ -77,6 +77,6 @@ withDefaults(
 }
 .resize-handle:hover::after,
 .resize-handle.active::after {
-  background: var(--n-primary-color, #3888ff);
+  background: var(--catdb-accent);
 }
 </style>

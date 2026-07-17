@@ -159,8 +159,8 @@ function onExportSelect(ev: Event) {
   align-items: center;
   gap: 10px;
   padding: 4px 10px;
-  border-top: 1px solid var(--n-border-color);
-  background: var(--n-color);
+  border-top: 1px solid var(--catdb-separator);
+  background: var(--catdb-surface-chrome);
   flex: 0 0 auto;
   min-width: 0;
 }
@@ -179,7 +179,7 @@ function onExportSelect(ev: Event) {
   justify-content: center;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 3px;
+  border-radius: var(--catdb-rounded-sm);
   font-size: 14px;
   line-height: 1;
   color: inherit;
@@ -188,7 +188,7 @@ function onExportSelect(ev: Event) {
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .pgbtn:hover:not(:disabled) {
-  background: var(--n-color-target, rgba(127, 127, 127, 0.12));
+  background: var(--catdb-hover-fill);
 }
 .pgbtn:disabled {
   opacity: 0.3;
@@ -198,9 +198,9 @@ function onExportSelect(ev: Event) {
   width: 44px;
   height: 22px;
   text-align: center;
-  font-size: 12px;
-  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.25));
-  border-radius: 3px;
+  font-size: var(--catdb-fs-small);
+  border: 1px solid var(--catdb-control-border);
+  border-radius: var(--catdb-rounded-sm);
   background: transparent;
   color: inherit;
   padding: 0 4px;
@@ -208,7 +208,7 @@ function onExportSelect(ev: Event) {
   transition: border-color 120ms ease;
 }
 .page-input:focus {
-  border-color: var(--n-primary-color, #18a058);
+  border-color: var(--catdb-accent);
 }
 .page-input:disabled {
   opacity: 0.4;
@@ -220,9 +220,9 @@ function onExportSelect(ev: Event) {
   flex: 0 0 auto;
   height: 20px;
   padding: 0 8px;
-  font-size: 11px;
-  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.25));
-  border-radius: 3px;
+  font-size: var(--catdb-fs-mini);
+  border: 1px solid var(--catdb-control-border);
+  border-radius: var(--catdb-rounded-sm);
   background: transparent;
   color: inherit;
   cursor: default;
@@ -230,7 +230,7 @@ function onExportSelect(ev: Event) {
   transition: background-color 120ms ease;
 }
 .count-btn:hover:not(:disabled) {
-  background: var(--n-color-target, rgba(127, 127, 127, 0.12));
+  background: var(--catdb-hover-fill);
 }
 .count-btn:disabled { opacity: 0.5; }
 
@@ -259,12 +259,12 @@ function onExportSelect(ev: Event) {
   flex: 0 0 auto;
   line-height: 1;
   opacity: 0.6;
-  font-size: 9px;
+  font-size: var(--catdb-fs-micro);
 }
 .sql-text {
   flex: 1 1 0;
   min-width: 0;
-  font-size: 11px;
+  font-size: var(--catdb-fs-mono-small);
   opacity: 0.7;
   white-space: nowrap;
   overflow: hidden;
@@ -277,10 +277,10 @@ function onExportSelect(ev: Event) {
   flex: 0 0 auto;
   height: 20px;
   padding: 0 8px;
-  font-size: 11px;
-  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.25));
-  border-radius: 3px;
-  background: var(--n-color, transparent);
+  font-size: var(--catdb-fs-mini);
+  border: 1px solid var(--catdb-control-border);
+  border-radius: var(--catdb-rounded-sm);
+  background: var(--catdb-surface-content);
   color: inherit;
   cursor: default;
   opacity: 0;
@@ -292,17 +292,17 @@ function onExportSelect(ev: Event) {
   pointer-events: auto;
 }
 .copy-btn:hover {
-  background: var(--n-color-target, rgba(127, 127, 127, 0.12));
+  background: var(--catdb-hover-fill);
 }
 
 .size-select,
 .export-select {
   flex: 0 0 auto;
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   height: 22px;
   padding: 0 4px;
-  border-radius: 3px;
-  border: 1px solid var(--n-border-color, rgba(127,127,127,0.25));
+  border-radius: var(--catdb-rounded-sm);
+  border: 1px solid var(--catdb-control-border);
   background: transparent;
   color: inherit;
   cursor: pointer;
@@ -312,12 +312,12 @@ function onExportSelect(ev: Event) {
 .size-select { width: 80px; }
 .size-select:hover:not(:disabled),
 .export-select:hover:not(:disabled) {
-  background: var(--n-color-target, rgba(127,127,127,0.12));
+  background: var(--catdb-hover-fill);
 }
 .size-select:disabled,
 .export-select:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
-.mute { opacity: 0.55; font-size: 10px; }
+.mute { opacity: 0.55; font-size: var(--catdb-fs-micro); }
 </style>

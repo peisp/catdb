@@ -42,7 +42,7 @@ import {
   indentWithTab,
 } from '@codemirror/commands'
 import { useThemeStore } from '../../stores/theme'
-import { editorSurface } from '../../styles/theme'
+import { colors as tokenColors } from '../../styles/tokens'
 import { genericUIDialect, type UIDialect } from '../../api/dialect'
 import { cmSqlDialect } from '../../editor/cmDialect'
 import {
@@ -112,7 +112,7 @@ const themeCompartment = new Compartment()
 // it can be swapped on light/dark switch. The background overrides oneDark's
 // built-in #282c34 — it's placed AFTER oneDark so its property wins.
 function editorChrome(dark: boolean) {
-  const bg = dark ? editorSurface.dark : editorSurface.light
+  const bg = tokenColors(dark ? 'dark' : 'light')['surface-content']
   return [
     dark ? oneDark : [],
     EditorView.theme({ '&': { backgroundColor: bg } }, { dark }),
@@ -249,19 +249,18 @@ function makeState(initial: string) {
             lineHeight: '18px',
           },
           '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
-            backgroundColor: 'var(--n-primary-color, #2080f0)',
-            color: '#fff',
+            backgroundColor: 'var(--catdb-accent)',
+            color: 'var(--catdb-text-on-accent)',
           },
           '.cm-sql-signature': {
-            fontFamily:
-              'ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace',
+            fontFamily: 'var(--catdb-font-family-mono)',
             fontSize: '12px',
             padding: '2px 8px',
             borderRadius: '4px',
           },
           '.cm-sql-signature .cm-sql-signature-active': {
-            fontWeight: 700,
-            color: 'var(--n-primary-color, #2080f0)',
+            fontWeight: 600,
+            color: 'var(--catdb-accent)',
           },
           '.cm-completionLabel': { fontWeight: 500 },
           '.cm-completionDetail': {
@@ -388,12 +387,12 @@ const containerClass = computed(() => 'sql-editor ' + (theme.mode === 'dark' ? '
   height: 100%;
   min-width: 0;
   min-height: 0;
-  border: 1px solid var(--n-border-color);
-  border-radius: 3px;
+  border: 1px solid var(--catdb-separator);
+  border-radius: var(--catdb-rounded-xs);
   overflow: hidden;
 }
 .cm-host { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; }
 /* CodeMirror paints its own surface via editorChrome; this only covers the
-   mount gap behind it. Uses the shared --app-content-bg so it tracks the theme. */
-.cm-host, .sql-editor { background: var(--app-content-bg); }
+   mount gap behind it. Uses --catdb-surface-content so it tracks the theme. */
+.cm-host, .sql-editor { background: var(--catdb-surface-content); }
 </style>

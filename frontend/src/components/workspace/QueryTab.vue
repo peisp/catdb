@@ -662,19 +662,19 @@ function onSplitDown(e: PointerEvent) {
   padding: 2px 10px;
   background: var(--n-color);
   min-width: 0;
-  border-bottom: 1px solid var(--n-border-color);
+  border-bottom: 1px solid var(--catdb-separator);
   height: 35px;
 }
 .sep { display: inline-block; width: 1px; height: 12px; background: currentColor; opacity: 0.15; }
-.mute { opacity: 0.6; font-size: 12px; }
-.hint { opacity: 0.4; font-size: 11px; }
+.mute { opacity: 0.6; font-size: var(--catdb-fs-small); }
+.hint { opacity: 0.4; font-size: var(--catdb-fs-mini); }
 /* Schema dropdown — native select styled to match toolbar density. */
 .schema-select {
   width: 160px;
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   padding: 1px 6px;
-  border: 1px solid var(--n-border-color);
-  border-radius: 3px;
+  border: 1px solid var(--catdb-separator);
+  border-radius: var(--catdb-rounded-sm);
   background: var(--n-color);
   color: var(--n-text-color);
   height: 26px;
@@ -740,13 +740,14 @@ function onSplitDown(e: PointerEvent) {
    grid track. All vertical scrolling lives inside ResultTable's .scroller. */
 .result-table { flex: 1 1 0; min-width: 0; min-height: 0; }
 .exec-result { padding: 12px; display: flex; flex-direction: column; gap: 4px; }
-.ok { font-size: 13px; }
+.ok { font-size: var(--catdb-fs-body); }
 
 /* ---- Splitter ---- */
 
+/* 视觉与 shared/ResizeHandle 一致:半透明 accent-soft 垫底 + 中央 accent 握把 */
 .splitter {
   cursor: row-resize;
-  transition: background-color 120ms ease-out;
+  transition: background-color 0.2s ease;
   position: relative;
 }
 .splitter::after {
@@ -758,14 +759,30 @@ function onSplitDown(e: PointerEvent) {
   top: -3px;
   bottom: -3px;
 }
+.splitter::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 32px;
+  height: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background-color 0.2s ease;
+}
 .splitter:hover,
 .splitter.active {
-  background: var(--n-primary-color, #18a058);
+  background: var(--catdb-accent-soft);
+}
+.splitter:hover::before,
+.splitter.active::before {
+  background: var(--catdb-accent);
 }
 
 /* ---- Transaction controls ---- */
 .txn-group { display: inline-flex; align-items: center; gap: 1px; }
-.txn-btn { font-size: 11px !important; }
+.txn-btn { font-size: var(--catdb-fs-mini) !important; }
 .txn-icon-btn { padding: 0 2px !important; }
 .txn-icon-btn .app-icon { display: flex; }
 
@@ -775,11 +792,11 @@ function onSplitDown(e: PointerEvent) {
   padding: 0px 6px;
   gap: 0;
   flex: 0 0 auto;
-  border-bottom: 1px solid var(--n-divider-color);
+  border-bottom: 1px solid var(--catdb-separator);
   background: var(--n-color);
 }
 .result-tab {
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   padding: 4px 14px;
   border: none;
   background: transparent;
@@ -793,7 +810,7 @@ function onSplitDown(e: PointerEvent) {
 .result-tab:hover { opacity: 0.8; }
 .result-tab.active {
   opacity: 1;
-  border-bottom-color: var(--n-primary-color, #18a058);
+  border-bottom-color: var(--catdb-accent);
 }
 /* 执行状态（原 toolbar）— 靠右排布，无 tab 按钮时撑起栏高。 */
 .result-tabs { min-height: 27px; }
@@ -813,7 +830,7 @@ function onSplitDown(e: PointerEvent) {
   overflow-y: auto;
 }
 .summary-header {
-  font-size: 14px;
+  font-size: var(--catdb-fs-body);
   font-weight: 600;
   margin-bottom: 12px;
 }
@@ -829,11 +846,11 @@ function onSplitDown(e: PointerEvent) {
   gap: 2px;
   padding: 10px 12px;
   background: var(--n-color);
-  border: 1px solid var(--n-border-color);
-  border-radius: 6px;
+  border: 1px solid var(--catdb-separator);
+  border-radius: var(--catdb-rounded-md);
 }
 .summary-label {
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
   opacity: 0.6;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -851,10 +868,10 @@ function onSplitDown(e: PointerEvent) {
   user-select: text;
   -webkit-user-select: text;
   cursor: text;
-  font-size: 12px;
+  font-size: var(--catdb-fs-mono);
   background: var(--n-color);
-  border: 1px solid var(--n-border-color);
-  border-radius: 4px;
+  border: 1px solid var(--catdb-separator);
+  border-radius: var(--catdb-rounded-xs);
   padding: 10px 12px;
   max-height: 200px;
   overflow: auto;

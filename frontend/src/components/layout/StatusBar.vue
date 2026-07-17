@@ -150,7 +150,7 @@ const versionTitle = computed(() => {
   display: flex;
   align-items: center;
   height: 22px;
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
   padding: 0 18px;
   gap: 8px;
   opacity: 0.9;
@@ -193,7 +193,7 @@ const versionTitle = computed(() => {
   opacity: 0.9;
 }
 .version-btn:hover { opacity: 1; }
-.version-btn.has-update { color: #f97316; opacity: 1; }
+.version-btn.has-update { color: var(--catdb-warning); opacity: 1; }
 .version-btn.checking { opacity: 0.6; }
 
 .badge {
@@ -201,7 +201,7 @@ const versionTitle = computed(() => {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #f97316;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4);
+  background: var(--catdb-warning);
+  box-shadow: 0 0 0 1px var(--catdb-surface-chrome);
 }
 </style>

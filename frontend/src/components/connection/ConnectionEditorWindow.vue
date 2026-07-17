@@ -177,8 +177,8 @@ function toggleMaximise() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--catdb-fs-small);
+  font-weight: 600;
   letter-spacing: 0.2px;
   opacity: 0.85;
   --wails-draggable: drag;
@@ -224,19 +224,12 @@ function toggleMaximise() {
   height: 14px;
   opacity: 0.75;
 }
-.titlebar .win-btn:hover { background: rgba(127, 127, 127, 0.15); }
-.titlebar .win-btn:active { background: rgba(127, 127, 127, 0.25); }
-.titlebar .win-btn-close:hover { background: rgba(196, 43, 28, 0.9); }
+.titlebar .win-btn:hover { background: var(--catdb-hover-fill); }
+.titlebar .win-btn:active { background: var(--catdb-pressed-fill); }
+.titlebar .win-btn-close:hover { background: var(--catdb-error); }
 .titlebar .win-btn-close:hover svg { opacity: 1; }
-.titlebar .win-btn-close:active { background: rgba(180, 30, 20, 0.95); }
+.titlebar .win-btn-close:active { background: var(--catdb-error); }
 .titlebar .win-btn-close:active svg { opacity: 1; }
-@media (prefers-color-scheme: dark) {
-  .titlebar .win-btn:hover { background: rgba(255, 255, 255, 0.1); }
-  .titlebar .win-btn:active { background: rgba(255, 255, 255, 0.16); }
-  .titlebar .win-btn-close:hover { background: rgba(196, 43, 28, 0.9); }
-  .titlebar .win-btn-close:hover svg { opacity: 1; }
-  .titlebar .win-btn-close:active { background: rgba(180, 30, 20, 0.95); }
-}
 /* Body hands the form 100% of the remaining height so the form's bottom
    action bar pins to the window bottom. Scrolling happens inside the form's
    own scrollable region, not here. */
@@ -246,7 +239,7 @@ function toggleMaximise() {
   min-height: 0;
   overflow: hidden;
   display: flex;
-  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.15));
+  border-top: 1px solid var(--catdb-separator);
 }
 .body > * { flex: 1 1 0; min-width: 0; min-height: 0; }
 .loading,
@@ -255,8 +248,8 @@ function toggleMaximise() {
   align-items: center;
   gap: 8px;
   padding: 20px;
-  font-size: 13px;
+  font-size: var(--catdb-fs-body);
   opacity: 0.8;
 }
-.error { color: var(--n-error-color, #d03050); }
+.error { color: var(--catdb-error); }
 </style>

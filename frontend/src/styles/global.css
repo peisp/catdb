@@ -13,28 +13,18 @@
     -moz-osx-font-smoothing: grayscale;
     -webkit-text-size-adjust: 100%;
 
-    /* Hairline border color, surfaced at :root so custom CSS that lives outside
-       a Naive component subtree (where Naive injects --n-* vars) can use
-       var(--n-border-color) without a hard-coded fallback. Values follow macOS
-       AppKit's NSColor.separatorColor (light: black @ ~10%; dark: white @ ~10%),
-       per DESIGN.md's "look native" rule. Kept in sync with the theme store, which
-       switches light/dark off prefers-color-scheme. */
+    /* 静态兜底值:真正的单一来源是 styles/tokens.ts(即 DESIGN.md),theme store
+       启动时会以 :root 内联样式注入全套 --catdb-* 并覆盖这里。此处只兜 JS 注入
+       前的一瞬,值须与 tokens.ts 一致。--n-border-color / --n-divider-color 是
+       迁移期遗留别名(Naive 子树外的旧引用),消费方迁到 --catdb-* 后删除。 */
     --n-border-color: rgba(0, 0, 0, 0.12);
-
-    /* Content-surface background for the code/data editing areas (SQL editor +
-       data grid). Light = macOS textBackgroundColor (white); dark = DataGrip-
-       style #333. MUST stay in sync with editorSurface in styles/theme.ts, which
-       feeds the canvas grid + CodeMirror (they can't read this CSS var). */
-    --app-content-bg: #f3f3f3;
-
     --n-divider-color: rgba(0, 0, 0, 0.12);
 }
 
 @media (prefers-color-scheme: dark) {
     :root {
-        --n-border-color: rgba(255, 255, 255, 0.2);
-        --app-content-bg: #333333;
-        --n-divider-color: rgba(255, 255, 255, 0.2);
+        --n-border-color: rgba(255, 255, 255, 0.14);
+        --n-divider-color: rgba(255, 255, 255, 0.14);
     }
 }
 

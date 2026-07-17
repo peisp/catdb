@@ -194,8 +194,8 @@ async function onCheckUpdate() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--catdb-fs-small);
+  font-weight: 600;
   letter-spacing: 0.2px;
   opacity: 0.85;
   --wails-draggable: drag;
@@ -236,19 +236,12 @@ async function onCheckUpdate() {
   height: 14px;
   opacity: 0.75;
 }
-.titlebar .win-btn:hover { background: rgba(127, 127, 127, 0.15); }
-.titlebar .win-btn:active { background: rgba(127, 127, 127, 0.25); }
-.titlebar .win-btn-close:hover { background: rgba(196, 43, 28, 0.9); }
+.titlebar .win-btn:hover { background: var(--catdb-hover-fill); }
+.titlebar .win-btn:active { background: var(--catdb-pressed-fill); }
+.titlebar .win-btn-close:hover { background: var(--catdb-error); }
 .titlebar .win-btn-close:hover svg { opacity: 1; }
-.titlebar .win-btn-close:active { background: rgba(180, 30, 20, 0.95); }
+.titlebar .win-btn-close:active { background: var(--catdb-error); }
 .titlebar .win-btn-close:active svg { opacity: 1; }
-@media (prefers-color-scheme: dark) {
-  .titlebar .win-btn:hover { background: rgba(255, 255, 255, 0.1); }
-  .titlebar .win-btn:active { background: rgba(255, 255, 255, 0.16); }
-  .titlebar .win-btn-close:hover { background: rgba(196, 43, 28, 0.9); }
-  .titlebar .win-btn-close:hover svg { opacity: 1; }
-  .titlebar .win-btn-close:active { background: rgba(180, 30, 20, 0.95); }
-}
 
 .body {
   flex: 1 1 0;
@@ -257,7 +250,7 @@ async function onCheckUpdate() {
   overflow: hidden;
   display: flex;
   flex-direction: row;
-  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.15));
+  border-top: 1px solid var(--catdb-separator);
 }
 
 /* --- Category rail (left) --- */
@@ -268,26 +261,26 @@ async function onCheckUpdate() {
   flex-direction: column;
   gap: 2px;
   padding: 12px 8px;
-  border-right: 1px solid var(--n-border-color, rgba(127,127,127,0.15));
+  border-right: 1px solid var(--catdb-separator);
 }
 .rail-item {
   display: flex;
   align-items: center;
   padding: 6px 10px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--catdb-rounded-xs);
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   text-align: left;
   cursor: default;
   width: 100%;
   transition: background 80ms ease;
 }
-.rail-item:hover { background: rgba(127, 127, 127, 0.1); }
+.rail-item:hover { background: var(--catdb-hover-fill); }
 .rail-item.active {
-  background: rgba(24, 160, 88, 0.12);
+  background: var(--catdb-accent-soft);
   font-weight: 600;
 }
 
@@ -305,7 +298,7 @@ async function onCheckUpdate() {
   gap: 12px;
 }
 .field-label {
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   opacity: 0.85;
 }
 .native-select {
@@ -313,21 +306,21 @@ async function onCheckUpdate() {
   min-width: 180px;
   padding: 0 8px;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--catdb-fs-body);
   color: inherit;
-  background: var(--n-color, transparent);
-  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.3));
-  border-radius: 3px;
+  background: var(--catdb-surface-content);
+  border: 1px solid var(--catdb-control-border);
+  border-radius: var(--catdb-rounded-sm);
   outline: none;
   box-sizing: border-box;
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 .native-select:hover {
-  border-color: var(--n-border-color-hover, rgba(127, 127, 127, 0.5));
+  border-color: var(--catdb-control-border);
 }
 .native-select:focus {
-  border-color: var(--n-border-color-focus, #18a058);
-  box-shadow: 0 0 0 2px rgba(24, 160, 88, 0.18);
+  border-color: var(--catdb-accent);
+  box-shadow: var(--catdb-focus-ring);
 }
 .native-select:disabled {
   opacity: 0.5;
@@ -335,7 +328,7 @@ async function onCheckUpdate() {
 }
 .hint {
   margin: 10px 0 0;
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   opacity: 0.55;
 }
 
@@ -345,11 +338,11 @@ async function onCheckUpdate() {
   gap: 10px;
 }
 .app-name {
-  font-size: 16px;
-  font-weight: 700;
+  font-size: var(--catdb-fs-title);
+  font-weight: 600;
 }
 .app-version {
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   opacity: 0.6;
 }
 .about-channel {

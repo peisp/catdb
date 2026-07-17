@@ -652,7 +652,7 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
   min-height: 0;
   overflow: hidden;
   margin: 6px 6px;
-  background-color: var(--app-content-bg);
+  background-color: var(--catdb-surface-content);
 }
 .cols-table-wrap {
   flex: 1 1 auto;
@@ -663,7 +663,7 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   table-layout: fixed;
 }
 .cols-table thead th {
@@ -672,10 +672,10 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
   z-index: 1;
   background: var(--n-color-segment);
   color: var(--n-text-color-2);
-  font-weight: 500;
+  font-weight: 600;
   text-align: left;
   padding: 4px 6px;
-  border-bottom: 1px solid var(--n-divider-color);
+  border-bottom: 1px solid var(--catdb-separator);
   white-space: nowrap;
   user-select: none;
 }
@@ -702,7 +702,7 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
 .cols-table tbody td {
   padding: 3px 6px;
   vertical-align: middle;
-  border-bottom: 1px solid var(--n-divider-color);
+  border-bottom: 1px solid var(--catdb-separator);
 }
 .cols-table tbody td.td-drag {
   padding: 0 2px 0 4px;
@@ -710,7 +710,7 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
   user-select: none;
   color: var(--n-text-color-3);
   text-align: center;
-  font-size: 13px;
+  font-size: var(--catdb-fs-body);
   line-height: 1;
 }
 .cols-table tbody td.td-drag:active {
@@ -772,7 +772,7 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
 .cols-table tbody tr.is-dragging td {
   opacity: 0.4;
   background: var(--n-color) !important;
-  box-shadow: inset 0 0 0 1px var(--n-divider-color);
+  box-shadow: inset 0 0 0 1px var(--catdb-separator);
 }
 .cols-table tbody tr.is-dragging td.td-drag {
   color: var(--n-primary-color);
@@ -840,11 +840,11 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
 }
 .native-sel,
 .native-input {
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   font-family: inherit;
   padding: 2px 4px;
-  border: var(--n-border-color);
-  border-radius: 3px;
+  border: var(--catdb-separator);
+  border-radius: var(--catdb-rounded-sm);
   background: var(--n-input-color, var(--n-card-color));
   color: var(--n-text-color-1);
   outline: none;
@@ -860,8 +860,8 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
 /* Soft red outline when a required param is missing — VARCHAR / VARBINARY /
    ENUM / SET all need params; the visual nudges the user to fill them in. */
 .params-input.is-required {
-  border-color: var(--n-error-color, #d03050);
-  background: color-mix(in srgb, var(--n-error-color, #d03050) 6%, transparent);
+  border-color: var(--catdb-error);
+  background: color-mix(in srgb, var(--catdb-error) 6%, transparent);
 }
 /* "—" placeholder shown in the UN column when the row's type doesn't support
    UNSIGNED — keeps the column readable instead of looking empty/broken. */
@@ -871,7 +871,7 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
 }
 .cols-toolbar {
   padding: 6px 8px;
-  border-top: 1px solid var(--n-divider-color);
+  border-top: 1px solid var(--catdb-separator);
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -879,10 +879,10 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
 }
 /* Live "from N → to M" chip while dragging */
 .drag-status {
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
   color: var(--n-text-color-2);
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--catdb-rounded-lg);
   background: color-mix(in srgb, var(--n-primary-color) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--n-primary-color) 30%, transparent);
   white-space: nowrap;

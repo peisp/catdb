@@ -184,7 +184,7 @@ function onResizePointerUp() {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-left: 1px solid var(--n-border-color);
+  border-left: 1px solid var(--catdb-separator);
   background: var(--n-color);
 }
 .ddl-panel > .ddl-resize.is-vertical { right: auto; left: 0; }
@@ -194,11 +194,11 @@ function onResizePointerUp() {
   justify-content: space-between;
   gap: 8px;
   padding: 6px 8px 6px 12px;
-  border-bottom: 1px solid var(--n-border-color);
+  border-bottom: 1px solid var(--catdb-separator);
   flex: 0 0 auto;
 }
 .ddl-title {
-  font-size: 12px;
+  font-size: var(--catdb-fs-mono);
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -208,15 +208,15 @@ function onResizePointerUp() {
 .ddl-btn {
   height: 20px;
   padding: 0 8px;
-  font-size: 11px;
-  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.25));
-  border-radius: 3px;
+  font-size: var(--catdb-fs-mini);
+  border: 1px solid var(--catdb-control-border);
+  border-radius: var(--catdb-rounded-sm);
   background: transparent;
   color: inherit;
   cursor: default;
   transition: background-color 120ms ease;
 }
-.ddl-btn:hover { background: var(--n-color-target, rgba(127, 127, 127, 0.12)); }
+.ddl-btn:hover { background: var(--catdb-hover-fill); }
 .ddl-close {
   width: 20px;
   height: 20px;
@@ -224,7 +224,7 @@ function onResizePointerUp() {
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--catdb-rounded-sm);
   background: transparent;
   color: inherit;
   font-size: 16px;
@@ -233,7 +233,7 @@ function onResizePointerUp() {
   opacity: 0.6;
   transition: background-color 120ms ease, opacity 120ms ease;
 }
-.ddl-close:hover { background: var(--n-color-target, rgba(127, 127, 127, 0.12)); opacity: 1; }
+.ddl-close:hover { background: var(--catdb-hover-fill); opacity: 1; }
 .ddl-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
 .ddl-body :deep(.n-spin-container),
 .ddl-body :deep(.n-spin-content) { height: 100%; min-height: 0; }
@@ -244,7 +244,7 @@ function onResizePointerUp() {
   -webkit-user-select: text;
   cursor: text;
 }
-.ddl-empty { padding: 16px 12px; font-size: 12px; text-align: center; }
+.ddl-empty { padding: 16px 12px; font-size: var(--catdb-fs-small); text-align: center; }
 
 /* ---- tab variant ---- */
 .ddl-tab {

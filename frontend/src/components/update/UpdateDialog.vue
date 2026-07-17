@@ -231,37 +231,37 @@ function onNotesClick(e: MouseEvent) {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
-  font-size: 12px;
-  color: var(--text-subtle, #888);
+  font-size: var(--catdb-fs-small);
+  color: var(--catdb-text-secondary);
 }
 .version-row { display: flex; align-items: center; gap: 12px; }
 .ver.new {
-  font-size: 14px;
+  font-size: var(--catdb-fs-body);
   font-weight: 600;
-  color: var(--n-text-color, #222);
-  background: rgba(10, 132, 255, 0.12);
+  color: var(--catdb-accent);
+  background: var(--catdb-accent-soft);
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--catdb-rounded-xs);
 }
 .ver.from {
-  color: var(--text-subtle, #888);
-  font-size: 12px;
+  color: var(--catdb-text-secondary);
+  font-size: var(--catdb-fs-small);
 }
-.published { font-size: 12px; opacity: 0.7; }
+.published { font-size: var(--catdb-fs-small); opacity: 0.7; }
 
 .notes {
   max-height: 280px;
   overflow-y: auto;
   padding: 10px 14px;
-  border-radius: 6px;
-  background: rgba(127, 127, 127, 0.06);
-  font-size: 13px;
+  border-radius: var(--catdb-rounded-md);
+  background: var(--catdb-hover-fill);
+  font-size: var(--catdb-fs-body);
   line-height: 1.55;
 }
 .notes :deep(h1),
 .notes :deep(h2),
 .notes :deep(h3) {
-  font-size: 14px;
+  font-size: var(--catdb-fs-title);
   margin: 8px 0 6px;
 }
 .notes :deep(p) { margin: 6px 0; }
@@ -269,39 +269,39 @@ function onNotesClick(e: MouseEvent) {
 .notes :deep(ol) { padding-left: 22px; margin: 6px 0; }
 .notes :deep(li) { margin: 2px 0; }
 .notes :deep(code) {
-  background: rgba(127, 127, 127, 0.12);
+  background: var(--catdb-pressed-fill);
   padding: 1px 4px;
-  border-radius: 3px;
+  border-radius: var(--catdb-rounded-xs);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
+  font-size: var(--catdb-fs-mono);
 }
 .notes :deep(pre) {
-  background: rgba(127, 127, 127, 0.12);
+  background: var(--catdb-pressed-fill);
   padding: 8px 10px;
-  border-radius: 4px;
+  border-radius: var(--catdb-rounded-sm);
   overflow-x: auto;
 }
-.notes :deep(a) { color: #0a84ff; text-decoration: none; }
+.notes :deep(a) { color: var(--catdb-accent); text-decoration: none; }
 .notes :deep(a:hover) { text-decoration: underline; }
 .notes :deep(.empty) { opacity: 0.6; font-style: italic; }
 
-.no-asset { margin-top: 10px; font-size: 12px; }
+.no-asset { margin-top: 10px; font-size: var(--catdb-fs-small); }
 
 .install-status { margin-top: 14px; }
 .status-row { display: flex; flex-direction: column; gap: 6px; }
 .status-text {
-  font-size: 12px;
-  color: var(--text-subtle, #888);
+  font-size: var(--catdb-fs-small);
+  color: var(--catdb-text-secondary);
 }
 .status-text.ready {
-  color: #16a34a;
-  font-weight: 500;
+  color: var(--catdb-success);
+  font-weight: 600;
 }
 
 .open-link {
-  font-size: 12px;
-  color: var(--text-subtle, #888);
+  font-size: var(--catdb-fs-small);
+  color: var(--catdb-text-secondary);
   text-decoration: none;
 }
-.open-link:hover { color: #0a84ff; }
+.open-link:hover { color: var(--catdb-accent); }
 </style>

@@ -230,7 +230,7 @@ function onReset() {
   flex: 0 0 auto;
   min-height: 0;
   position: relative;
-  border-top: var(--n-border-color);
+  border-top: var(--catdb-separator);
   background: var(--n-card-color);
 }
 .alter-panel-head {
@@ -238,9 +238,9 @@ function onReset() {
   align-items: center;
   justify-content: space-between;
   padding: 4px 8px;
-  font-size: 11px;
-  border-top: 1px solid var(--n-border-color);
-  border-bottom: 1px solid var(--n-border-color);
+  font-size: var(--catdb-fs-mini);
+  border-top: 1px solid var(--catdb-separator);
+  border-bottom: 1px solid var(--catdb-separator);
 }
 .has-changes :deep(.n-text) {
   color: var(--n-warning-color);

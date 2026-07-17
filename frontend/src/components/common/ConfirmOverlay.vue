@@ -86,7 +86,7 @@ function onBackdropClick(e: MouseEvent) {
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--catdb-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -97,10 +97,10 @@ function onBackdropClick(e: MouseEvent) {
 .confirm-panel {
   width: 380px;
   max-width: calc(100vw - 32px);
-  background: var(--n-color, #fff);
-  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.25));
-  border-radius: 6px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  background: var(--catdb-surface-raised);
+  border: 1px solid var(--catdb-separator);
+  border-radius: var(--catdb-rounded-lg);
+  box-shadow: var(--catdb-shadow-modal);
   padding: 14px 16px 12px;
   display: flex;
   flex-direction: column;
@@ -109,13 +109,13 @@ function onBackdropClick(e: MouseEvent) {
 }
 
 .title {
-  font-size: 13px;
+  font-size: var(--catdb-fs-body);
   font-weight: 600;
   opacity: 0.9;
 }
 
 .message {
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   opacity: 0.75;
   line-height: 1.5;
   white-space: pre-wrap;

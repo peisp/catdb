@@ -38,6 +38,6 @@ const hasConnections = computed(() => store.connections.length > 0)
   gap: 10px;
   max-width: 520px;
 }
-.welcome h2 { margin: 0; font-size: 16px; font-weight: 600; }
-.hint { font-size: 12px; opacity: 0.7; margin: 0; line-height: 1.5; }
+.welcome h2 { margin: 0; font-size: var(--catdb-fs-title); font-weight: 600; }
+.hint { font-size: var(--catdb-fs-small); opacity: 0.7; margin: 0; line-height: 1.5; }
 </style>

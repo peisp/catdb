@@ -306,16 +306,16 @@ watch(selectedTable, () => { if (ddlPanelOpen.value) void loadDdl() })
   align-items: center;
   gap: 10px;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--n-border-color);
+  border-bottom: 1px solid var(--catdb-separator);
   background: var(--n-color);
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   min-width: 0;
   flex: 0 0 auto;
 }
-.title { font-size: 12px; }
-.mute { opacity: 0.55; font-size: 11px; }
+.title { font-size: var(--catdb-fs-small); }
+.mute { opacity: 0.55; font-size: var(--catdb-fs-mini); }
 .grow { flex: 1 1 auto; }
-.sep { width: 1px; align-self: stretch; margin: 2px 2px; background: var(--n-border-color); }
+.sep { width: 1px; align-self: stretch; margin: 2px 2px; background: var(--catdb-separator); }
 .filter-input { width: 160px; }
 .data-spin { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; padding: 6px; }
 .data-spin :deep(.n-spin-container),
@@ -329,7 +329,7 @@ watch(selectedTable, () => { if (ddlPanelOpen.value) void loadDdl() })
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   padding: 24px;
 }
 .empty .mute { opacity: 0.55; }

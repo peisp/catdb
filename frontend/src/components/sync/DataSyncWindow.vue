@@ -596,7 +596,7 @@ function sampleText(d: DataTableDiff): string {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--n-color);
+  background: var(--catdb-surface-content);
 }
 
 /* --- Titlebar (same chrome as the other tool windows) ---------------------- */
@@ -606,8 +606,8 @@ function sampleText(d: DataTableDiff): string {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--catdb-fs-small);
+  font-weight: 600;
   letter-spacing: 0.2px;
   opacity: 0.85;
   --wails-draggable: drag;
@@ -630,17 +630,11 @@ function sampleText(d: DataTableDiff): string {
   transition: background 80ms ease;
 }
 .titlebar .win-btn svg { width: 14px; height: 14px; opacity: 0.75; }
-.titlebar .win-btn:hover { background: rgba(127, 127, 127, 0.15); }
-.titlebar .win-btn:active { background: rgba(127, 127, 127, 0.25); }
-.titlebar .win-btn-close:hover { background: rgba(196, 43, 28, 0.9); }
+.titlebar .win-btn:hover { background: var(--catdb-hover-fill); }
+.titlebar .win-btn:active { background: var(--catdb-pressed-fill); }
+.titlebar .win-btn-close:hover { background: var(--catdb-error); }
 .titlebar .win-btn-close:hover svg { opacity: 1; }
-.titlebar .win-btn-close:active { background: rgba(180, 30, 20, 0.95); }
-@media (prefers-color-scheme: dark) {
-  .titlebar .win-btn:hover { background: rgba(255, 255, 255, 0.1); }
-  .titlebar .win-btn:active { background: rgba(255, 255, 255, 0.16); }
-  .titlebar .win-btn-close:hover { background: rgba(196, 43, 28, 0.9); }
-  .titlebar .win-btn-close:active { background: rgba(180, 30, 20, 0.95); }
-}
+.titlebar .win-btn-close:active { background: var(--catdb-error); }
 
 /* --- Body ------------------------------------------------------------------ */
 .body {
@@ -648,14 +642,14 @@ function sampleText(d: DataTableDiff): string {
   min-width: 0; min-height: 0;
   overflow: hidden;
   display: flex;
-  border-top: 1px solid var(--n-border-color, rgba(127,127,127,0.15));
+  border-top: 1px solid var(--catdb-separator);
 }
 .body > * { flex: 1 1 0; min-width: 0; min-height: 0; }
 .loading, .error {
   display: flex; align-items: center; gap: 8px;
-  padding: 20px; font-size: 13px; opacity: 0.8;
+  padding: 20px; font-size: var(--catdb-fs-body); opacity: 0.8;
 }
-.error { color: var(--n-error-color, #d03050); }
+.error { color: var(--catdb-error); }
 .wrapper {
   min-width: 0; min-height: 0; overflow: hidden;
   display: grid; grid-template-rows: 1fr auto;
@@ -672,7 +666,7 @@ function sampleText(d: DataTableDiff): string {
 .footer {
   display: flex; align-items: center; gap: 14px;
   padding: 8px 18px;
-  border-top: 1px solid var(--n-border-color, #e8e8e8);
+  border-top: 1px solid var(--catdb-separator);
 }
 .footer-spacer { flex: 1 1 auto; }
 .option-group { display: flex; align-items: center; gap: 6px; }
@@ -687,33 +681,32 @@ function sampleText(d: DataTableDiff): string {
 }
 .section { min-width: 0; }
 .section-label {
-  margin: 0 0 8px; font-size: 13px; font-weight: 600;
+  margin: 0 0 8px; font-size: var(--catdb-fs-body); font-weight: 600;
   display: flex; align-items: center; gap: 6px;
 }
-.source-label { color: #1677ff; }
-.target-label { color: #52c41a; }
+.source-label { color: var(--catdb-accent); }
+.target-label { color: var(--catdb-success); }
 .arrow-col { display: flex; align-items: center; justify-content: center; padding-top: 24px; }
 .arrow-icon { width: 22px; height: 22px; opacity: 0.45; }
 .field { margin-bottom: 8px; }
 .field:last-child { margin-bottom: 0; }
-.field-label { display: block; font-size: 12px; margin-bottom: 3px; opacity: 0.72; }
+.field-label { display: block; font-size: var(--catdb-fs-small); margin-bottom: 3px; opacity: 0.72; }
 .native-select {
   width: 100%; height: 28px; padding: 0 8px;
-  font: inherit; font-size: 13px; color: inherit;
-  background: var(--n-color, transparent);
-  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.3));
-  border-radius: 3px; outline: none; box-sizing: border-box;
+  font: inherit; font-size: var(--catdb-fs-body); color: inherit;
+  background: var(--catdb-surface-content);
+  border: 1px solid var(--catdb-control-border);
+  border-radius: var(--catdb-rounded-sm); outline: none; box-sizing: border-box;
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
-.native-select:hover:not(:disabled) { border-color: var(--n-border-color-hover, rgba(127, 127, 127, 0.5)); }
-.native-select:focus { border-color: var(--n-border-color-focus, #18a058); box-shadow: 0 0 0 2px rgba(24, 160, 88, 0.18); }
+.native-select:hover:not(:disabled) { border-color: var(--catdb-accent); }
+.native-select:focus { border-color: var(--catdb-accent); box-shadow: var(--catdb-focus-ring); }
 .native-select:disabled { opacity: 0.5; cursor: not-allowed; }
 .warning-row {
-  background: #fff2f0; border: 1px solid #ffccc7; border-radius: 4px;
-  padding: 6px 10px; font-size: 12px; color: #cf1322; margin-bottom: 12px;
-}
-@media (prefers-color-scheme: dark) {
-  .warning-row { background: #2a0f0d; border-color: #5c1a1a; color: #ff7875; }
+  background: color-mix(in srgb, var(--catdb-error) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--catdb-error) 25%, transparent);
+  border-radius: var(--catdb-rounded-xs);
+  padding: 6px 10px; font-size: var(--catdb-fs-small); color: var(--catdb-error); margin-bottom: 12px;
 }
 
 /* --- Tables ------------------------------------------------------------------- */
@@ -727,32 +720,32 @@ function sampleText(d: DataTableDiff): string {
 .table-toolbar { display: flex; gap: 8px; margin-bottom: 6px; }
 .search-input {
   flex: 1; height: 26px; padding: 0 8px;
-  border: 1px solid var(--n-border-color, #d9d9d9);
-  border-radius: 4px; background: transparent;
-  color: inherit; font: inherit; font-size: 12px; outline: none;
+  border: 1px solid var(--catdb-control-border);
+  border-radius: var(--catdb-rounded-sm); background: transparent;
+  color: inherit; font: inherit; font-size: var(--catdb-fs-small); outline: none;
 }
-.search-input:focus { border-color: #1677ff; }
+.search-input:focus { border-color: var(--catdb-accent); }
 .select-btn {
-  border: none; background: transparent; color: #1677ff;
-  font: inherit; font-size: 12px; cursor: default;
+  border: none; background: transparent; color: var(--catdb-accent);
+  font: inherit; font-size: var(--catdb-fs-small); cursor: default;
   padding: 0 6px; white-space: nowrap;
 }
 .select-btn:disabled { opacity: 0.4; pointer-events: none; }
 .table-list {
   max-height: 240px;
   overflow-y: auto;
-  border: 1px solid var(--n-border-color, #d9d9d9);
-  border-radius: 4px;
+  border: 1px solid var(--catdb-control-border);
+  border-radius: var(--catdb-rounded-sm);
 }
 .table-row {
   display: flex; align-items: center; gap: 6px;
-  padding: 3px 8px; font-size: 12px; cursor: default;
+  padding: 3px 8px; font-size: var(--catdb-fs-small); cursor: default;
 }
-.table-row:hover { background: rgba(127, 127, 127, 0.06); }
+.table-row:hover { background: var(--catdb-hover-fill); }
 .table-row.disabled { opacity: 0.5; pointer-events: none; }
 .table-row input[type="checkbox"] { margin: 0; }
-.empty-tables { font-size: 12px; opacity: 0.5; padding: 8px 0; }
-.table-count { font-weight: 400; opacity: 0.55; font-size: 12px; }
+.empty-tables { font-size: var(--catdb-fs-small); opacity: 0.5; padding: 8px 0; }
+.table-count { font-weight: 400; opacity: 0.55; font-size: var(--catdb-fs-small); }
 
 /* --- Diff list ------------------------------------------------------------------ */
 .diff-section {
@@ -762,7 +755,7 @@ function sampleText(d: DataTableDiff): string {
   margin-top: 4px;
 }
 .diff-header {
-  font-size: 12px; opacity: 0.72;
+  font-size: var(--catdb-fs-small); opacity: 0.72;
   padding-bottom: 6px;
   display: flex; align-items: center; justify-content: space-between;
 }
@@ -770,39 +763,39 @@ function sampleText(d: DataTableDiff): string {
   flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
-  border: 1px solid var(--n-border-color, #d9d9d9);
-  border-radius: 4px;
+  border: 1px solid var(--catdb-control-border);
+  border-radius: var(--catdb-rounded-sm);
 }
 .diff-row {
   display: flex; align-items: center; gap: 10px;
   padding: 4px 8px;
-  font-size: 12px;
-  border-bottom: 1px solid var(--n-border-color, #f0f0f0);
+  font-size: var(--catdb-fs-small);
+  border-bottom: 1px solid var(--catdb-separator);
   /* Skip layout/paint of off-screen rows — keeps 1000+ row lists cheap
      without a virtual scroller (unsupported engines simply ignore it). */
   content-visibility: auto;
   contain-intrinsic-size: auto 25px;
 }
 .diff-row.inactive { opacity: 0.55; }
-.diff-name { font-weight: 500; cursor: default; min-width: 120px; }
+.diff-name { font-weight: 600; cursor: default; min-width: 120px; }
 .stat { font-variant-numeric: tabular-nums; font-weight: 600; }
 .stat.zero { opacity: 0.3; font-weight: 400; }
-.stat.ins { color: #18a058; }
-.stat.upd { color: #d48806; }
-.stat.del { color: #d03050; }
-.scanned { font-size: 11px; opacity: 0.5; }
+.stat.ins { color: var(--catdb-success); }
+.stat.upd { color: var(--catdb-warning); }
+.stat.del { color: var(--catdb-error); }
+.scanned { font-size: var(--catdb-fs-mini); opacity: 0.5; }
 .tag {
-  font-size: 10px; line-height: 1;
-  padding: 2px 5px; border-radius: 3px;
+  font-size: var(--catdb-fs-micro); line-height: 1;
+  padding: 2px 5px; border-radius: var(--catdb-rounded-xs);
   border: 1px solid transparent; white-space: nowrap;
 }
-.tag.skipped { background: rgba(127, 127, 127, 0.12); opacity: 0.8; }
-.tag.running { background: rgba(22, 119, 255, 0.12); color: #1677ff; }
+.tag.skipped { background: var(--catdb-hover-fill); opacity: 0.8; }
+.tag.running { background: var(--catdb-accent-soft); color: var(--catdb-accent); }
 .diff-row.pending { opacity: 0.45; }
-.diff-error { color: #d03050; font-size: 11px; }
+.diff-error { color: var(--catdb-error); font-size: var(--catdb-fs-mini); }
 .stmt-count {
   margin-left: auto;
-  font-size: 11px; opacity: 0.6;
+  font-size: var(--catdb-fs-mini); opacity: 0.6;
   display: inline-flex; align-items: center; gap: 3px;
   white-space: nowrap; cursor: default;
 }
@@ -814,13 +807,13 @@ function sampleText(d: DataTableDiff): string {
   margin: 0;
   padding: 6px 10px 6px 28px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px; line-height: 1.5;
+  font-size: var(--catdb-fs-mono-small); line-height: 1.5;
   white-space: pre-wrap; word-break: break-all;
-  background: rgba(127, 127, 127, 0.05);
-  border-bottom: 1px solid var(--n-border-color, #f0f0f0);
+  background: var(--catdb-hover-fill);
+  border-bottom: 1px solid var(--catdb-separator);
 }
 
 /* --- Progress -------------------------------------------------------------------- */
 .progress-row { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; padding: 6px 0; }
-.progress-text { font-size: 12px; opacity: 0.72; font-variant-numeric: tabular-nums; }
+.progress-text { font-size: var(--catdb-fs-small); opacity: 0.72; font-variant-numeric: tabular-nums; }
 </style>

@@ -795,7 +795,7 @@ async function loadDdl() {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--app-content-bg);
+  background: var(--catdb-surface-content);
 }
 .data-body {
   flex: 1 1 auto;
@@ -811,20 +811,20 @@ async function loadDdl() {
   align-items: center;
   gap: 10px;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--n-border-color);
+  border-bottom: 1px solid var(--catdb-separator);
   background: var(--n-color);
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   min-width: 0;
   flex: 0 0 auto;
 }
-.title { font-size: 12px; }
+.title { font-size: var(--catdb-fs-small); }
 .grow { flex: 1 1 auto; }
 .export-select {
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   height: 22px;
   padding: 0 4px;
-  border-radius: 3px;
-  border: 1px solid var(--n-border-color, rgba(127,127,127,0.25));
+  border-radius: var(--catdb-rounded-sm);
+  border: 1px solid var(--catdb-control-border);
   background: transparent;
   color: inherit;
   cursor: pointer;
@@ -832,7 +832,7 @@ async function loadDdl() {
   font-family: inherit;
 }
 .export-select:hover:not(:disabled) {
-  background: var(--n-color-target, rgba(127,127,127,0.12));
+  background: var(--catdb-hover-fill);
 }
 .export-select:disabled {
   opacity: 0.5;
@@ -840,7 +840,7 @@ async function loadDdl() {
 }
 .banner { margin: 6px 8px; flex: 0 0 auto; }
 
-.mute { opacity: 0.55; font-size: 10px; }
+.mute { opacity: 0.55; font-size: var(--catdb-fs-micro); }
 
 .cols-panel {
   position: relative;
@@ -848,7 +848,7 @@ async function loadDdl() {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-left: 1px solid var(--n-border-color);
+  border-left: 1px solid var(--catdb-separator);
   background: var(--n-color);
 }
 /* 把手贴在面板左边缘（覆盖 ResizeHandle 默认 .is-vertical 的 right:0） */
@@ -858,10 +858,10 @@ async function loadDdl() {
   align-items: center;
   justify-content: space-between;
   padding: 6px 8px 6px 12px;
-  border-bottom: 1px solid var(--n-border-color);
+  border-bottom: 1px solid var(--catdb-separator);
   flex: 0 0 auto;
 }
-.cols-title { font-size: 12px; font-weight: 500; }
+.cols-title { font-size: var(--catdb-fs-small); font-weight: 600; }
 .cols-close {
   width: 20px;
   height: 20px;
@@ -869,7 +869,7 @@ async function loadDdl() {
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--catdb-rounded-sm);
   background: transparent;
   color: inherit;
   font-size: 16px;
@@ -878,10 +878,10 @@ async function loadDdl() {
   opacity: 0.6;
   transition: background-color 120ms ease, opacity 120ms ease;
 }
-.cols-close:hover { background: var(--n-color-target, rgba(127, 127, 127, 0.12)); opacity: 1; }
+.cols-close:hover { background: var(--catdb-hover-fill); opacity: 1; }
 .cols-filter {
   padding: 8px 10px;
-  border-bottom: 1px solid var(--n-border-color);
+  border-bottom: 1px solid var(--catdb-separator);
   flex: 0 0 auto;
 }
 .cols-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 0; }
@@ -902,12 +902,12 @@ async function loadDdl() {
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .col-item:hover {
-  background: var(--n-color-target, rgba(127, 127, 127, 0.1));
-  border-left-color: var(--n-primary-color, #18a058);
+  background: var(--catdb-hover-fill);
+  border-left-color: var(--catdb-accent);
 }
-.col-name { font-size: 12px; }
+.col-name { font-size: var(--catdb-fs-small); }
 .col-comment {
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
   opacity: 0.55;
   white-space: nowrap;
   overflow: hidden;

@@ -274,13 +274,10 @@ export function drawGrid(o: DrawGridOptions): void {
         ctx.fillRect(x, y, w, rh)
       }
 
-      // 网格线
+      // 网格线:只画纵向列分隔(行向靠斑马纹区分,DESIGN.md 数据网格规格)
       ctx.strokeStyle = theme.divider
       ctx.beginPath()
-      const by = crisp(y + rh - 1, dpr)
       const bx = crisp(x + w - 1, dpr)
-      ctx.moveTo(x, by)
-      ctx.lineTo(x + w, by)
       ctx.moveTo(bx, y)
       ctx.lineTo(bx, y + rh)
       ctx.stroke()
@@ -337,22 +334,22 @@ export function drawGrid(o: DrawGridOptions): void {
     const y = rowY(r)
     ctx.fillStyle = theme.headerBg
     ctx.fillRect(0, y, rnw, rh)
-    ctx.strokeStyle = theme.divider
-    ctx.beginPath()
-    const by = crisp(y + rh - 1, dpr)
-    ctx.moveTo(0, by)
-    ctx.lineTo(rnw, by)
-    ctx.stroke()
     const deleted = o.isDeletedRow(r)
+    const dirtyRow = o.isDirtyRow(r)
+    // 未提交脏行:行号槽左缘 accent 竖条(DESIGN.md 数据网格规格)
+    if (dirtyRow && !deleted) {
+      ctx.fillStyle = theme.dirtyText
+      ctx.fillRect(0, y, 2, rh)
+    }
     ctx.font = rowNumFont
-    ctx.fillStyle = deleted || o.isDirtyRow(r) ? theme.dirtyText : theme.rowNumText
+    ctx.fillStyle = deleted ? theme.deletedText : dirtyRow ? theme.dirtyText : theme.rowNumText
     const label = String(r + 1)
     const tx = rnw - 8
     const ty = y + rh / 2
     ctx.fillText(label, tx, ty)
     if (deleted) {
       const tw = ctx.measureText(label).width
-      ctx.strokeStyle = theme.dirtyText
+      ctx.strokeStyle = theme.deletedText
       ctx.beginPath()
       const ly = crisp(ty, dpr)
       ctx.moveTo(tx - tw, ly)

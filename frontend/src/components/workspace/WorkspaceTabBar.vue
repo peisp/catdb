@@ -290,13 +290,8 @@ function openCtx(t: QueryTabInfo) {
   height: 40px;
   flex: 0 0 auto;
   min-width: 0;
-  border-bottom: 1px solid var(--n-border-color);
-  background: rgba(0, 0, 0, 0.04);
-}
-@media (prefers-color-scheme: dark) {
-  .tabbar {
-    background: rgba(255, 255, 255, 0.04);
-  }
+  border-bottom: 1px solid var(--catdb-separator);
+  background: var(--catdb-surface-chrome);
 }
 
 .tabbar-strip {
@@ -327,9 +322,9 @@ function openCtx(t: QueryTabInfo) {
   min-width: 90px;
   max-width: 200px;
   padding: 0 6px 0 9px;
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   white-space: nowrap;
-  border-right: 1px solid var(--n-border-color);
+  border-right: 1px solid var(--catdb-separator);
   outline: none;
 }
 .tab.pinned {
@@ -343,7 +338,7 @@ function openCtx(t: QueryTabInfo) {
   opacity: 0.9;
 }
 .tab.active {
-  background: var(--app-content-bg);
+  background: var(--catdb-surface-content);
 }
 /* Accent underline on the active tab (dbx classic layout). */
 .tab.active::after {
@@ -381,7 +376,7 @@ function openCtx(t: QueryTabInfo) {
   text-overflow: ellipsis;
 }
 .tab-db {
-  font-size: 10px;
+  font-size: var(--catdb-fs-micro);
   opacity: 0.55;
 }
 
@@ -411,14 +406,14 @@ function openCtx(t: QueryTabInfo) {
   height: 16px;
   padding: 0;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--catdb-rounded-sm);
   background: transparent;
   color: inherit;
   opacity: 0.55;
 }
 .tab-close:hover {
   opacity: 1;
-  background: rgba(127, 127, 127, 0.25);
+  background: var(--catdb-hover-fill);
 }
 .tab-tail.dirty .tab-dot {
   display: block;
@@ -439,7 +434,7 @@ function openCtx(t: QueryTabInfo) {
   display: flex;
   flex: 0 0 auto;
   align-items: stretch;
-  border-left: 1px solid var(--n-border-color);
+  border-left: 1px solid var(--catdb-separator);
 }
 .tab-btn {
   display: flex;
@@ -455,7 +450,7 @@ function openCtx(t: QueryTabInfo) {
 }
 .tab-btn:hover {
   opacity: 1;
-  background: rgba(127, 127, 127, 0.15);
+  background: var(--catdb-hover-fill);
 }
 
 .tab-fill {
@@ -485,7 +480,7 @@ function openCtx(t: QueryTabInfo) {
   bottom: 1px;
   height: 3px;
   min-width: 20px;
-  border-radius: 999px;
+  border-radius: var(--catdb-rounded-pill);
   background: rgba(127, 127, 127, 0.45);
 }
 .tab-scrollbar:hover .tab-scrollbar-thumb {

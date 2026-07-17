@@ -290,7 +290,7 @@ watch(() => props.editTable, async (et) => {
       <button class="edit-btn disc-btn" :disabled="saving" @click="discardEditChanges">
         {{ $t('common.discard') }}
       </button>
-      <span class="mute" style="margin-left:8px;font-size:11px">{{ pendingChanges.size }} {{ $t('common.cellsChanged') }}</span>
+      <span class="mute" style="margin-left:8px;font-size:var(--catdb-fs-mini)">{{ pendingChanges.size }} {{ $t('common.cellsChanged') }}</span>
     </div>
     <div class="grid-wrap">
       <DataGrid
@@ -347,7 +347,7 @@ watch(() => props.editTable, async (et) => {
   overflow: hidden;
   padding: 6px;
 }
-.mute { opacity: 0.55; font-size: 10px; }
+.mute { opacity: 0.55; font-size: var(--catdb-fs-micro); }
 
 /* ---- inline edit toolbar ---- */
 .edit-actions {
@@ -356,13 +356,13 @@ watch(() => props.editTable, async (et) => {
   align-items: center;
   padding: 4px 12px;
   gap: 6px;
-  border-bottom: 1px solid var(--n-divider-color);
+  border-bottom: 1px solid var(--catdb-separator);
 }
 .edit-btn {
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
   padding: 2px 10px;
-  border: 1px solid var(--n-border-color);
-  border-radius: 3px;
+  border: 1px solid var(--catdb-separator);
+  border-radius: var(--catdb-rounded-sm);
   background: var(--n-color);
   color: var(--n-text-color);
   cursor: pointer;
@@ -370,6 +370,6 @@ watch(() => props.editTable, async (et) => {
   line-height: 20px;
 }
 .edit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.save-btn { background: var(--n-primary-color, #18a058); color: #fff; border-color: transparent; }
-.save-btn:disabled { background: var(--n-primary-color-disabled, #82c7a2); }
+.save-btn { background: var(--catdb-accent); color: var(--catdb-text-on-accent); border-color: transparent; }
+.save-btn:disabled { background: color-mix(in srgb, var(--catdb-accent) 50%, transparent); }
 </style>

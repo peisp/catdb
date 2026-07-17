@@ -41,6 +41,6 @@ function commit() {
   min-height: 0;
   overflow: auto;
   margin: 6px 6px;
-  background-color: var(--app-content-bg);
+  background-color: var(--catdb-surface-content);
 }
 </style>

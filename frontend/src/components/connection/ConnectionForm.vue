@@ -583,7 +583,7 @@ function selectOptions(opts: string[]) {
   flex-direction: column;
   gap: 8px;
 }
-.hint { font-size: 11px; opacity: 0.65; }
+.hint { font-size: var(--catdb-fs-mini); opacity: 0.65; }
 
 /* --- Driver-type rail (left) -------------------------------------------
    Compact desktop list. Active item gets a soft highlight + green dot.
@@ -593,12 +593,12 @@ function selectOptions(opts: string[]) {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--n-border-color, rgba(127,127,127,0.15));
+  border-right: 1px solid var(--catdb-separator);
   padding: 16px 6px 16px 16px;
   gap: 4px;
 }
 .rail-label {
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   opacity: 0.55;
@@ -618,20 +618,20 @@ function selectOptions(opts: string[]) {
   gap: 8px;
   padding: 5px 8px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--catdb-rounded-xs);
   background: transparent;
   color: inherit;
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   text-align: left;
   cursor: default;
   width: 100%;
   transition: background 80ms ease;
 }
 .rail-item:hover:not(:disabled) {
-  background: rgba(127, 127, 127, 0.1);
+  background: var(--catdb-hover-fill);
 }
 .rail-item.active {
-  background: rgba(24, 160, 88, 0.12);
+  background: var(--catdb-accent-soft);
   color: inherit;
   font-weight: 600;
 }
@@ -643,7 +643,7 @@ function selectOptions(opts: string[]) {
 .rail-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rail-empty {
   padding: 6px 8px;
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
   opacity: 0.5;
 }
 
@@ -654,7 +654,7 @@ function selectOptions(opts: string[]) {
    the inputs that we don't use here. */
 .header-form {
   padding-bottom: 4px;
-  border-bottom: 1px solid var(--n-border-color, rgba(127,127,127,0.15));
+  border-bottom: 1px solid var(--catdb-separator);
 }
 .header-row {
   display: flex;
@@ -677,21 +677,21 @@ function selectOptions(opts: string[]) {
   height: 28px;
   padding: 0 8px;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--catdb-fs-body);
   color: inherit;
-  background: var(--n-color, transparent);
-  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.3));
-  border-radius: 3px;
+  background: var(--catdb-surface-content);
+  border: 1px solid var(--catdb-control-border);
+  border-radius: var(--catdb-rounded-sm);
   outline: none;
   box-sizing: border-box;
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 .group-select:hover {
-  border-color: var(--n-border-color-hover, rgba(127, 127, 127, 0.5));
+  border-color: var(--catdb-control-border);
 }
 .group-select:focus {
-  border-color: var(--n-border-color-focus, #18a058);
-  box-shadow: 0 0 0 2px rgba(24, 160, 88, 0.18);
+  border-color: var(--catdb-accent);
+  box-shadow: var(--catdb-focus-ring);
 }
 
 /* --- Segmented control (liquid glass) -----------------------------------
@@ -728,8 +728,8 @@ function selectOptions(opts: string[]) {
 .group-tabs :deep(.n-tabs-tab) {
   padding: 3px 16px;
   border-radius: 8px;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--catdb-fs-small);
+  font-weight: 600;
   color: inherit;
   opacity: 0.7;
   transition: opacity 120ms ease, background 120ms ease;
@@ -800,7 +800,7 @@ function selectOptions(opts: string[]) {
 /* When show-feedback is false the wrapper still reserves space — collapse it. */
 .pane-form :deep(.n-form-item-feedback-wrapper:empty) { min-height: 0; padding: 0; }
 .pane-form :deep(.n-form-item-label) {
-  font-size: 12px;
+  font-size: var(--catdb-fs-small);
   opacity: 0.85;
 }
 
@@ -809,7 +809,7 @@ function selectOptions(opts: string[]) {
    button row. All buttons cluster at the right
    (关闭 / 测试连接 / 保存) so 保存 keeps the default-action position. */
 .action-bar {
-  border-top: 1px solid var(--n-border-color);
+  border-top: 1px solid var(--catdb-separator);
   background: var(--n-color, transparent);
 }
 .actions {
@@ -831,9 +831,9 @@ function selectOptions(opts: string[]) {
   align-items: center;
   gap: 8px;
   padding: 6px 18px;
-  font-size: 12px;
-  border-bottom: 1px solid var(--n-border-color, rgba(127,127,127,0.12));
-  background: rgba(127, 127, 127, 0.04);
+  font-size: var(--catdb-fs-small);
+  border-bottom: 1px solid var(--catdb-separator);
+  background: var(--catdb-hover-fill);
 }
 .status-dot {
   width: 8px;
@@ -852,7 +852,7 @@ function selectOptions(opts: string[]) {
 }
 .status-meta {
   opacity: 0.55;
-  font-size: 11px;
+  font-size: var(--catdb-fs-mini);
 }
 .status-spacer { flex: 1 1 auto; }
 .status-dismiss {
@@ -861,7 +861,7 @@ function selectOptions(opts: string[]) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--catdb-rounded-xs);
   border: none;
   background: transparent;
   color: inherit;
@@ -870,12 +870,12 @@ function selectOptions(opts: string[]) {
   line-height: 1;
   opacity: 0.5;
 }
-.status-dismiss:hover { background: rgba(127, 127, 127, 0.15); opacity: 0.9; }
+.status-dismiss:hover { background: var(--catdb-hover-fill); opacity: 0.9; }
 
-.status-running { color: var(--n-info-color, #2080f0); }
-.status-success { color: var(--n-success-color, #18a058); }
-.status-error   { color: var(--n-error-color, #d03050); }
-.status-canceled { color: var(--n-warning-color, #f0a020); }
+.status-running { color: var(--catdb-accent); }
+.status-success { color: var(--catdb-success); }
+.status-error   { color: var(--catdb-error); }
+.status-canceled { color: var(--catdb-warning); }
 
 .status-running .status-dot {
   /* Pulse while the request is in flight so the user knows it isn't stuck. */

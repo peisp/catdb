@@ -13,11 +13,10 @@
 //     粘贴/编辑本就原地改 props.rows，同一模式。取消排序时从快照恢复原序。
 //   - 服务端排序（sortRemote=true）只发射 sort-change，指示器画 props.sortState
 //   - NULL / BLOB / JSON / bigint 在 cellText 里统一渲染
-//   - 主题从 Naive 的 useThemeVars() 派生，light/dark 切换走同一通道
+//   - 主题从 styles/tokens.ts 取色（canvas 读不了 CSS 变量），light/dark 走 theme store
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useThemeVars } from 'naive-ui'
 import { useThemeStore } from '../../stores/theme'
-import { editorSurface } from '../../styles/theme'
+import { colors as tokenColors, fontFamilyMono, gridColumnLine } from '../../styles/tokens'
 import type { ColumnMeta } from '../../api/metadata'
 import { LogicalType } from '../../api/metadata'
 import { parseTSV, planPaste, type SelectionRange } from '../../composables/useTableSelection'
@@ -100,15 +99,16 @@ const emit = defineEmits<{
   (e: 'cell-dblclick', p: { row: number; col: number; value: any }): void
 }>()
 
-const themeVars = useThemeVars()
 const theme = useThemeStore()
+// 面板焦点态:聚焦时选区用 accent,失焦降灰(DESIGN.md「选中与焦点」)。
+const gridFocused = ref(false)
 
 const ROWNUM_W = 50
 // 显示字段类型时表头两行布局，加高
 const headerH = computed(() => (props.showTypes ? 38 : 28))
 const FONT_SIZE = 12
-const FONT_FAMILY =
-  '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif'
+// 数据单元格用等宽字体(DESIGN.md:数据值是 mono 的领地)
+const FONT_FAMILY = fontFamilyMono
 
 // ---- refs / 状态 ----
 const wrapRef = ref<HTMLElement | null>(null)
@@ -324,27 +324,33 @@ function selectAll() {
 
 // ---- 主题 ----
 const gridTheme = computed<GridTheme>(() => {
-  const vars = themeVars.value
-  const dark = theme.mode === 'dark'
-  const surface = dark ? editorSurface.dark : editorSurface.light
+  const c = tokenColors(theme.mode)
+  const focused = gridFocused.value
   return {
-    surface,
-    headerBg: vars.tableHeaderColor,
-    text: vars.textColor1,
-    textMuted: dark ? '#777' : '#aaa',
-    border: vars.borderColor,
-    divider: vars.dividerColor,
-    hoverFill: vars.hoverColor,
-    selectionFill: 'rgba(32,128,240,0.14)',
-    selectionBorder: vars.primaryColor,
-    deletedFill: 'rgba(200,200,200,0.1)',
-    deletedText: '#999',
-    dirtyText: '#999',
-    rowNumText: vars.textColor3,
-    sortActiveColor: vars.primaryColor,
-    zebraFill: dark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.05)',
+    surface: c['surface-content'],
+    headerBg: c['surface-chrome'],
+    text: c['text-primary'],
+    textMuted: c['text-tertiary'],
+    border: c.separator,
+    divider: gridColumnLine[theme.mode],
+    hoverFill: c['hover-fill'],
+    selectionFill: focused ? c['accent-soft'] : c['selection-unfocused'],
+    selectionBorder: focused ? c.accent : c['selection-unfocused'],
+    deletedFill: c['hover-fill'],
+    deletedText: c['text-tertiary'],
+    dirtyText: c.accent,
+    rowNumText: c['text-secondary'],
+    sortActiveColor: c.accent,
+    zebraFill: c['row-alternate'],
   }
 })
+
+// 焦点仍在网格内部(DOM 编辑器 overlay 等)时不算失焦
+function onWrapFocusOut(e: FocusEvent) {
+  const next = e.relatedTarget as Node | null
+  if (next && wrapRef.value?.contains(next)) return
+  gridFocused.value = false
+}
 
 // ---- 渲染调度 ----
 let renderQueued = false
@@ -1215,6 +1221,8 @@ onBeforeUnmount(() => {
     tabindex="0"
     @keydown="onKeydown"
     @paste="onPaste"
+    @focusin="gridFocused = true"
+    @focusout="onWrapFocusOut"
   >
     <div
       ref="scrollerRef"
@@ -1262,8 +1270,8 @@ onBeforeUnmount(() => {
   min-height: 0;
   position: relative;
   overflow: hidden;
-  border-radius: 3px;
-  background: var(--app-content-bg);
+  border-radius: var(--catdb-rounded-xs);
+  background: var(--catdb-surface-content);
   outline: none;
 }
 
