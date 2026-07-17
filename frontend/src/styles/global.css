@@ -17,7 +17,7 @@
        a Naive component subtree (where Naive injects --n-* vars) can use
        var(--n-border-color) without a hard-coded fallback. Values follow macOS
        AppKit's NSColor.separatorColor (light: black @ ~10%; dark: white @ ~10%),
-       per UI_SPEC's "look native" rule. Kept in sync with the theme store, which
+       per DESIGN.md's "look native" rule. Kept in sync with the theme store, which
        switches light/dark off prefers-color-scheme. */
     --n-border-color: rgba(0, 0, 0, 0.12);
 
@@ -62,12 +62,12 @@ body {
         Menlo, Consolas, monospace;
 }
 
-/* Non-link cursor on buttons/clickable rows (UI_SPEC §4 — pointer is for hyperlinks only). */
+/* Non-link cursor on buttons/clickable rows (DESIGN.md — pointer is for hyperlinks only). */
 button, .clickable {
     cursor: default;
 }
 
-/* Auto-hiding overlay-style scrollbar (UI_SPEC §6, desktop chrome rule).
+/* Auto-hiding overlay-style scrollbar (DESIGN.md, desktop chrome rule).
    The thumb is fully transparent at rest. It only fades in when the user
    hovers over a scrollable element (mirrors macOS overlay-scrollbar feel).
    The track stays transparent so the bar never claims real estate visually. */

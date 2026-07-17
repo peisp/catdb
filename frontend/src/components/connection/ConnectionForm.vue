@@ -413,7 +413,7 @@ function selectOptions(opts: string[]) {
           <n-form-item :label="$t('connection.form.group')" class="header-item header-item-group">
             <!-- Native HTML <select> — the system's own dropdown chrome
                  (caret, popup) reads as a real desktop control instead of a
-                 Web overlay (UI_SPEC.md "向原生靠拢"). The empty option acts
+                 Web overlay (DESIGN.md "向原生靠拢"). The empty option acts
                  as the "未分组" clearable choice. -->
             <select
               v-model="groupId"

@@ -337,7 +337,7 @@ MySQL：建立 `*ssh.Client` 后用 `mysql.RegisterDialContext("mysql+ssh", dial
 
 ### 6.5 原生 UI 集成层（部分 UI 活在 Go 侧）
 
-为达到 `UI_SPEC.md` 的"去 Web 感"要求，以下 UI 不在 Vue 里实现，而是用 Wails 原生能力，封装在 `wailsbridge/`：
+为达到 `DESIGN.md` 的"去 Web 感"要求，以下 UI 不在 Vue 里实现，而是用 Wails 原生能力，封装在 `wailsbridge/`：
 
 - **窗口外壳**：Frameless + 自绘标题栏（CSS `--wails-draggable`）；平台分叉——macOS `Mac.InvisibleTitleBarHeight` + 交通灯 + `Mac.Backdrop` 毛玻璃，Windows `WindowsWindow{BackdropType: Mica}` + caption 按钮；标题栏配色用 `CustomTheme` 双套色。
 - **应用菜单**：`app.NewMenu()` 建 File/Edit/View/Query/Window/Help，`SetAccelerator` 注册快捷键；macOS 进系统菜单栏，Win/Linux 用 `UseApplicationMenu`。

@@ -191,7 +191,7 @@ catdb/
 - **大结果集不一次性序列化**。后端分批 `ResultSet.Next(batch)`；行数据用 `[][]any`（非 `[]map[string]any`）；大导出走流式写文件，不经 IPC。
 - **多窗口并发隔离**。事务 / 独占操作走会话管理器分离的独立连接并绑定窗口 ID。
 - **密码绝不明文落盘**。SQLite 只存配置；密码只进 keyring。
-- **UI 原生化**。详见 [`UI_SPEC.md`](UI_SPEC.md)：系统字体栈、12–13 px 桌面字号、紧凑布局、发丝线圆角；右键 / 顶层菜单 / 确认弹窗走原生。
+- **UI 原生化**。详见 [`DESIGN.md`](DESIGN.md)：系统字体栈、12–13 px 桌面字号、紧凑布局、发丝线圆角；右键 / 顶层菜单 / 确认弹窗走原生。
 
 ---
 
@@ -200,7 +200,7 @@ catdb/
 仓库内置 [`CLAUDE.md`](CLAUDE.md)，是 Claude Code 在本仓库工作的**强制约定**（铁律 + 命令速查 + 目录归属）。任何贡献者改代码前也建议先读它：
 
 - 接口语义、数据流、设计取舍 → [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- UI / 交互怎么做才"像原生" → [`UI_SPEC.md`](UI_SPEC.md)
+- UI / 交互怎么做才"像原生" → [`DESIGN.md`](DESIGN.md)
 - 工作规约（铁律 + 命令） → [`CLAUDE.md`](CLAUDE.md)
 
 提交前请确保 `task test` 通过；改动 Service 公共方法后记得跑 `wails3 generate bindings -ts -names`。

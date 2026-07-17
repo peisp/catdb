@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // ConnectionWelcome — empty-state for the main pane while no connection is
-// active. Keeps the desktop-spec density (UI_SPEC §3) — no big hero card.
+// active. Keeps the desktop-spec density (DESIGN.md) — no big hero card.
 import { computed } from 'vue'
 import { NButton, NSpace } from 'naive-ui'
 import { useConnectionsStore } from '../../stores/connections'

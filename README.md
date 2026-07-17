@@ -192,7 +192,7 @@ catdb/
 - **Large result sets are never serialized at once.** Batched `ResultSet.Next(batch)`; row data is `[][]any` (not `[]map[string]any`); large exports stream to file without crossing IPC.
 - **Multi-window concurrency isolation.** Transactions / exclusive operations get a dedicated connection from the session manager bound to the window ID.
 - **Passwords never hit disk in plaintext.** SQLite stores config only; passwords go to the keyring.
-- **Native-leaning UI.** See [`UI_SPEC.md`](UI_SPEC.md): system font stack, 12–13 px desktop type, compact layout, hairline radii; context menus / app menus / confirmations are native.
+- **Native-leaning UI.** See [`DESIGN.md`](DESIGN.md): system font stack, 12–13 px desktop type, compact layout, hairline radii; context menus / app menus / confirmations are native.
 
 ---
 
@@ -201,7 +201,7 @@ catdb/
 The repository ships [`CLAUDE.md`](CLAUDE.md) — the **mandatory working conventions** for Claude Code in this repo (hard rules + command cheatsheet + directory ownership). Human contributors are encouraged to read it before changing code too:
 
 - Interface semantics, data flow, design trade-offs → [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- How UI / interactions should feel "native" → [`UI_SPEC.md`](UI_SPEC.md)
+- How UI / interactions should feel "native" → [`DESIGN.md`](DESIGN.md)
 - Working conventions (hard rules + commands) → [`CLAUDE.md`](CLAUDE.md)
 
 Make sure `task test` passes before committing; after changing a Service's public methods, run `wails3 generate bindings -ts -names`.

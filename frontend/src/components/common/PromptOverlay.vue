@@ -5,7 +5,7 @@
 // generic text-input prompt. Rather than open a second native window for a
 // single string (rename, etc.), we render a small modal-style overlay.
 //
-// Visual goal per UI_SPEC: desktop-like, hairline border, small radius, no
+// Visual goal per DESIGN.md: desktop-like, hairline border, small radius, no
 // flashy animation. The backdrop is a thin dim layer; the panel is sized
 // only as wide as a name field needs.
 import { computed, nextTick, ref, watch } from 'vue'

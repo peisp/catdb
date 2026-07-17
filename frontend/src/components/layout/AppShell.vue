@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// AppShell — desktop three-pane scaffold (UI_SPEC.md §3): left sidebar
+// AppShell — desktop three-pane scaffold (DESIGN.md): left sidebar
 // (connections at top, object tree below when a connection is active),
 // main tabbed content (per-connection query workspace + table tabs),
 // bottom status bar.

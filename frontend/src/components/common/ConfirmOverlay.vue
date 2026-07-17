@@ -4,7 +4,7 @@
 // MessageBoxW collapses them to a single "OK"). Driven by api/confirms.ts;
 // api/dialogs.ts routes confirm() here on Windows and keeps native on macOS.
 //
-// Visual goal per UI_SPEC §5: compact, hairline border, small radius, ESC
+// Visual goal per DESIGN.md: compact, hairline border, small radius, ESC
 // closes, buttons right-aligned. Windows convention puts the primary button on
 // the left, so buttons render in reverse of the (cancel-first) input order.
 import { computed, nextTick, ref, watch } from 'vue'

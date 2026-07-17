@@ -624,7 +624,7 @@ function onClose() {
 }
 
 /* Native <select> — expose the OS-drawn dropdown chrome instead of a Web
-   overlay (UI_SPEC.md "向原生靠拢"). Keep the system caret. */
+   overlay (DESIGN.md "向原生靠拢"). Keep the system caret. */
 .native-select {
   width: 100%;
   height: 28px;

@@ -1,6 +1,6 @@
-// UI theme overrides — implements UI_SPEC.md §2,§3,§9 (desktop scale, system
+// UI theme overrides — implements DESIGN.md (desktop scale, system
 // font, hairline borders, 3–4px radius). DO NOT loosen these numbers without
-// updating UI_SPEC.md — they're the difference between "looks native" and
+// updating DESIGN.md — they're the difference between "looks native" and
 // "looks like a web page".
 import type { GlobalThemeOverrides } from 'naive-ui'
 

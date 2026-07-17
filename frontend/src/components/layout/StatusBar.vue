@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// StatusBar — bottom strip (UI_SPEC.md §3). Follows the workspace's active
+// StatusBar — bottom strip (DESIGN.md). Follows the workspace's active
 // connection (passed down from AppShell) and its current database. Shows
 // connection name, connection status, current database, server version/user,
 // theme mode, and build tag.
