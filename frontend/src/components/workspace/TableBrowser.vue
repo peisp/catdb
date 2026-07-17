@@ -788,7 +788,6 @@ async function loadDdl() {
 .tb { display: flex; flex-direction: column; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
 
 .data-area {
-  margin: 6px;
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;

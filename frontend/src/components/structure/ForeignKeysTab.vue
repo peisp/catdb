@@ -204,7 +204,6 @@ const ACTIONS = [
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  margin: 6px 6px;
   background-color: var(--catdb-surface-content);
 }
 .fk-table-wrap {
@@ -223,7 +222,7 @@ const ACTIONS = [
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--n-color-segment);
+  background: var(--catdb-surface-chrome);
   color: var(--n-text-color-2);
   font-weight: 600;
   text-align: left;

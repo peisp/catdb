@@ -651,7 +651,6 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  margin: 6px 6px;
   background-color: var(--catdb-surface-content);
 }
 .cols-table-wrap {
@@ -670,7 +669,7 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--n-color-segment);
+  background: var(--catdb-surface-chrome);
   color: var(--n-text-color-2);
   font-weight: 600;
   text-align: left;

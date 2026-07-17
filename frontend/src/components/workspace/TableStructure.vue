@@ -471,16 +471,14 @@ const newApplyDisabled = computed(() => {
 .group-tabs :deep(.n-tabs-nav) {
   display: flex;
   justify-content: center;
+  border-bottom: 1px solid var(--catdb-separator);
+
 }
 .group-tabs :deep(.n-tabs-rail) {
   min-width: 0;
   margin: 6px;
   padding: 3px;
   border-radius: 8px;
-  background:
-    linear-gradient(180deg,
-      rgba(255, 255, 255, 0.5) 0%,
-      rgba(255, 255, 255, 0.18) 100%);
   backdrop-filter: blur(18px) saturate(180%);
   -webkit-backdrop-filter: blur(18px) saturate(180%);
   box-shadow:
@@ -506,22 +504,18 @@ const newApplyDisabled = computed(() => {
   opacity: 1;
   font-weight: 600;
   color: inherit;
-  background:
-    linear-gradient(180deg,
-      rgba(255, 255, 255, 0.85) 0%,
-      rgba(255, 255, 255, 0.55) 100%);
+  /* 选中段白色填充,与暗化轨道拉开对比 */
+  background: rgba(255, 255, 255, 0.92);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.95),
     inset 0 -1px 0 rgba(0, 0, 0, 0.04),
-    0 0.5px 1px rgba(0, 0, 0, 0.08);
+    0 0.5px 1px rgba(0, 0, 0, 0.12),
+    0 0 0 0.5px rgba(0, 0, 0, 0.06);
 }
 
 @media (prefers-color-scheme: dark) {
   .group-tabs :deep(.n-tabs-rail) {
-    background:
-      linear-gradient(180deg,
-        rgba(255, 255, 255, 0.12) 0%,
-        rgba(255, 255, 255, 0.04) 100%);
+    background: rgba(0, 0, 0, 0.22);
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.18),
       inset 0 -1px 0 rgba(0, 0, 0, 0.3),
@@ -532,21 +526,11 @@ const newApplyDisabled = computed(() => {
     background: rgba(255, 255, 255, 0.1);
   }
   .group-tabs :deep(.n-tabs-tab--active) {
-    background:
-      linear-gradient(180deg,
-        rgba(255, 255, 255, 0.2) 0%,
-        rgba(255, 255, 255, 0.08) 100%);
+    background: rgba(255, 255, 255, 0.14);
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.25),
       inset 0 -1px 0 rgba(0, 0, 0, 0.25),
       0 0.5px 1px rgba(0, 0, 0, 0.25);
-  }
-}
-
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .group-tabs :deep(.n-tabs-rail) { background: rgba(255, 255, 255, 0.6); }
-  @media (prefers-color-scheme: dark) {
-    .group-tabs :deep(.n-tabs-rail) { background: rgba(255, 255, 255, 0.1); }
   }
 }
 
@@ -572,7 +556,6 @@ const newApplyDisabled = computed(() => {
 
 .tab-body-ddl {
   height: 100%;
-  margin: 6px 6px;
   background-color: var(--catdb-surface-content);
 }
 

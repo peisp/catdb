@@ -5,6 +5,10 @@
 // 按回车触发 @apply，清空按钮触发 @clear。
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { ColumnMeta } from '../../api/metadata'
+import AppIcon from '../shared/AppIcon.vue'
+import historyIcon from '../../assets/icons/history.svg?raw'
+import cornerDownLeftIcon from '../../assets/icons/corner-down-left.svg?raw'
+import circleXIcon from '../../assets/icons/circle-x.svg?raw'
 
 const props = defineProps<{
   connId: string
@@ -407,17 +411,17 @@ watch(
         class="action-btn"
         :title="$t('filter.history')"
         @click="toggleHistory"
-      >⏱</button>
+      ><AppIcon :src="historyIcon" :size="14" /></button>
       <button
         class="action-btn"
         :title="$t('filter.apply')"
         @click="emitApply"
-      >↵</button>
+      ><AppIcon :src="cornerDownLeftIcon" :size="14" /></button>
       <button
         class="action-btn clear-all"
         :title="$t('filter.clearAll')"
         @click="onClear"
-      >×</button>
+      ><AppIcon :src="circleXIcon" :size="14" /></button>
     </div>
 
     <!-- 历史记录弹窗 -->
@@ -446,7 +450,7 @@ watch(
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 8px;
+  padding: 3px;
   border-bottom: 1px solid var(--catdb-separator);
   background: var(--catdb-surface-chrome);
   font-size: var(--catdb-fs-small);
@@ -458,13 +462,14 @@ watch(
 .filter-input-wrap {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   flex: 1 1 0;
   min-width: 0;
   position: relative;
-  border: 1px solid transparent;
-  border-radius: var(--catdb-rounded-sm);
-  padding: 0 4px;
+  background: var(--catdb-surface-content);
+  border: 1px solid var(--catdb-control-border);
+  border-radius: var(--catdb-rounded-md);
+  padding: 2px 10px;
   transition: border-color 120ms ease;
 }
 
@@ -475,7 +480,7 @@ watch(
 .filter-label {
   font-size: var(--catdb-fs-mini);
   font-weight: 600;
-  opacity: 0.6;
+  color: var(--catdb-accent);
   flex: 0 0 auto;
   user-select: none;
   -webkit-user-select: none;

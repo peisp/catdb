@@ -417,7 +417,6 @@ const TYPE_OPTIONS = [
   min-height: 0;
   overflow: hidden;
   font-size: var(--catdb-fs-small);
-  margin: 6px 6px;
   background-color: var(--catdb-surface-content);
 }
 
@@ -449,7 +448,7 @@ const TYPE_OPTIONS = [
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 4px 0;
+  padding: 4px;
 }
 .ix-empty {
   padding: 16px;

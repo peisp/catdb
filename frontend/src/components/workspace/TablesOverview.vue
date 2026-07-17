@@ -317,7 +317,7 @@ watch(selectedTable, () => { if (ddlPanelOpen.value) void loadDdl() })
 .grow { flex: 1 1 auto; }
 .sep { width: 1px; align-self: stretch; margin: 2px 2px; background: var(--catdb-separator); }
 .filter-input { width: 160px; }
-.data-spin { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; padding: 6px; }
+.data-spin { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; }
 .data-spin :deep(.n-spin-container),
 .data-spin :deep(.n-spin-content) {
   height: 100%;
