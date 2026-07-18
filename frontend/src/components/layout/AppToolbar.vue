@@ -130,9 +130,13 @@ function openSettings() {
 .toolbar-btn:disabled { opacity: 0.35; pointer-events: none; }
 .toolbar-btn-icon { padding: 0; width: 28px; justify-content: center; }
 .toolbar { transition: margin-left 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
-.toolbar.sidebar-closed { margin-left: 150px; }
-.toolbar.win.sidebar-closed { margin-left: 50px; }
-.toolbar.win { background: var(--catdb-surface-chrome); }
+.toolbar.sidebar-closed:not(.win) { margin-left: 150px; } /* macOS: 给红绿灯+浮动按钮让位 */
+.toolbar.win.sidebar-closed { padding-left: 58px; }
+.toolbar.win {
+  background: var(--catdb-surface-chrome);
+  /* 与 AppSidebar .sider 的宽度动画同曲线,折叠让位的 padding 与 sider 收合同步,避免先跳后推 */
+  transition: padding-left 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
 /* Spacer pushes the window controls to the right side of the toolbar. */
 .toolbar-spacer { flex: 1 1 0; min-width: 0; }
 

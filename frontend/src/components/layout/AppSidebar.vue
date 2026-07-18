@@ -171,7 +171,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow: hidden;
   border-right: 1px solid var(--catdb-separator);
-  background: var(--n-color);
+  background: var(--catdb-surface-sidebar);
   display: flex;
   flex-direction: column;
   position: relative;

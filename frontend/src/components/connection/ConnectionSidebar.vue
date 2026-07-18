@@ -317,7 +317,6 @@ onMounted(() => {
 
 <style scoped>
 .sidebar { display: flex; flex-direction: column; height: 100%; }
-.sidebar.win { background: var(--catdb-surface-sidebar); }
 .header {
   --wails-draggable: drag;
   display: flex;
