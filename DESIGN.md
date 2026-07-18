@@ -165,7 +165,7 @@ catdb 的外观目标是:**放在 macOS 上像一个 Apple 官方出品的专业
 
 **toolbar** —— 高 `metrics.toolbar-height`(38px),底部 1px `separator`。内容为图标按钮(见 button-toolbar)与 24px 高的小控件。图标 16px,`text-secondary` 着色,active/开关态用 `accent`。
 
-**sidebar** —— `surface-sidebar` 底,右缘 1px `separator`,默认宽 240px、可拖拽(拖拽柄 hover 时显示 accent 高亮线)。内容为连接列表与对象树。
+**sidebar** —— 右缘 1px `separator`,默认宽 240px、可拖拽(拖拽柄 hover 时显示 accent 高亮线)。内容为连接列表与对象树。**底色分平台**:macOS 上 CSS 透明,透出窗口的 `MacBackdropTranslucent` 原生毛玻璃;Windows 无原生毛玻璃,用 `surface-sidebar` 实底。不要在 macOS 上给侧栏及其子面板刷任何不透明底色,会杀掉毛玻璃。
 
 **statusbar** —— 高 24px,`surface-chrome` 底 + 顶部 hairline,文字 `small` + `text-secondary`(行数、耗时、连接状态)。
 

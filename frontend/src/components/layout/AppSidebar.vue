@@ -171,7 +171,9 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow: hidden;
   border-right: 1px solid var(--catdb-separator);
-  background: var(--catdb-surface-sidebar);
+  /* macOS:透明,透出窗口的 MacBackdropTranslucent 原生毛玻璃(DESIGN.md 侧栏规则);
+     Windows 无原生毛玻璃,由 .sider.win 用 token 实底。 */
+  background: transparent;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -189,6 +191,7 @@ onBeforeUnmount(() => {
    extend all the way to the top edge. */
 .sider.win {
   padding-top: 0;
+  background: var(--catdb-surface-sidebar);
 }
 .sider.collapsed {
   /* Hide the right divider — there's no pane edge to mark while collapsed. */
