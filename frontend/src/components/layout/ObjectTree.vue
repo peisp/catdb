@@ -318,6 +318,19 @@ function groupNodes(db: string, schema: string | undefined): TreeOption[] {
   ]
 }
 
+// 分组节点的译文在渲染时解析(t() 在渲染上下文里响应 locale),切语言即
+// 刷新,无需重建树;数据节点(库/表/查询名)保持构建时的 label。
+const GROUP_LABEL_KEYS: Record<string, string> = {
+  tableGroup: 'objectTree.tables',
+  viewGroup: 'objectTree.views',
+  queryGroup: 'objectTree.queries',
+}
+function renderTreeLabel({ option }: { option: TreeOption }) {
+  const kind = ((option as any).extra as TreeMeta | undefined)?.kind
+  const key = kind ? GROUP_LABEL_KEYS[kind] : undefined
+  return key ? t(key) : (option.label as string)
+}
+
 async function onLoad(node: TreeOption): Promise<boolean> {
   const meta = (node as any).extra as TreeMeta
   try {
@@ -860,6 +873,7 @@ onBeforeUnmount(() => {
             :on-load="onLoad"
             :node-props="nodeProps"
             :render-prefix="renderPrefix"
+            :render-label="renderTreeLabel"
             :style="{ height: '100%' }"
             :indent="14"
             @update:expanded-keys="(keys) => (expandedKeys = keys)"
