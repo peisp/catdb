@@ -16,6 +16,8 @@ export interface GridColumn {
   align: CellAlign
   /** 表头第二行（字段类型），存在时表头为两行布局 */
   subtitle?: string
+  /** 主键列 —— 表头字段名前画 🔑 标记（与对象树的主键标记一致） */
+  pk?: boolean
 }
 
 export interface GridTheme {
@@ -376,18 +378,27 @@ export function drawGrid(o: DrawGridOptions): void {
     const sortHere = o.sortState?.col === c
     const reserve = o.sortable ? SORT_ZONE_WIDTH : 0
     const sub = o.columns[c].subtitle
-    const maxTextW = w - CELL_PAD * 2 - reserve
+    let textX = x + CELL_PAD
+    let maxTextW = w - CELL_PAD * 2 - reserve
     ctx.textAlign = 'left'
+    // 主键列：字段名前画 🔑（与对象树的主键标记一致）
+    if (o.columns[c].pk) {
+      ctx.font = subtitleFont
+      const kw = ctx.measureText('🔑').width
+      ctx.fillText('🔑', textX, sub ? hh * 0.32 : hh / 2)
+      textX += kw + 4
+      maxTextW -= kw + 4
+    }
     ctx.font = headerFont
     ctx.fillStyle = theme.text
     if (sub) {
       // 两行：字段名 + 类型
-      ctx.fillText(fitText(ctx, o.columns[c].title, maxTextW), x + CELL_PAD, hh * 0.32)
+      ctx.fillText(fitText(ctx, o.columns[c].title, maxTextW), textX, hh * 0.32)
       ctx.font = subtitleFont
       ctx.fillStyle = theme.textMuted
       ctx.fillText(fitText(ctx, sub, maxTextW), x + CELL_PAD, hh * 0.72)
     } else {
-      ctx.fillText(fitText(ctx, o.columns[c].title, maxTextW), x + CELL_PAD, hh / 2)
+      ctx.fillText(fitText(ctx, o.columns[c].title, maxTextW), textX, hh / 2)
     }
     if (o.sortable) {
       const order = sortHere ? o.sortState!.order : 'none'

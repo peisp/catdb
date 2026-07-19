@@ -74,7 +74,7 @@ function openSettings() {
     </button>
     <span class="toolbar-spacer"></span>
     <button type="button" class="toolbar-btn toolbar-btn-icon" :title="$t('settingsWindow.openSettings')" @click="openSettings">
-      <AppIcon :src="settingsIcon" :size="15" />
+      <AppIcon :src="settingsIcon" :size="16" />
     </button>
     <!-- Windows frameless caption buttons (minimise / maximise / close). -->
     <div v-if="isWin" class="window-controls">
@@ -100,40 +100,49 @@ function openSettings() {
 </template>
 
 <style scoped>
+/* DESIGN.md toolbar 规格：24×24 图标钮（button-toolbar），图标 16px、
+   text-primary 着色。macOS 隐藏标题栏：titlebar+toolbar 融合为 55px 一行，
+   图标与红绿灯/侧栏浮动开关（中心 27.5px）同轴；Windows 保持 38px。 */
 .toolbar {
-  flex: 0 0 53px;
+  flex: 0 0 var(--catdb-toolbar-height-mac);
+  background: var(--catdb-surface-chrome);
+
   display: flex;
   align-items: center;
   gap: 2px;
   padding: 0 8px;
   --wails-draggable: drag;
 }
+.toolbar.win {
+  flex-basis: var(--catdb-toolbar-height);
+}
 .toolbar-btn {
   --wails-draggable: no-drag;
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 26px;
+  height: var(--catdb-control-height);
   padding: 0 10px;
   border: none;
   border-radius: var(--catdb-rounded-sm);
   background: transparent;
-  color: inherit;
+  color: var(--catdb-text-primary);
   font: inherit;
   font-size: var(--catdb-fs-small);
-  cursor: default;
   white-space: nowrap;
-  transition: background 80ms ease;
+  cursor: default;
+  transition: background 130ms ease-out;
 }
 .toolbar-btn:hover { background: var(--catdb-hover-fill); }
 .toolbar-btn:active { background: var(--catdb-pressed-fill); }
-.toolbar-btn:disabled { opacity: 0.35; pointer-events: none; }
-.toolbar-btn-icon { padding: 0; width: 28px; justify-content: center; }
-.toolbar { transition: margin-left 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
-.toolbar.sidebar-closed:not(.win) { margin-left: 150px; } /* macOS: 给红绿灯+浮动按钮让位 */
+.toolbar-btn:disabled { opacity: 0.4; pointer-events: none; }
+.toolbar-btn-icon { width: 24px; padding: 0; justify-content: center; }
+.toolbar { transition: padding-left 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
+/* macOS: 给红绿灯+浮动按钮让位。用 padding（而非 margin）让 chrome 底通栏
+   铺满，避免让位区露出 content 底的缺口。 */
+.toolbar.sidebar-closed:not(.win) { padding-left: 150px; }
 .toolbar.win.sidebar-closed { padding-left: 58px; }
 .toolbar.win {
-  background: var(--catdb-surface-chrome);
   /* 与 AppSidebar .sider 的宽度动画同曲线,折叠让位的 padding 与 sider 收合同步,避免先跳后推 */
   transition: padding-left 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }

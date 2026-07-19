@@ -79,12 +79,14 @@ metrics:
   control-height: 24px           # small 控件(工具栏内按钮/输入框)
   control-height-medium: 28px    # 默认控件(表单按钮/输入框)
   toolbar-height: 38px
+  toolbar-height-mac: 55px       # macOS 隐藏标题栏:titlebar+toolbar 融合行,图标与红绿灯/侧栏浮动开关(中心 27.5px)同轴
   tabbar-height: 30px
   statusbar-height: 24px
+  viewbar-height: 32px           # 视图内工具/过滤条(tab 内容区顶部一行,所有 tab 类型统一)
   tree-row-height: 24px
   grid-row-height: 24px
   grid-header-height: 26px
-  sidebar-default-width: 240px
+  sidebar-default-width: 210px
   focus-ring: "0 0 0 3px rgba(0, 122, 255, 0.35)"        # dark 用 rgba(10,132,255,0.4)
   shadow-menu: "0 4px 16px rgba(0, 0, 0, 0.18)"
   shadow-modal: "0 12px 40px rgba(0, 0, 0, 0.25)"
@@ -163,7 +165,9 @@ catdb 的外观目标是:**放在 macOS 上像一个 Apple 官方出品的专业
 
 **titlebar** —— 与 `surface-chrome` 同色,通栏可拖拽(`--wails-draggable: drag`,内部控件 no-drag)。无独立底边线时与工具栏融为一体。
 
-**toolbar** —— 高 `metrics.toolbar-height`(38px),底部 1px `separator`。内容为图标按钮(见 button-toolbar)与 24px 高的小控件。图标 16px,`text-secondary` 着色,active/开关态用 `accent`。
+**toolbar** —— 高 `metrics.toolbar-height`(38px),底部 1px `separator`。内容为图标+文字动作按钮(高 24px、图标 14px、文字 `small`、`text-primary` 着色——secondary 在浅色下过灰)与 24px 小控件;纯图标场景(如设置钮)按 button-toolbar,图标 16px。active/开关态用 `accent`。**macOS 例外**:隐藏标题栏窗口中 titlebar 与 toolbar 融合为一行,高 `metrics.toolbar-height-mac`(55px),使按钮与系统红绿灯、侧栏玻璃开关(中心 27.5px)同轴垂直居中;Windows 无红绿灯,保持 38px。
+
+**view bar** —— 每种 workspace tab 内容区顶部的那行工具/过滤条(查询工具条、表浏览操作+过滤行、表结构 segmented 轨、表总览工具条),高度统一 `metrics.viewbar-height`(32px),`surface-chrome` 底 + 底部 1px `separator`,内容为 24px 控件。不同 tab 类型之间高度不得各自为政。
 
 **sidebar** —— 右缘 1px `separator`,默认宽 240px、可拖拽(拖拽柄 hover 时显示 accent 高亮线)。内容为连接列表与对象树。**底色分平台**:macOS 上 CSS 透明,透出窗口的 `MacBackdropTranslucent` 原生毛玻璃;Windows 无原生毛玻璃,用 `surface-sidebar` 实底。不要在 macOS 上给侧栏及其子面板刷任何不透明底色,会杀掉毛玻璃。
 

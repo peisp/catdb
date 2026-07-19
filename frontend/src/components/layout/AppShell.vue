@@ -464,8 +464,8 @@ function onOpenTablesOverview(payload: { db: string; schema?: string }) {
 
 /* Status bar inside main (right work area only — sidebar extends full height). */
 .status {
-  flex: 0 0 22px;
-  height: 22px;
+  flex: 0 0 var(--catdb-statusbar-height);
+  height: var(--catdb-statusbar-height);
   border-top: 1px solid var(--catdb-separator);
   background: var(--n-color, transparent);
 }

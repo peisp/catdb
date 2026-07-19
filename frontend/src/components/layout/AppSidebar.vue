@@ -4,8 +4,8 @@
 // just the connection list fills the pane.
 //
 // Width is user-resizable via a thin handle on the right edge:
-//   - default = 300px
-//   - min     = 150px (clamped on drag)
+//   - default = 210px (DESIGN.md metrics.sidebar-default-width)
+//   - min     = 180px (clamped on drag)
 //   - max     = 50% of current window width (re-clamped on window resize)
 //   - drag past 50px → emit `collapse` so the shell hides the sidebar
 //     entirely. The gap between min (150) and the collapse threshold (50)
@@ -40,7 +40,7 @@ const emit = defineEmits<{
   (e: 'collapse'): void
 }>()
 
-const DEFAULT_WIDTH = 200
+const DEFAULT_WIDTH = 210
 const MIN_WIDTH = 180
 const COLLAPSE_THRESHOLD = 50
 const maxWidth = () => Math.max(MIN_WIDTH, Math.floor(window.innerWidth * 0.3))
@@ -165,8 +165,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .sider {
-  flex: 0 0 200px; /* must match DEFAULT_WIDTH in <script> */
-  width: 200px;
+  flex: 0 0 210px; /* must match DEFAULT_WIDTH in <script> */
+  width: 210px;
   min-width: 0;
   min-height: 0;
   overflow: hidden;

@@ -13,6 +13,7 @@ export default {
     confirm: 'Confirm',
     rename: 'Rename',
     refresh: 'Refresh',
+    clear: 'Clear',
     copy: 'Copy',
     copySql: 'Copy SQL',
     copied: 'Copied to clipboard',
@@ -221,6 +222,8 @@ export default {
     rowInserted: 'Row inserted',
     insertFailed: 'Insert failed: {error}',
     savedChanges: 'Saved {n} change(s)',
+    addRow: 'Add Row',
+    deleteRows: 'Delete Selected Rows',
     columnsPanel: 'Columns',
     columnsTitle: 'Columns',
     columnsFilter: 'Filter columns',
@@ -366,6 +369,7 @@ export default {
     notConnected: 'Not Connected',
     refreshTree: 'Refresh Object Tree',
     refreshFailed: 'Refresh failed: {error}',
+    searchPlaceholder: 'Filter objects',
     // Keys naming the tree's top-level container carry a `.database`/`.schema`
     // variant picked by the driver's UIDialect.NamespaceTerm.
     schemaFilter: {

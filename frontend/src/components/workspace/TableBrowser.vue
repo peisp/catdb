@@ -85,7 +85,7 @@ const readOnly = computed(() => {
 const addingRow = ref(false)
 const newRowValues = ref<any[]>([])
 
-// When adding, append newRowValues as the last row so VTable edits go directly
+// When adding, append newRowValues as the last row so grid edits go directly
 // into the newRowValues ref (persistent reference across recomputes).
 const allRows = computed<any[][]>(() => {
   if (!addingRow.value) return rows.value
@@ -233,11 +233,11 @@ onMounted(() => {
           newValue: null,
           columnName: ch.columnName,
         })
-        // 直接修改源数据让 VTable 感知变化
+        // 直接修改源数据（DataGrid 按引用读取 rows）
         if (rawRows[ch.row]) rawRows[ch.row][ch.col] = null
       }
       pendingChanges.value = new Map(map)
-      // 强制新引用触发 VTable 重新渲染
+      // 强制新引用触发网格重绘
       browse.value = { ...browse.value, rows: [...rawRows] }
     },
   )
@@ -354,7 +354,7 @@ async function onEditCommit(p: {
     newRowValues.value[p.col] = newValue
     return
   }
-  // Queue the change — VTable has optimistically updated the record in-place.
+  // Queue the change — DataGrid has optimistically updated the row in-place.
   const map = pendingChanges.value
   const key = `${p.row}:${p.col}`
   map.set(key, {
@@ -394,7 +394,7 @@ function deleteSelectedRows() {
   pendingChanges.value = new Map(map)
   // Clear selection
   sel.selection.value = null
-  // 强制新 rows 引用触发 VTable 重绘以应用灰色背景（同 set-null 的模式）
+  // 强制新 rows 引用触发网格重绘以应用灰色背景（同 set-null 的模式）
   if (browse.value) {
     browse.value = { ...browse.value, rows: [...browse.value.rows] }
   }
@@ -644,34 +644,68 @@ async function loadDdl() {
 
 <template>
   <div ref="rootRef" class="tb">
-    <div class="toolbar">
-      <span class="title mono">{{ db }}.{{ table }}</span>
-      <n-tag v-if="readOnly" size="small" type="warning">{{ $t('tableBrowser.readOnlyTag') }}</n-tag>
-      <n-tag v-else size="small" type="info">PK: {{ pk.join(', ') }}</n-tag>
-      <span class="grow"/>
+    <!-- 操作 + 过滤合一行（32px chrome 条）：行编辑动作 | WHERE/ORDER | 面板/导出。 -->
+    <div class="actionbar">
       <template v-if="addingRow">
         <n-button size="tiny" type="primary" :disabled="loading" @click="saveNewRow">{{ $t('common.save') }}</n-button>
         <n-button size="tiny" :disabled="loading" @click="cancelAddRow">{{ $t('common.cancel') }}</n-button>
       </template>
-      <n-button v-else size="tiny" :disabled="loading || readOnly" @click="startAddRow">+</n-button>
-      <n-button
-          v-if="!addingRow"
-          size="tiny"
-          :disabled="loading || readOnly || !hasSelection"
-          @click="deleteSelectedRows"
-      >-
-      </n-button>
+      <template v-else>
+        <button
+            type="button"
+            class="ab-btn"
+            :title="$t('tableBrowser.addRow')"
+            :disabled="loading || readOnly"
+            @click="startAddRow"
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" /></svg>
+        </button>
+        <button
+            type="button"
+            class="ab-btn"
+            :title="$t('tableBrowser.deleteRows')"
+            :disabled="loading || readOnly || !hasSelection"
+            @click="deleteSelectedRows"
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3.5 8h9" /></svg>
+        </button>
+      </template>
       <template v-if="hasUnsavedChanges && !addingRow">
         <n-button size="tiny" type="primary" :disabled="loading" @click="saveChanges">{{ $t('common.save') }}</n-button>
         <n-button size="tiny" :disabled="loading" @click="discardChanges">{{ $t('common.cancel') }}</n-button>
       </template>
-      <n-button size="tiny" @click="load" :disabled="loading">{{ $t('common.refresh') }}</n-button>
-      <n-button size="tiny" :title="$t('tableBrowser.columnsPanel')" @click="toggleColumnsDrawer">
-        {{ $t('tableBrowser.columnsPanel') }}
-      </n-button>
-      <n-button size="tiny" :type="ddlPanelOpen ? 'primary' : 'default'" @click="toggleDdlPanel">
-        {{ $t('tablesOverview.action.ddl') }}
-      </n-button>
+      <button type="button" class="ab-btn" :title="$t('common.refresh')" :disabled="loading" @click="load">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 3v3.5H10" /><path d="M13 6.5A5.5 5.5 0 1 0 13 11" /></svg>
+      </button>
+      <span class="ab-sep" />
+      <FilterBar
+          :conn-id="connId"
+          :db="db"
+          :table="table"
+          :columns="columns"
+          @apply="onFilterApply"
+          @clear="onFilterClear"
+      />
+      <span class="ab-sep" />
+      <n-tag v-if="readOnly" size="small" type="warning" class="state-tag">{{ $t('tableBrowser.readOnlyTag') }}</n-tag>
+      <button
+          type="button"
+          class="ab-btn"
+          :class="{ active: columnsDrawerOpen }"
+          :title="$t('tableBrowser.columnsPanel')"
+          @click="toggleColumnsDrawer"
+      >
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.5" /><path d="M10 3v10" /></svg>
+      </button>
+      <button
+          type="button"
+          class="ab-btn"
+          :class="{ active: ddlPanelOpen }"
+          :title="$t('tablesOverview.action.ddl')"
+          @click="toggleDdlPanel"
+      >
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5" /></svg>
+      </button>
       <select class="export-select" @change="onExportSelect">
         <option value="" disabled selected>{{ $t('common.exportPlaceholder') }}</option>
         <option value="csv">CSV</option>
@@ -686,14 +720,6 @@ async function loadDdl() {
     </n-alert>
 
     <div class="data-area">
-      <FilterBar
-          :conn-id="connId"
-          :db="db"
-          :table="table"
-          :columns="columns"
-          @apply="onFilterApply"
-          @clear="onFilterClear"
-      />
       <div class="data-body">
         <DataGrid
             ref="gridRef"
@@ -804,23 +830,57 @@ async function loadDdl() {
   min-height: 0;
   overflow: hidden;
 }
-.toolbar {
-  height: 35px;
+/* 操作 + 过滤合一行（view bar）：统一高 viewbar-height，内含 24px 控件。 */
+.actionbar {
+  height: var(--catdb-viewbar-height);
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
+  gap: 4px;
+  padding: 0 6px;
   border-bottom: 1px solid var(--catdb-separator);
-  background: var(--n-color);
+  background: var(--catdb-surface-chrome);
   font-size: var(--catdb-fs-small);
   min-width: 0;
   flex: 0 0 auto;
 }
-.title { font-size: var(--catdb-fs-small); }
-.grow { flex: 1 1 auto; }
+.ab-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--catdb-rounded-sm);
+  background: transparent;
+  color: var(--catdb-text-primary);
+  cursor: default;
+  flex: 0 0 auto;
+  transition: background 130ms ease-out;
+}
+.ab-btn svg { width: 15px; height: 15px; display: block; }
+.ab-btn:hover:not(:disabled) { background: var(--catdb-hover-fill); }
+.ab-btn:active:not(:disabled) { background: var(--catdb-pressed-fill); }
+.ab-btn:disabled { opacity: 0.4; }
+.ab-btn.active { color: var(--catdb-accent); background: var(--catdb-accent-soft); }
+.ab-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--catdb-separator);
+  margin: 0 2px;
+  flex: 0 0 auto;
+}
+.state-tag {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .export-select {
   font-size: var(--catdb-fs-small);
-  height: 22px;
+  height: 24px;
   padding: 0 4px;
   border-radius: var(--catdb-rounded-sm);
   border: 1px solid var(--catdb-control-border);

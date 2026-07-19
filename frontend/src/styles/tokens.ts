@@ -103,12 +103,14 @@ export const metrics = {
   'control-height': '24px',
   'control-height-medium': '28px',
   'toolbar-height': '38px',
+  'toolbar-height-mac': '55px',
   'tabbar-height': '30px',
   'statusbar-height': '24px',
+  'viewbar-height': '32px',
   'tree-row-height': '24px',
   'grid-row-height': '24px',
   'grid-header-height': '26px',
-  'sidebar-default-width': '240px',
+  'sidebar-default-width': '210px',
 } as const
 
 export const focusRing = {

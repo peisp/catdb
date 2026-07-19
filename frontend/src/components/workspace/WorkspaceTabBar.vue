@@ -287,7 +287,7 @@ function openCtx(t: QueryTabInfo) {
 .tabbar {
   position: relative;
   display: flex;
-  height: 40px;
+  height: var(--catdb-tabbar-height);
   flex: 0 0 auto;
   min-width: 0;
   border-bottom: 1px solid var(--catdb-separator);
@@ -334,21 +334,23 @@ function openCtx(t: QueryTabInfo) {
 .tab:not(.active) .tab-text {
   opacity: 0.68;
 }
+.tab:not(.active):hover {
+  background: var(--catdb-hover-fill);
+}
 .tab:not(.active):hover .tab-text {
   opacity: 0.9;
 }
+/* 选中 tab：surface-content 底 + body-strong，底边用 box-shadow 盖掉 tabbar
+   的 hairline，与内容面连成一体（DESIGN.md workspace tab 规格）。 */
 .tab.active {
   background: var(--catdb-surface-content);
+  box-shadow: 0 1px 0 0 var(--catdb-surface-content);
 }
-/* Accent underline on the active tab (dbx classic layout). */
-.tab.active::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
-  background: var(--tab-accent);
+.tab.active .tab-text {
+  font-weight: 600;
+}
+.tab.active .tab-db {
+  font-weight: 400;
 }
 .tab.dragging {
   opacity: 0.45;

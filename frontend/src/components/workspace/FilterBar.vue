@@ -446,16 +446,16 @@ watch(
 </template>
 
 <style scoped>
+/* 内嵌形态：宿主行（TableBrowser .actionbar）提供 chrome 底与 hairline，
+   这里只排布输入框与按钮，占满行内剩余空间。 */
 .filter-bar {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px;
-  border-bottom: 1px solid var(--catdb-separator);
-  background: var(--catdb-surface-chrome);
   font-size: var(--catdb-fs-small);
   position: relative;
-  flex: 0 0 auto;
+  flex: 1 1 0;
+  min-width: 0;
   z-index: 10;
 }
 
@@ -465,11 +465,12 @@ watch(
   gap: 6px;
   flex: 1 1 0;
   min-width: 0;
+  height: 24px;
   position: relative;
   background: var(--catdb-surface-content);
   border: 1px solid var(--catdb-control-border);
-  border-radius: var(--catdb-rounded-md);
-  padding: 2px 10px;
+  border-radius: var(--catdb-rounded-sm);
+  padding: 0 10px;
   transition: border-color 120ms ease;
 }
 
@@ -497,7 +498,7 @@ watch(
 .filter-input {
   flex: 1 1 0;
   min-width: 0;
-  height: 24px;
+  height: 22px;
   font-size: var(--catdb-fs-small);
   background: transparent;
   border: none;

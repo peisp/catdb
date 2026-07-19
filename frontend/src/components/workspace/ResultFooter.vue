@@ -158,7 +158,8 @@ function onExportSelect(ev: Event) {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 4px 10px;
+  height: 26px;
+  padding: 0 10px;
   border-top: 1px solid var(--catdb-separator);
   background: var(--catdb-surface-chrome);
   flex: 0 0 auto;

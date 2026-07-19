@@ -107,6 +107,9 @@ const treeData = computed(() =>
   allRootNodes.value.filter((n) => selectedSchemas.value.has((n as any).extra.db)),
 )
 const expandedKeys = ref<string[]>([])
+// 常驻对象名搜索（DESIGN.md 搜索框规格）：过滤已加载的树节点（懒加载的
+// 子层展开后即被纳入匹配），交给 n-tree 的 pattern 匹配。
+const treeFilter = ref('')
 const loading = ref(false)
 // `busy` covers the in-flight period of disconnect/reconnect/refresh — we
 // disable the three action buttons while one is running so the user can't
@@ -301,6 +304,7 @@ watch(
     searchOpen.value = false
     searchText.value = ''
     listCollapsed.value = false
+    treeFilter.value = ''
     loadRoot()
   },
   { immediate: true },
@@ -862,6 +866,26 @@ onBeforeUnmount(() => {
         </n-button>
       </div>
     </div>
+    <div class="tree-search">
+      <svg class="ts-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="7" cy="7" r="4.5" />
+        <path d="M10.5 10.5L14 14" />
+      </svg>
+      <input
+        v-model="treeFilter"
+        class="ts-input"
+        type="text"
+        spellcheck="false"
+        :placeholder="$t('objectTree.searchPlaceholder')"
+      />
+      <button
+        v-if="treeFilter"
+        class="ts-clear"
+        type="button"
+        :title="$t('common.clear')"
+        @click="treeFilter = ''"
+      >×</button>
+    </div>
     <div class="body">
       <n-scrollbar class="scroll">
         <n-spin :show="loading">
@@ -869,6 +893,8 @@ onBeforeUnmount(() => {
             block-line
             virtual-scroll
             :data="treeData"
+            :pattern="treeFilter"
+            :show-irrelevant-nodes="false"
             :expanded-keys="expandedKeys"
             :on-load="onLoad"
             :node-props="nodeProps"
@@ -1030,6 +1056,60 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 .sp-empty { padding: 12px 8px; text-align: center; font-size: var(--catdb-fs-mini); opacity: 0.5; }
+
+/* 常驻对象搜索框 — DESIGN.md 搜索框规格：24px 高、前置 14px 放大镜、sm 圆角。 */
+.tree-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 6px 8px 0;
+}
+.ts-icon {
+  position: absolute;
+  left: 15px;
+  width: 14px;
+  height: 14px;
+  color: var(--catdb-text-tertiary);
+  pointer-events: none;
+}
+.ts-input {
+  flex: 1 1 0;
+  min-width: 0;
+  height: var(--catdb-control-height);
+  padding: 0 22px 0 25px;
+  font: inherit;
+  font-size: var(--catdb-fs-body);
+  color: var(--catdb-text-primary);
+  background: var(--catdb-surface-content);
+  border: 1px solid var(--catdb-control-border);
+  border-radius: var(--catdb-rounded-sm);
+  outline: none;
+}
+.ts-input::placeholder { color: var(--catdb-text-tertiary); }
+.ts-input:focus {
+  border-color: var(--catdb-accent);
+  box-shadow: var(--catdb-focus-ring);
+}
+.ts-clear {
+  position: absolute;
+  right: 12px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--catdb-rounded-xs);
+  background: transparent;
+  color: inherit;
+  opacity: 0.4;
+  font-size: var(--catdb-fs-body);
+  line-height: 1;
+  cursor: default;
+}
+.ts-clear:hover { opacity: 0.8; background: var(--catdb-hover-fill); }
 
 .actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
 .hbtn {

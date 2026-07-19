@@ -1,7 +1,6 @@
 // useTableSelection — grid selection state + clipboard formatting for
 // ResultTable / TableBrowser. Selection is a single rectangular range
-// (DataGrid disables VTable's Ctrl+click multi-range select so what's
-// highlighted is exactly what copies).
+// (no Ctrl+click multi-range — what's highlighted is exactly what copies).
 //
 // Format helpers generate TSV, INSERT, UPDATE, column names, and data+columns.
 // SQL-producing helpers take the driver's UIDialect so identifier quoting and

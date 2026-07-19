@@ -146,14 +146,16 @@ const versionTitle = computed(() => {
 </template>
 
 <style scoped>
+/* DESIGN.md statusbar 规格：高 24px，文字 small + text-secondary。 */
 .bar {
   display: flex;
   align-items: center;
-  height: 22px;
-  font-size: var(--catdb-fs-mini);
+  height: var(--catdb-statusbar-height);
+  font-size: var(--catdb-fs-small);
+  color: var(--catdb-text-secondary);
+  background: var(--catdb-surface-chrome);
   padding: 0 18px;
   gap: 8px;
-  opacity: 0.9;
 }
 .slot { white-space: nowrap; }
 .sep { width: 1px; height: 12px; background: currentColor; opacity: 0.15; }
@@ -169,9 +171,9 @@ const versionTitle = computed(() => {
   margin: 0;
   border: none;
   background: transparent;
-  color: inherit;
+  color: var(--catdb-text-primary);
   cursor: default;
-  opacity: 0.7;
+  opacity: 0.8;
   transition: opacity 100ms ease;
 }
 .icon-btn:hover { opacity: 1; }

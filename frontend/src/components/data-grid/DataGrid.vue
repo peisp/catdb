@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// DataGrid —— 自研 canvas 网格（替换 VTable，对外契约不变）。
+// DataGrid —— 自研 canvas 网格。
 //
 // 结构：原生 overflow:auto scroller + 撑出总尺寸的占位 div（真实滚动条）
 //       + position:sticky 的 canvas 钉在视口重绘可视区（canvasGridRenderer）
@@ -369,6 +369,7 @@ function draw() {
   const dirtySet = props.dirtyCells
   const deletedSet = props.deletedRows
   const dirtyRowSet = props.dirtyRows
+  const pkSet = new Set(props.pkColumns)
   const sortIndicator = props.sortRemote
     ? props.sortState
       ? { col: props.sortState.field, order: props.sortState.order }
@@ -392,6 +393,7 @@ function draw() {
       title: c.name,
       align: pickAlign(c),
       subtitle: props.showTypes ? headerTypeText(c) : undefined,
+      pk: pkSet.has(c.name),
     })),
     cellText,
     cellIsNull: (r, c) => props.rows[r]?.[c] == null,
@@ -665,7 +667,7 @@ function onWindowDragUp() {
   const d = drag
   drag = null
   if (!d) return
-  // 单击（未拖动）→ 进入编辑（VTable editCellTrigger:'click' 的等价行为）
+  // 单击（未拖动）→ 进入编辑
   if (d.mode === 'cells' && !d.moved && d.clickCell) {
     startEdit(d.clickCell.row, d.clickCell.col)
     return
@@ -753,7 +755,7 @@ function onContextMenu(e: MouseEvent) {
   const cols = props.columns.length
   const rows = props.rows.length
 
-  // 选区修正：右键落点在选区外 → 按区域重选（VTable rightdown 的等价行为）
+  // 选区修正：右键落点在选区外 → 按区域重选
   if (hit.region === 'corner') {
     selectAll()
   } else if (hit.region === 'header' && hit.col >= 0) {
@@ -1077,7 +1079,7 @@ function resetColumnWidths() {
 }
 
 // 列「签名」不变（同表刷新重建 columns 数组）时保留列宽/选区/排序，
-// 等价 VTable 的 keep-column-width-change；签名变了才整体重置。
+// 签名变了才整体重置。
 let columnsSig = ''
 function columnsSignature(): string {
   return props.columns.map((c) => `${c.name} ${c.logicalType}`).join('')

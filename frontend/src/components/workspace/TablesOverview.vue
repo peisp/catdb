@@ -300,14 +300,15 @@ watch(selectedTable, () => { if (ddlPanelOpen.value) void loadDdl() })
 
 <style scoped>
 .to { display: flex; flex-direction: column; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
+/* view bar：统一高 viewbar-height，chrome 面 + hairline。 */
 .toolbar {
-  height: 35px;
+  height: var(--catdb-viewbar-height);
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 10px;
+  padding: 0 10px;
   border-bottom: 1px solid var(--catdb-separator);
-  background: var(--n-color);
+  background: var(--catdb-surface-chrome);
   font-size: var(--catdb-fs-small);
   min-width: 0;
   flex: 0 0 auto;

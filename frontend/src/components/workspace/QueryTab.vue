@@ -655,15 +655,16 @@ function onSplitDown(e: PointerEvent) {
   min-height: 0;
   overflow: hidden;
 }
+/* 视图内轻工具条（view bar）：统一高 viewbar-height，chrome 面 + hairline。 */
 .toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 2px 10px;
-  background: var(--n-color);
+  padding: 0 8px;
+  background: var(--catdb-surface-chrome);
   min-width: 0;
   border-bottom: 1px solid var(--catdb-separator);
-  height: 35px;
+  height: var(--catdb-viewbar-height);
 }
 .sep { display: inline-block; width: 1px; height: 12px; background: currentColor; opacity: 0.15; }
 .mute { opacity: 0.6; font-size: var(--catdb-fs-small); }
@@ -675,9 +676,9 @@ function onSplitDown(e: PointerEvent) {
   padding: 1px 6px;
   border: 1px solid var(--catdb-separator);
   border-radius: var(--catdb-rounded-sm);
-  background: var(--n-color);
+  background: var(--catdb-surface-content);
   color: var(--n-text-color);
-  height: 26px;
+  height: 24px;
   outline: none;
   cursor: pointer;
   font-family: inherit;

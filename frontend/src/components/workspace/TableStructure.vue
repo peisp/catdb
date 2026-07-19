@@ -435,7 +435,7 @@ const newApplyDisabled = computed(() => {
 
 <style scoped>
 /* ---- root flex container ---- */
-.ts { height: 100%; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.ts { height: 100%; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--catdb-surface-chrome); }
 .ts :deep(.n-spin-container),
 .ts :deep(.n-spin-content) { height: 100%; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 
@@ -460,7 +460,6 @@ const newApplyDisabled = computed(() => {
 
 /* ---- segmented tabs (liquid glass, matching ConnectionForm) ---- */
 .group-tabs {
-  height: 35px;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -468,15 +467,20 @@ const newApplyDisabled = computed(() => {
   min-width: 0;
   min-height: 0;
 }
+/* view bar：nav 行统一高 viewbar-height，玻璃轨在其中垂直居中。 */
 .group-tabs :deep(.n-tabs-nav) {
   display: flex;
   justify-content: center;
+  align-items: center;
+  height: var(--catdb-viewbar-height);
+  flex: 0 0 auto;
   border-bottom: 1px solid var(--catdb-separator);
-
 }
 .group-tabs :deep(.n-tabs-rail) {
   min-width: 0;
-  margin: 6px;
+  margin: 0 6px;
+  width: 50%;
+  height: 80%;
   padding: 3px;
   border-radius: 8px;
   backdrop-filter: blur(18px) saturate(180%);

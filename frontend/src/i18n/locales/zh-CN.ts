@@ -9,6 +9,7 @@ export default {
     confirm: '确认',
     rename: '重命名',
     refresh: '刷新',
+    clear: '清空',
     copy: '复制',
     copySql: '复制 SQL',
     copied: '已复制到剪贴板',
@@ -215,6 +216,8 @@ export default {
     rowInserted: '已插入行',
     insertFailed: '插入失败: {error}',
     savedChanges: '已保存 {n} 处修改',
+    addRow: '添加行',
+    deleteRows: '删除选中行',
     columnsPanel: '字段',
     columnsTitle: '字段列表',
     columnsFilter: '筛选字段',
@@ -358,6 +361,7 @@ export default {
     notConnected: '未连接',
     refreshTree: '刷新对象树',
     refreshFailed: '刷新失败: {error}',
+    searchPlaceholder: '过滤对象',
     // 涉及顶层容器名称的 key 按驱动 UIDialect.NamespaceTerm 取
     // `.database`/`.schema` 变体。
     schemaFilter: {
