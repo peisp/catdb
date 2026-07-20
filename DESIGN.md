@@ -79,9 +79,9 @@ metrics:
   control-height: 24px           # small 控件(工具栏内按钮/输入框)
   control-height-medium: 28px    # 默认控件(表单按钮/输入框)
   toolbar-height: 55px           # 双平台统一。titlebar+toolbar 融合行,图标与红绿灯/侧栏浮动开关(中心 27.5px)同轴
-  tabbar-height: 30px
+  tabbar-height: 36px            # 容纳表对象 tab 的库名/表名双行文字
   statusbar-height: 24px
-  viewbar-height: 32px           # 视图内工具/过滤条(tab 内容区顶部一行,所有 tab 类型统一)
+  viewbar-height: 36px           # 视图内工具/过滤条(tab 内容区顶部一行,所有 tab 类型统一,与 tabbar 同高)
   tree-row-height: 24px
   grid-row-height: 24px
   grid-header-height: 26px
@@ -166,7 +166,7 @@ catdb 的外观目标是:**放在 macOS 上像一个 Apple 官方出品的专业
 
 **toolbar** —— 高 `metrics.toolbar-height`(55px),双平台统一,底部 1px `separator`。内容为图标+文字动作按钮(高 24px、图标 14px、文字 `small`、`text-primary` 着色——secondary 在浅色下过灰)与 24px 小控件;纯图标场景(如设置钮)按 button-toolbar,图标 16px。active/开关态用 `accent`。隐藏标题栏窗口中 titlebar 与 toolbar 融合为一行,使按钮与 macOS 系统红绿灯、侧栏玻璃开关(中心 27.5px)同轴垂直居中;Windows 无红绿灯,自定义 caption 按钮在行内右侧拉伸至全高。
 
-**view bar** —— 每种 workspace tab 内容区顶部的那行工具/过滤条(查询工具条、表浏览操作+过滤行、表结构 segmented 轨、表总览工具条),高度统一 `metrics.viewbar-height`(32px),`surface-chrome` 底 + 底部 1px `separator`,内容为 24px 控件。不同 tab 类型之间高度不得各自为政。
+**view bar** —— 每种 workspace tab 内容区顶部的那行工具/过滤条(查询工具条、表浏览操作+过滤行、表结构 segmented 轨、表总览工具条),高度统一 `metrics.viewbar-height`(36px,与 tabbar 同高),`surface-chrome` 底 + 底部 1px `separator`,内容为 24px 控件。不同 tab 类型之间高度不得各自为政。
 
 **sidebar** —— 右缘 1px `separator`,默认宽 240px、可拖拽(拖拽柄 hover 时显示 accent 高亮线)。内容为连接列表与对象树。**底色分平台**:macOS 上 CSS 透明,透出窗口的 `MacBackdropTranslucent` 原生毛玻璃;Windows 无原生毛玻璃,用 `surface-sidebar` 实底。不要在 macOS 上给侧栏及其子面板刷任何不透明底色,会杀掉毛玻璃。
 
@@ -182,7 +182,7 @@ catdb 的外观目标是:**放在 macOS 上像一个 Apple 官方出品的专业
 
 ### Workspace tab 条
 
-- 高 30px,`surface-chrome` 底,底边 1px `separator`。
+- 高 36px(容纳双行文字),`surface-chrome` 底,底边 1px `separator`。
 - 选中 tab:`surface-content` 底色(与内容面连成一体)+ `body-strong`;未选中:透明底 + `text-secondary`,hover 垫 `hover-fill`。
 - 关闭按钮 hover 才显现;未保存态用 `accent` 圆点替代关闭钮(macOS 文档惯例)。
 - 表对象 tab 的库名/表名分行显示(沿用现状),库名 `mini` + `text-secondary`。

@@ -644,7 +644,7 @@ async function loadDdl() {
 
 <template>
   <div ref="rootRef" class="tb">
-    <!-- 操作 + 过滤合一行（32px chrome 条）：行编辑动作 | WHERE/ORDER | 面板/导出。 -->
+    <!-- 操作 + 过滤合一行（view bar chrome 条）：行编辑动作 | WHERE/ORDER | 面板/导出。 -->
     <div class="actionbar">
       <template v-if="addingRow">
         <n-button size="tiny" type="primary" :disabled="loading" @click="saveNewRow">{{ $t('common.save') }}</n-button>

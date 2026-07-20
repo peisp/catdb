@@ -476,11 +476,9 @@ function openCtx(t: QueryTabInfo) {
   opacity: 1;
   pointer-events: auto;
 }
-/* thumb 落在 tab 条下沿之外（负 bottom）：30px 高的 tab 条被双行文字占满，
-   压在里面会盖住表名那一行。 */
 .tab-scrollbar-thumb {
   position: absolute;
-  bottom: -3px;
+  bottom: 1px;
   height: 3px;
   min-width: 20px;
   border-radius: var(--catdb-rounded-pill);
