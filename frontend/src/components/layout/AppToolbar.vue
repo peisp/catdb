@@ -101,10 +101,10 @@ function openSettings() {
 
 <style scoped>
 /* DESIGN.md toolbar 规格：24×24 图标钮（button-toolbar），图标 16px、
-   text-primary 着色。macOS 隐藏标题栏：titlebar+toolbar 融合为 55px 一行，
-   图标与红绿灯/侧栏浮动开关（中心 27.5px）同轴；Windows 保持 38px。 */
+   text-primary 着色。隐藏标题栏：titlebar+toolbar 融合为 55px 一行（双平台
+   统一），图标与红绿灯/侧栏浮动开关（中心 27.5px）同轴。 */
 .toolbar {
-  flex: 0 0 var(--catdb-toolbar-height-mac);
+  flex: 0 0 var(--catdb-toolbar-height);
   background: var(--catdb-surface-chrome);
 
   display: flex;
@@ -112,9 +112,6 @@ function openSettings() {
   gap: 2px;
   padding: 0 8px;
   --wails-draggable: drag;
-}
-.toolbar.win {
-  flex-basis: var(--catdb-toolbar-height);
 }
 .toolbar-btn {
   --wails-draggable: no-drag;
