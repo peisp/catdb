@@ -13,7 +13,10 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"catdb/internal/agent"
 	"catdb/internal/core/session"
+	"catdb/internal/llm"
+	"catdb/internal/llmconfig"
 	"catdb/internal/platform"
 	"catdb/internal/services"
 	"catdb/internal/storage"
@@ -30,6 +33,12 @@ func init() {
 	application.RegisterEvent[map[string]any]("custom:switch-english-input")
 	application.RegisterEvent[map[string]any]("connection:saved")
 	application.RegisterEvent[map[string]any]("update:progress")
+	application.RegisterEvent[map[string]any]("agent:delta")
+	application.RegisterEvent[map[string]any]("agent:thinking")
+	application.RegisterEvent[map[string]any]("agent:tool")
+	application.RegisterEvent[map[string]any]("agent:usage")
+	application.RegisterEvent[map[string]any]("agent:done")
+	application.RegisterEvent[map[string]any]("agent:error")
 }
 
 func main() {
@@ -45,6 +54,10 @@ func main() {
 
 	settingsSvc := services.NewSettingsService(store)
 
+	agentEngine := agent.NewEngine(store, mgr, func(ctx context.Context, providerID string) (llm.Provider, error) {
+		return llmconfig.Resolve(ctx, store, secrets, providerID)
+	})
+
 	app := application.New(application.Options{
 		Name:        "catdb",
 		Description: "Cross-platform database management tool",
@@ -59,6 +72,8 @@ func main() {
 			application.NewService(services.NewSavedQueryService(store)),
 			application.NewService(services.NewUpdateService(store, "")),
 			application.NewService(settingsSvc),
+			application.NewService(services.NewAgentSettingsService(store, secrets)),
+			application.NewService(services.NewAgentService(store, agentEngine)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

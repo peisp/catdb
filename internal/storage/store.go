@@ -113,6 +113,52 @@ func (s *Store) migrate(ctx context.Context) error {
 			FOREIGN KEY (conn_id) REFERENCES connection(id) ON DELETE CASCADE
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_saved_query_scope ON saved_query(conn_id, db_name)`,
+		`CREATE TABLE IF NOT EXISTS agent_sessions (
+			id TEXT PRIMARY KEY,
+			conn_id TEXT NOT NULL,
+			title TEXT NOT NULL,
+			mode TEXT NOT NULL,
+			provider_id TEXT NOT NULL,
+			model TEXT NOT NULL,
+			grants TEXT NOT NULL DEFAULT '[]',
+			current_db TEXT,
+			current_schema TEXT,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_agent_sessions_conn ON agent_sessions(conn_id)`,
+		`CREATE TABLE IF NOT EXISTS agent_messages (
+			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
+			seq INTEGER NOT NULL,
+			role TEXT NOT NULL,
+			content TEXT NOT NULL,
+			tokens_in INTEGER,
+			tokens_out INTEGER,
+			compacted INTEGER NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL,
+			UNIQUE(session_id, seq)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_agent_messages_session ON agent_messages(session_id)`,
+		// agent_audit deliberately has no FK to agent_sessions: deleting a
+		// session must preserve its audit trail (cascade only removes
+		// messages), see DeleteAgentSession.
+		`CREATE TABLE IF NOT EXISTS agent_audit (
+			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL,
+			conn_id TEXT NOT NULL,
+			"sql" TEXT NOT NULL,
+			class TEXT NOT NULL,
+			approval TEXT NOT NULL,
+			"rows" INTEGER,
+			duration_ms INTEGER,
+			status TEXT NOT NULL,
+			error TEXT,
+			created_at INTEGER NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_agent_audit_conn ON agent_audit(conn_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_agent_audit_session ON agent_audit(session_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_agent_audit_created ON agent_audit(created_at)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
@@ -135,7 +181,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		}
 	}
 	_, _ = s.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO schema_version(version, applied_at) VALUES (2, ?)`,
+		`INSERT OR IGNORE INTO schema_version(version, applied_at) VALUES (3, ?)`,
 		time.Now().Unix(),
 	)
 	return nil

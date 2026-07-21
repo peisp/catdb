@@ -13,6 +13,129 @@ import * as dbdriver$0 from "../dbdriver/models.js";
 import * as time$0 from "../../../time/models.js";
 
 /**
+ * AgentMessage is one turn in a session's message log (role: user | assistant
+ * | tool). Content holds the raw JSON blob the agent package already
+ * serialized (text/tool-call/tool-result) — storage does not interpret it.
+ * TokensIn/TokensOut are nil when unknown (e.g. user messages, or providers
+ * without usage reporting).
+ */
+export class AgentMessage {
+    "id": string;
+    "sessionId": string;
+    "seq": number;
+    "role": string;
+    "content": string;
+    "tokensIn"?: number | null;
+    "tokensOut"?: number | null;
+    "compacted": boolean;
+    "createdAt": time$0.Time;
+
+    /** Creates a new AgentMessage instance. */
+    constructor($$source: Partial<AgentMessage> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("sessionId" in $$source)) {
+            this["sessionId"] = "";
+        }
+        if (!("seq" in $$source)) {
+            this["seq"] = 0;
+        }
+        if (!("role" in $$source)) {
+            this["role"] = "";
+        }
+        if (!("content" in $$source)) {
+            this["content"] = "";
+        }
+        if (!("compacted" in $$source)) {
+            this["compacted"] = false;
+        }
+        if (!("createdAt" in $$source)) {
+            this["createdAt"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AgentMessage instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AgentMessage {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AgentMessage($$parsedSource as Partial<AgentMessage>);
+    }
+}
+
+/**
+ * AgentSession is a persisted AI Agent conversation, bound to one connection
+ * for its whole lifetime (see AGENT_DESIGN.md §10.2). Grants is the
+ * session-level statement-class allowlist (§5 gate 3); it round-trips to the
+ * "grants" column as a JSON array.
+ */
+export class AgentSession {
+    "id": string;
+    "connId": string;
+    "title": string;
+
+    /**
+     * ask | agent
+     */
+    "mode": string;
+    "providerId": string;
+    "model": string;
+    "grants": string[];
+    "currentDb"?: string;
+    "currentSchema"?: string;
+    "createdAt": time$0.Time;
+    "updatedAt": time$0.Time;
+
+    /** Creates a new AgentSession instance. */
+    constructor($$source: Partial<AgentSession> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("connId" in $$source)) {
+            this["connId"] = "";
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("mode" in $$source)) {
+            this["mode"] = "";
+        }
+        if (!("providerId" in $$source)) {
+            this["providerId"] = "";
+        }
+        if (!("model" in $$source)) {
+            this["model"] = "";
+        }
+        if (!("grants" in $$source)) {
+            this["grants"] = [];
+        }
+        if (!("createdAt" in $$source)) {
+            this["createdAt"] = null;
+        }
+        if (!("updatedAt" in $$source)) {
+            this["updatedAt"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AgentSession instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AgentSession {
+        const $$createField6_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("grants" in $$parsedSource) {
+            $$parsedSource["grants"] = $$createField6_0($$parsedSource["grants"]);
+        }
+        return new AgentSession($$parsedSource as Partial<AgentSession>);
+    }
+}
+
+/**
  * ConnectionProfile is the persisted, non-secret half of a connection. The
  * password lives in the keyring under the same ID.
  * 
@@ -68,9 +191,9 @@ export class ConnectionProfile {
      * Creates a new ConnectionProfile instance from a string or object.
      */
     static createFrom($$source: any = {}): ConnectionProfile {
-        const $$createField8_0 = $$createType0;
-        const $$createField9_0 = $$createType2;
-        const $$createField10_0 = $$createType4;
+        const $$createField8_0 = $$createType1;
+        const $$createField9_0 = $$createType3;
+        const $$createField10_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("params" in $$parsedSource) {
             $$parsedSource["params"] = $$createField8_0($$parsedSource["params"]);
@@ -181,8 +304,9 @@ export class SavedQuery {
 }
 
 // Private type creation functions
-const $$createType0 = $Create.Map($Create.Any, $Create.Any);
-const $$createType1 = dbdriver$0.SSLConfig.createFrom;
-const $$createType2 = $Create.Nullable($$createType1);
-const $$createType3 = dbdriver$0.SSHConfig.createFrom;
-const $$createType4 = $Create.Nullable($$createType3);
+const $$createType0 = $Create.Array($Create.Any);
+const $$createType1 = $Create.Map($Create.Any, $Create.Any);
+const $$createType2 = dbdriver$0.SSLConfig.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = dbdriver$0.SSHConfig.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);

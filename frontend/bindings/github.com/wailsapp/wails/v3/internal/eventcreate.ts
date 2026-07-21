@@ -8,6 +8,12 @@ import { Create as $Create } from "@wailsio/runtime";
 
 function configure() {
     Object.freeze(Object.assign($Create.Events, {
+        "agent:delta": $$createType0,
+        "agent:done": $$createType0,
+        "agent:error": $$createType0,
+        "agent:thinking": $$createType0,
+        "agent:tool": $$createType0,
+        "agent:usage": $$createType0,
         "connection:saved": $$createType0,
         "custom:switch-english-input": $$createType0,
         "transfer:progress": $$createType0,

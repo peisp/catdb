@@ -17,6 +17,7 @@ import StatusBar from './StatusBar.vue'
 import UpdateDialog from '../update/UpdateDialog.vue'
 import PromptOverlay from '../common/PromptOverlay.vue'
 import AppToolbar from './AppToolbar.vue'
+import AgentPanel from '../agent/AgentPanel.vue'
 import type { ConnectionProfile } from '../../api/connections'
 import { useConnectionsStore } from '../../stores/connections'
 import { useQueryStore } from '../../stores/query'
@@ -33,6 +34,9 @@ const message = useMessage()
 const activeConn = ref<ConnectionProfile | null>(null)
 
 const sidebarVisible = ref(true)
+
+// AI assistant docked panel — window-level open/close (AGENT_DESIGN.md §10.0).
+const agentOpen = ref(false)
 
 // macOS draws traffic lights at the top-left; offset the floating toggle
 // to the right of them. Windows (frameless) caption buttons live in the
@@ -209,14 +213,22 @@ function onOpenTablesOverview(payload: { db: string; schema?: string }) {
         @collapse="sidebarVisible = false"
       />
       <div class="main" :class="{ win: isWin }">
-        <AppToolbar :active-conn="activeConn" :sidebar-visible="sidebarVisible" />
+        <AppToolbar
+          :active-conn="activeConn"
+          :sidebar-visible="sidebarVisible"
+          :agent-open="agentOpen"
+          @toggle-agent="agentOpen = !agentOpen"
+        />
         <main class="content">
-          <QueryWorkspace
-            v-if="activeConn"
-            :connection="activeConn"
-            :tab-command="tabCmdBus"
-          />
-          <ConnectionWelcome v-else @new="openNewConnection" />
+          <div class="workspace-area">
+            <QueryWorkspace
+              v-if="activeConn"
+              :connection="activeConn"
+              :tab-command="tabCmdBus"
+            />
+            <ConnectionWelcome v-else @new="openNewConnection" />
+          </div>
+          <AgentPanel v-if="agentOpen" :connection="activeConn" @close="agentOpen = false" />
         </main>
         <div class="status">
           <StatusBar :active-conn="activeConn" />
@@ -461,6 +473,10 @@ function onOpenTablesOverview(payload: { db: string; schema?: string }) {
   border-top: 1px solid var(--catdb-separator);
 }
 .content > * { flex: 1 1 0; min-width: 0; min-height: 0; }
+/* Workspace grows; the docked AI panel keeps its own (resizable) width. */
+.workspace-area { display: flex; min-width: 0; min-height: 0; overflow: hidden; }
+.workspace-area > * { flex: 1 1 0; min-width: 0; min-height: 0; }
+.content > .agent-panel { flex: 0 0 auto; }
 
 /* Status bar inside main (right work area only — sidebar extends full height). */
 .status {

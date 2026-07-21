@@ -8,6 +8,12 @@ import type { Events } from "@wailsio/runtime";
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "agent:delta": { [_ in string]?: any };
+            "agent:done": { [_ in string]?: any };
+            "agent:error": { [_ in string]?: any };
+            "agent:thinking": { [_ in string]?: any };
+            "agent:tool": { [_ in string]?: any };
+            "agent:usage": { [_ in string]?: any };
             "connection:saved": { [_ in string]?: any };
             "custom:switch-english-input": { [_ in string]?: any };
             "transfer:progress": { [_ in string]?: any };

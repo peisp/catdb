@@ -13,6 +13,7 @@ import type { UpdateChannel } from '../../api/update'
 import { i18n, setLocale, isSupportedLocale, t as tr } from '../../i18n'
 import { useUpdatesStore } from '../../stores/updates'
 import UpdateDialog from '../update/UpdateDialog.vue'
+import AiSettingsPanel from './AiSettingsPanel.vue'
 
 const message = useMessage()
 const updates = useUpdatesStore()
@@ -31,7 +32,7 @@ function toggleMaximise() {
   void Window.ToggleMaximise()
 }
 
-type Category = 'language' | 'about'
+type Category = 'language' | 'ai' | 'about'
 const category = ref<Category>('language')
 
 // --- Language panel ---
@@ -131,6 +132,12 @@ async function onCheckUpdate() {
         <button
           type="button"
           class="rail-item"
+          :class="{ active: category === 'ai' }"
+          @click="category = 'ai'"
+        >{{ $t('settingsWindow.categoryAi') }}</button>
+        <button
+          type="button"
+          class="rail-item"
           :class="{ active: category === 'about' }"
           @click="category = 'about'"
         >{{ $t('settingsWindow.categoryAbout') }}</button>
@@ -146,6 +153,10 @@ async function onCheckUpdate() {
             </select>
           </div>
           <p class="hint">{{ $t('settingsWindow.languageHint') }}</p>
+        </template>
+
+        <template v-else-if="category === 'ai'">
+          <AiSettingsPanel />
         </template>
 
         <template v-else-if="category === 'about'">

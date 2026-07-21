@@ -325,6 +325,24 @@ export const useQueryStore = defineStore('query', () => {
     t.txnId = null
   }
 
+  /**
+   * Append SQL into the connection's active query editor (AI Ask-mode exit).
+   * Falls back to the last query tab, or a fresh one, when the active tab is
+   * not a query editor. Mutating `sql` flows through SqlEditor's modelValue
+   * watch, so the editor content updates in place.
+   */
+  function appendSqlToActiveQuery(connId: string, sql: string): QueryTab {
+    let t = activeTab(connId)
+    if (!t || t.kind !== 'query') {
+      const qtabs = tabsForConn(connId).filter((x) => x.kind === 'query')
+      t = qtabs.length ? qtabs[qtabs.length - 1] : addTab(connId, { kind: 'query' })
+    }
+    const cur = (t.sql ?? '').trim()
+    t.sql = cur ? cur + '\n\n' + sql : sql
+    setActive(connId, t.id)
+    return t
+  }
+
   function openTableTab(connId: string, db: string, table: string, kind: 'table' | 'structure' = 'table', schema = ''): QueryTab {
     const titlePrefix = kind === 'structure' ? '⚙' : '⊞'
     const existing = tabs.value.find(
@@ -737,6 +755,7 @@ export const useQueryStore = defineStore('query', () => {
     openSavedQuery,
     isQueryDirty,
     saveTabQuery,
+    appendSqlToActiveQuery,
     openTableTab,
     openNewTableTab,
     promoteNewTableTab,

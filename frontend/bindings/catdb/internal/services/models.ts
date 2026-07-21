@@ -16,6 +16,34 @@ import * as schemadiff$0 from "../core/schemadiff/models.js";
 import * as dbdriver$0 from "../dbdriver/models.js";
 
 /**
+ * AgentDefaults is the persisted default Provider instance + model.
+ */
+export class AgentDefaults {
+    "providerId": string;
+    "model": string;
+
+    /** Creates a new AgentDefaults instance. */
+    constructor($$source: Partial<AgentDefaults> = {}) {
+        if (!("providerId" in $$source)) {
+            this["providerId"] = "";
+        }
+        if (!("model" in $$source)) {
+            this["model"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AgentDefaults instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AgentDefaults {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AgentDefaults($$parsedSource as Partial<AgentDefaults>);
+    }
+}
+
+/**
  * AlterPlanRequest carries the original table snapshot (what the structure
  * editor loaded) and the user-edited draft. The diff runs backend-side in
  * internal/core/schemadiff; the connection is only consulted for its Dialect,
