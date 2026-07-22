@@ -33,6 +33,15 @@ interface Draft {
 }
 const editing = ref<Draft | null>(null)
 const saving = ref(false)
+const fetchingModels = ref(false)
+const modelFilter = ref('')
+const filteredModels = computed(() => {
+  const d = editing.value
+  if (!d) return []
+  const q = modelFilter.value.trim().toLowerCase()
+  if (!q) return d.models
+  return d.models.filter((m) => m.ID.toLowerCase().includes(q))
+})
 
 const TYPE_OPTIONS = computed(() => [
   { value: 'anthropic', label: tr('agent.settings.form.typeAnthropic') },
@@ -77,9 +86,11 @@ function newDraft(): Draft {
 }
 
 function startAdd() {
+  modelFilter.value = ''
   editing.value = newDraft()
 }
 function startEdit(p: ProviderConfig) {
+  modelFilter.value = ''
   editing.value = {
     id: p.id,
     name: p.name,
@@ -96,10 +107,53 @@ function cancelEdit() {
 }
 
 function addModelRow() {
+  modelFilter.value = ''
   editing.value?.models.push({ ID: '', ContextWindow: 128000, SupportsTools: true })
 }
-function removeModelRow(i: number) {
-  editing.value?.models.splice(i, 1)
+function removeModel(m: DraftModel) {
+  const d = editing.value
+  if (!d) return
+  const idx = d.models.indexOf(m)
+  if (idx !== -1) d.models.splice(idx, 1)
+}
+
+async function fetchModels() {
+  const d = editing.value
+  if (!d) return
+  if (d.type === 'openai-compat' && !d.baseURL.trim()) {
+    message.error(tr('agent.settings.form.baseUrlRequired'))
+    return
+  }
+  fetchingModels.value = true
+  try {
+    const fetched = await agentSettings.fetchProviderModels({
+      id: d.id,
+      type: d.type,
+      baseURL: d.baseURL.trim(),
+      key: d.apiKey.trim(),
+    })
+    const existingIds = new Set(d.models.map((m) => m.ID.trim()))
+    let added = 0
+    for (const m of fetched) {
+      if (existingIds.has(m.ID.trim())) continue
+      d.models.push({ ID: m.ID, ContextWindow: m.ContextWindow || 128000, SupportsTools: m.SupportsTools })
+      existingIds.add(m.ID.trim())
+      added++
+    }
+    if (!d.defaultModel.trim() && d.models.length) {
+      d.defaultModel = d.models[0].ID
+    }
+    if (added > 0) {
+      modelFilter.value = ''
+      message.success(tr('agent.settings.form.fetchModelsOk', { n: added }))
+    } else {
+      message.info(tr('agent.settings.form.fetchModelsNone'))
+    }
+  } catch (e) {
+    message.error(tr('agent.settings.form.fetchModelsFailed', { error: String(e) }))
+  } finally {
+    fetchingModels.value = false
+  }
 }
 
 function validate(d: Draft): string | null {
@@ -461,14 +515,34 @@ onMounted(() => {
 
         <div class="models-block">
           <div class="models-head">
-            <label class="form-label">{{ $t('agent.settings.form.models') }}</label>
-            <n-button size="tiny" @click="addModelRow">{{ $t('agent.settings.form.addModel') }}</n-button>
+            <label class="form-label">{{ $t('agent.settings.form.models') }} ({{ editing.models.length }})</label>
+            <div class="models-head-actions">
+              <n-button size="tiny" :loading="fetchingModels" @click="fetchModels">
+                {{ $t('agent.settings.form.fetchModels') }}
+              </n-button>
+              <n-button size="tiny" @click="addModelRow">{{ $t('agent.settings.form.addModel') }}</n-button>
+            </div>
           </div>
-          <div v-for="(m, i) in editing.models" :key="i" class="model-row">
-            <n-input v-model:value="m.ID" size="small" class="model-id" :placeholder="$t('agent.settings.form.modelIdPlaceholder')" />
-            <n-input-number v-model:value="m.ContextWindow" size="small" class="model-ctx" :min="0" :show-button="false" :placeholder="$t('agent.settings.form.contextWindow')" />
-            <n-checkbox v-model:checked="m.SupportsTools">{{ $t('agent.settings.form.supportsTools') }}</n-checkbox>
-            <n-button size="tiny" quaternary @click="removeModelRow(i)">{{ $t('agent.settings.form.removeModel') }}</n-button>
+          <n-input
+            v-if="editing.models.length > 8 || modelFilter"
+            v-model:value="modelFilter"
+            size="small"
+            clearable
+            :placeholder="$t('agent.settings.form.modelFilter')"
+          />
+          <div v-if="editing.models.length" class="model-head">
+            <span class="mh-id">{{ $t('agent.settings.form.modelId') }}</span>
+            <span class="mh-ctx">{{ $t('agent.settings.form.contextWindow') }}</span>
+            <span class="mh-tools">{{ $t('agent.settings.form.supportsTools') }}</span>
+            <span class="mh-del"></span>
+          </div>
+          <div v-if="editing.models.length" class="model-list-wrap">
+            <div v-for="(m, i) in filteredModels" :key="i" class="model-row">
+              <n-input v-model:value="m.ID" size="small" class="model-id" :placeholder="$t('agent.settings.form.modelIdPlaceholder')" />
+              <n-input-number v-model:value="m.ContextWindow" size="small" class="model-ctx" :min="0" :show-button="false" :placeholder="$t('agent.settings.form.contextWindow')" />
+              <n-checkbox v-model:checked="m.SupportsTools" class="model-tools" />
+              <n-button size="tiny" quaternary class="model-del" @click="removeModel(m)">{{ $t('agent.settings.form.removeModel') }}</n-button>
+            </div>
           </div>
         </div>
 
@@ -477,6 +551,7 @@ onMounted(() => {
           <n-select
             v-model:value="editing.defaultModel"
             size="small"
+            filterable
             :options="editing.models.filter((m) => m.ID.trim()).map((m) => ({ value: m.ID, label: m.ID }))"
           />
         </div>
@@ -496,11 +571,11 @@ onMounted(() => {
       <p class="hint">{{ $t('agent.settings.defaults.hint') }}</p>
       <div class="form-field">
         <label class="form-label">{{ $t('agent.settings.defaults.provider') }}</label>
-        <n-select :value="defaultProviderId" size="small" :options="defaultProviderOptions" @update:value="onDefaultProviderChange" />
+        <n-select :value="defaultProviderId" size="small" filterable :options="defaultProviderOptions" @update:value="onDefaultProviderChange" />
       </div>
       <div class="form-field">
         <label class="form-label">{{ $t('agent.settings.defaults.model') }}</label>
-        <n-select v-model:value="defaultModel" size="small" :options="defaultModelOptions" :disabled="!defaultProviderId" />
+        <n-select v-model:value="defaultModel" size="small" filterable :options="defaultModelOptions" :disabled="!defaultProviderId" />
       </div>
       <div class="editor-actions">
         <n-button size="small" @click="saveDefaults">{{ $t('common.save') }}</n-button>
@@ -787,6 +862,42 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
 }
+.models-head-actions {
+  display: flex;
+  gap: 6px;
+}
+.model-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--catdb-fs-small);
+  opacity: 0.6;
+  /* Match .model-list-wrap's 6px padding + 1px border so columns line up. */
+  padding: 0 7px;
+}
+.mh-id {
+  flex: 1 1 auto;
+}
+.mh-ctx {
+  flex: 0 0 130px;
+}
+.mh-tools {
+  flex: 0 0 70px;
+  text-align: center;
+}
+.mh-del {
+  flex: 0 0 64px;
+}
+.model-list-wrap {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--catdb-separator);
+  border-radius: var(--catdb-rounded-sm);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .model-row {
   display: flex;
   align-items: center;
@@ -797,6 +908,14 @@ onMounted(() => {
 }
 .model-ctx {
   flex: 0 0 130px;
+}
+.model-tools {
+  flex: 0 0 70px;
+  display: flex;
+  justify-content: center;
+}
+.model-del {
+  flex: 0 0 64px;
 }
 .editor-actions {
   display: flex;

@@ -6,7 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 
 	"catdb/internal/llm"
 )
@@ -45,6 +47,65 @@ func (p *Provider) Name() string { return "anthropic" }
 // Models 返回构造时配置的清单（本 adapter 不做在线列举）。
 func (p *Provider) Models(ctx context.Context) ([]llm.ModelInfo, error) {
 	return p.models, nil
+}
+
+// defaultContextWindow 是 Anthropic 模型的当前全系默认上下文窗口——
+// /v1/models 不返回该字段，用户可在设置页表单里改。
+const defaultContextWindow = 200000
+
+// maxListModelsPages 是 ListModels 分页翻页的防御性上限。
+const maxListModelsPages = 10
+
+type listModelsEntry struct {
+	Type string `json:"type"`
+	ID   string `json:"id"`
+}
+
+type listModelsResponse struct {
+	Data    []listModelsEntry `json:"data"`
+	HasMore bool              `json:"has_more"`
+	LastID  string            `json:"last_id"`
+}
+
+// ListModels 请求 GET /v1/models，翻页取完全部模型。
+func (p *Provider) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
+	var out []llm.ModelInfo
+	afterID := ""
+	for page := 0; page < maxListModelsPages; page++ {
+		q := url.Values{"limit": {"1000"}}
+		if afterID != "" {
+			q.Set("after_id", afterID)
+		}
+		r, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/v1/models?"+q.Encode(), nil)
+		if err != nil {
+			return nil, fmt.Errorf("anthropic: list models: %w", err)
+		}
+		r.Header.Set("x-api-key", p.apiKey)
+		r.Header.Set("anthropic-version", apiVersion)
+		resp, err := p.client.Do(r)
+		if err != nil {
+			return nil, fmt.Errorf("anthropic: list models: %w", err)
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 500))
+			resp.Body.Close()
+			return nil, fmt.Errorf("anthropic: list models: HTTP %d: %s", resp.StatusCode, body)
+		}
+		var parsed listModelsResponse
+		err = json.NewDecoder(resp.Body).Decode(&parsed)
+		resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("anthropic: list models: decode response: %w", err)
+		}
+		for _, m := range parsed.Data {
+			out = append(out, llm.ModelInfo{ID: m.ID, ContextWindow: defaultContextWindow, SupportsTools: true})
+		}
+		if !parsed.HasMore || parsed.LastID == "" {
+			break
+		}
+		afterID = parsed.LastID
+	}
+	return out, nil
 }
 
 // ChatStream 发起流式 Messages 请求。

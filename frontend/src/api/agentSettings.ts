@@ -16,6 +16,7 @@ import {
   AuditQuery as BoundAuditQuery,
   AuditPage as BoundAuditPage,
   AuditExportResult as BoundAuditExportResult,
+  FetchModelsRequest as BoundFetchModelsRequest,
 } from '../../bindings/catdb/internal/services/models'
 import { AgentAuditEntry as BoundAuditEntry } from '../../bindings/catdb/internal/storage/models'
 import { on } from './events'
@@ -29,6 +30,7 @@ export type AuditQuery = BoundAuditQuery
 export type AuditPage = BoundAuditPage
 export type AuditEntry = BoundAuditEntry
 export type AuditExportResult = BoundAuditExportResult
+export type FetchModelsRequest = BoundFetchModelsRequest
 
 /** A draft for SaveProvider: id empty → insert, id set → update. */
 export interface ProviderDraft {
@@ -78,6 +80,16 @@ export function setDefaults(providerId: string, model: string): Promise<void> {
 /** Probe connectivity with a minimal ping stream; resolves on success, rejects with the raw error. */
 export function testProvider(id: string, model: string): Promise<void> {
   return AgentSettingsService.TestProvider(id, model)
+}
+
+/** Query the provider's live model list using draft config (key falls back to keyring when empty). */
+export function fetchProviderModels(req: {
+  id: string
+  type: string
+  baseURL: string
+  key: string
+}): Promise<ModelInfo[]> {
+  return AgentSettingsService.FetchProviderModels(BoundFetchModelsRequest.createFrom(req))
 }
 
 // --- Agent runtime settings (privacy / limits / compaction / pricing) ---

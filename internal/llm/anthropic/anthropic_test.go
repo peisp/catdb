@@ -268,6 +268,58 @@ func TestRetryExhausted(t *testing.T) {
 	}
 }
 
+func TestListModelsPagination(t *testing.T) {
+	var gotAfterIDs []string
+	var gotHeaders []http.Header
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAfterIDs = append(gotAfterIDs, r.URL.Query().Get("after_id"))
+		gotHeaders = append(gotHeaders, r.Header.Clone())
+		w.Header().Set("content-type", "application/json")
+		if r.URL.Query().Get("after_id") == "" {
+			io.WriteString(w, `{"data":[{"type":"model","id":"claude-3-opus"}],"has_more":true,"last_id":"claude-3-opus"}`)
+			return
+		}
+		io.WriteString(w, `{"data":[{"type":"model","id":"claude-3-sonnet"}],"has_more":false,"last_id":"claude-3-sonnet"}`)
+	}))
+	defer srv.Close()
+
+	models, err := newProvider(t, srv.URL).ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	want := []llm.ModelInfo{
+		{ID: "claude-3-opus", ContextWindow: 200000, SupportsTools: true},
+		{ID: "claude-3-sonnet", ContextWindow: 200000, SupportsTools: true},
+	}
+	if !reflect.DeepEqual(models, want) {
+		t.Fatalf("models = %#v, want %#v", models, want)
+	}
+	if len(gotAfterIDs) != 2 || gotAfterIDs[0] != "" || gotAfterIDs[1] != "claude-3-opus" {
+		t.Fatalf("after_id sequence = %#v", gotAfterIDs)
+	}
+	for _, h := range gotHeaders {
+		if h.Get("x-api-key") != "k" {
+			t.Errorf("x-api-key header = %q", h.Get("x-api-key"))
+		}
+		if h.Get("anthropic-version") != apiVersion {
+			t.Errorf("anthropic-version header = %q", h.Get("anthropic-version"))
+		}
+	}
+}
+
+func TestListModelsHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		io.WriteString(w, "invalid api key")
+	}))
+	defer srv.Close()
+
+	_, err := newProvider(t, srv.URL).ListModels(context.Background())
+	if err == nil {
+		t.Fatal("expected error on non-2xx response")
+	}
+}
+
 func TestBuildBody(t *testing.T) {
 	temp := 0.5
 	req := llm.ChatRequest{

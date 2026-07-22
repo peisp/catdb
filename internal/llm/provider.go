@@ -30,6 +30,13 @@ type ModelInfo struct {
 	SupportsTools bool
 }
 
+// ModelLister 是可在线列举模型的 Provider 的可选能力接口。与 Models 不同：
+// Models 返回构造时配置的清单（agent 运行时用），ListModels 真正请求供应商
+// API（设置页"获取模型"用）。
+type ModelLister interface {
+	ListModels(ctx context.Context) ([]ModelInfo, error)
+}
+
 // Role 是消息角色。
 type Role string
 

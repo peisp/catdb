@@ -15,6 +15,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as llm$0 from "../llm/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as llmconfig$0 from "../llmconfig/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -49,12 +52,24 @@ export function ExportAudit(q: $models.AuditQuery, format: string, path: string)
 }
 
 /**
+ * FetchProviderModels queries the provider's live model list using draft
+ * (possibly unsaved) config — the settings page "fetch from API" button. It
+ * never touches Provider.Models(), which agent loop relies on to stay the
+ * static, user-configured list.
+ */
+export function FetchProviderModels(req: $models.FetchModelsRequest): $CancellablePromise<llm$0.ModelInfo[]> {
+    return $Call.ByName("catdb/internal/services.AgentSettingsService.FetchProviderModels", req).then(($result: any) => {
+        return $$createType2($result);
+    });
+}
+
+/**
  * GetAgentSettings returns the Agent runtime settings, unset keys falling back
  * to their defaults (AGENT_DESIGN.md §12).
  */
 export function GetAgentSettings(): $CancellablePromise<llmconfig$0.AgentSettings> {
     return $Call.ByName("catdb/internal/services.AgentSettingsService.GetAgentSettings").then(($result: any) => {
-        return $$createType1($result);
+        return $$createType3($result);
     });
 }
 
@@ -63,7 +78,7 @@ export function GetAgentSettings(): $CancellablePromise<llmconfig$0.AgentSetting
  */
 export function GetDefaults(): $CancellablePromise<$models.AgentDefaults> {
     return $Call.ByName("catdb/internal/services.AgentSettingsService.GetDefaults").then(($result: any) => {
-        return $$createType2($result);
+        return $$createType4($result);
     });
 }
 
@@ -80,7 +95,7 @@ export function HasProviderKey(id: string): $CancellablePromise<boolean> {
  */
 export function ListAudit(q: $models.AuditQuery): $CancellablePromise<$models.AuditPage> {
     return $Call.ByName("catdb/internal/services.AgentSettingsService.ListAudit", q).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -89,7 +104,7 @@ export function ListAudit(q: $models.AuditQuery): $CancellablePromise<$models.Au
  */
 export function ListProviders(): $CancellablePromise<llmconfig$0.ProviderConfig[]> {
     return $Call.ByName("catdb/internal/services.AgentSettingsService.ListProviders").then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
@@ -100,7 +115,7 @@ export function ListProviders(): $CancellablePromise<llmconfig$0.ProviderConfig[
  */
 export function SaveProvider(p: llmconfig$0.ProviderConfig): $CancellablePromise<llmconfig$0.ProviderConfig> {
     return $Call.ByName("catdb/internal/services.AgentSettingsService.SaveProvider", p).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType6($result);
     });
 }
 
@@ -138,8 +153,10 @@ export function TestProvider(id: string, model: string): $CancellablePromise<voi
 
 // Private type creation functions
 const $$createType0 = $models.AuditExportResult.createFrom;
-const $$createType1 = llmconfig$0.AgentSettings.createFrom;
-const $$createType2 = $models.AgentDefaults.createFrom;
-const $$createType3 = $models.AuditPage.createFrom;
-const $$createType4 = llmconfig$0.ProviderConfig.createFrom;
-const $$createType5 = $Create.Array($$createType4);
+const $$createType1 = llm$0.ModelInfo.createFrom;
+const $$createType2 = $Create.Array($$createType1);
+const $$createType3 = llmconfig$0.AgentSettings.createFrom;
+const $$createType4 = $models.AgentDefaults.createFrom;
+const $$createType5 = $models.AuditPage.createFrom;
+const $$createType6 = llmconfig$0.ProviderConfig.createFrom;
+const $$createType7 = $Create.Array($$createType6);

@@ -131,6 +131,46 @@ func (s *AgentSettingsService) HasProviderKey(ctx context.Context, id string) (b
 	return sec.Password != "", nil
 }
 
+// FetchModelsRequest is the input to FetchProviderModels. Key is whatever the
+// form currently has typed in, not yet saved; when empty and ID is set it
+// falls back to the key already stored in keyring.
+type FetchModelsRequest struct {
+	ID      string `json:"id"`
+	Type    string `json:"type"`
+	BaseURL string `json:"baseURL"`
+	Key     string `json:"key"`
+}
+
+// fetchModelsTimeout bounds the online "fetch models" request (settings page
+// button) so a hung provider endpoint doesn't stall the UI indefinitely.
+const fetchModelsTimeout = 30 * time.Second
+
+// FetchProviderModels queries the provider's live model list using draft
+// (possibly unsaved) config — the settings page "fetch from API" button. It
+// never touches Provider.Models(), which agent loop relies on to stay the
+// static, user-configured list.
+func (s *AgentSettingsService) FetchProviderModels(ctx context.Context, req FetchModelsRequest) ([]llm.ModelInfo, error) {
+	key := req.Key
+	if key == "" && req.ID != "" {
+		sec, err := s.secrets.Load(llmconfig.SecretID(req.ID))
+		if err != nil && !errors.Is(err, storage.ErrSecretNotFound) {
+			return nil, err
+		}
+		key = sec.Password
+	}
+	provider, err := llm.New(llm.Config{Type: req.Type, BaseURL: req.BaseURL, APIKey: key})
+	if err != nil {
+		return nil, err
+	}
+	lister, ok := provider.(llm.ModelLister)
+	if !ok {
+		return nil, fmt.Errorf("agent: provider type %q does not support listing models", req.Type)
+	}
+	ctx, cancel := context.WithTimeout(ctx, fetchModelsTimeout)
+	defer cancel()
+	return lister.ListModels(ctx)
+}
+
 // GetDefaults returns the default Provider instance + model.
 func (s *AgentSettingsService) GetDefaults(ctx context.Context) (AgentDefaults, error) {
 	pid, model, err := llmconfig.GetDefaults(ctx, s.store)

@@ -222,6 +222,79 @@ func TestRetryExhausted(t *testing.T) {
 	}
 }
 
+func TestListModels(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("content-type", "application/json")
+		io.WriteString(w, `{"object":"list","data":[
+			{"id":"gpt-4o"},
+			{"id":"or-model","context_length":32000},
+			{"id":"groq-model","context_window":8192},
+			{"id":"mistral-model","max_context_length":32768,"capabilities":{"function_calling":false}},
+			{"id":"vllm-model","max_model_len":4096},
+			{"id":"or-tools-model","context_length":16000,"supported_parameters":["temperature","tools"]},
+			{"id":"or-no-tools-model","context_length":16000,"supported_parameters":["temperature"]}
+		]}`)
+	}))
+	defer srv.Close()
+
+	models, err := newProvider(t, srv.URL).ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	want := []llm.ModelInfo{
+		{ID: "gpt-4o", ContextWindow: 0, SupportsTools: true},
+		{ID: "or-model", ContextWindow: 32000, SupportsTools: true},
+		{ID: "groq-model", ContextWindow: 8192, SupportsTools: true},
+		{ID: "mistral-model", ContextWindow: 32768, SupportsTools: false},
+		{ID: "vllm-model", ContextWindow: 4096, SupportsTools: true},
+		{ID: "or-tools-model", ContextWindow: 16000, SupportsTools: true},
+		{ID: "or-no-tools-model", ContextWindow: 16000, SupportsTools: false},
+	}
+	if !reflect.DeepEqual(models, want) {
+		t.Fatalf("models = %#v, want %#v", models, want)
+	}
+	if gotAuth != "Bearer k" {
+		t.Errorf("Authorization header = %q", gotAuth)
+	}
+}
+
+func TestListModelsNoKey(t *testing.T) {
+	var gotAuth string
+	var sawAuth bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth, sawAuth = r.Header.Get("Authorization"), r.Header.Get("Authorization") != ""
+		w.Header().Set("content-type", "application/json")
+		io.WriteString(w, `{"object":"list","data":[]}`)
+	}))
+	defer srv.Close()
+
+	p, err := New(llm.Config{BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.ListModels(context.Background()); err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	if sawAuth {
+		t.Errorf("Authorization header should be absent when key empty, got %q", gotAuth)
+	}
+}
+
+func TestListModelsHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, "boom")
+	}))
+	defer srv.Close()
+
+	_, err := newProvider(t, srv.URL).ListModels(context.Background())
+	if err == nil {
+		t.Fatal("expected error on non-2xx response")
+	}
+}
+
 func TestBaseURLRequired(t *testing.T) {
 	if _, err := New(llm.Config{}); err == nil {
 		t.Fatal("expected error when BaseURL empty")

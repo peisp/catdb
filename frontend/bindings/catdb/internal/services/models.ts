@@ -1019,6 +1019,44 @@ export class ExportResult {
 }
 
 /**
+ * FetchModelsRequest is the input to FetchProviderModels. Key is whatever the
+ * form currently has typed in, not yet saved; when empty and ID is set it
+ * falls back to the key already stored in keyring.
+ */
+export class FetchModelsRequest {
+    "id": string;
+    "type": string;
+    "baseURL": string;
+    "key": string;
+
+    /** Creates a new FetchModelsRequest instance. */
+    constructor($$source: Partial<FetchModelsRequest> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("type" in $$source)) {
+            this["type"] = "";
+        }
+        if (!("baseURL" in $$source)) {
+            this["baseURL"] = "";
+        }
+        if (!("key" in $$source)) {
+            this["key"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new FetchModelsRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): FetchModelsRequest {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new FetchModelsRequest($$parsedSource as Partial<FetchModelsRequest>);
+    }
+}
+
+/**
  * FileFilterDescriptor is the JSON-shaped filter the front-end sends.
  */
 export class FileFilterDescriptor {

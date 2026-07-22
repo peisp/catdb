@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	"catdb/internal/llm"
@@ -42,6 +43,75 @@ func (p *Provider) Name() string { return "openai-compat" }
 // Models 返回构造时配置的清单（本 adapter 不做在线列举）。
 func (p *Provider) Models(ctx context.Context) ([]llm.ModelInfo, error) {
 	return p.models, nil
+}
+
+type listModelsEntry struct {
+	ID                  string   `json:"id"`
+	ContextLength       int      `json:"context_length"`       // OpenRouter / Together / Fireworks
+	ContextWindow       int      `json:"context_window"`       // Groq
+	MaxContextLength    int      `json:"max_context_length"`   // Mistral
+	MaxModelLen         int      `json:"max_model_len"`        // vLLM
+	SupportedParameters []string `json:"supported_parameters"` // OpenRouter："tools" 表示支持工具
+	Capabilities        *struct {
+		FunctionCalling *bool `json:"function_calling"` // Mistral
+	} `json:"capabilities"`
+}
+
+func (m listModelsEntry) contextWindow() int {
+	for _, v := range []int{m.ContextLength, m.ContextWindow, m.MaxContextLength, m.MaxModelLen} {
+		if v != 0 {
+			return v
+		}
+	}
+	return 0
+}
+
+func (m listModelsEntry) supportsTools() bool {
+	if m.SupportedParameters != nil {
+		for _, p := range m.SupportedParameters {
+			if p == "tools" {
+				return true
+			}
+		}
+		return false
+	}
+	if m.Capabilities != nil && m.Capabilities.FunctionCalling != nil {
+		return *m.Capabilities.FunctionCalling
+	}
+	return true
+}
+
+type listModelsResponse struct {
+	Data []listModelsEntry `json:"data"`
+}
+
+// ListModels 请求 GET /models（baseURL 已含 /v1）。该端点无标准分页，一次取完。
+func (p *Provider) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
+	r, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/models", nil)
+	if err != nil {
+		return nil, fmt.Errorf("openaicompat: list models: %w", err)
+	}
+	if p.apiKey != "" {
+		r.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
+	resp, err := p.client.Do(r)
+	if err != nil {
+		return nil, fmt.Errorf("openaicompat: list models: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 500))
+		return nil, fmt.Errorf("openaicompat: list models: HTTP %d: %s", resp.StatusCode, body)
+	}
+	var parsed listModelsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		return nil, fmt.Errorf("openaicompat: list models: decode response: %w", err)
+	}
+	out := make([]llm.ModelInfo, 0, len(parsed.Data))
+	for _, m := range parsed.Data {
+		out = append(out, llm.ModelInfo{ID: m.ID, ContextWindow: m.contextWindow(), SupportsTools: m.supportsTools()})
+	}
+	return out, nil
 }
 
 // ChatStream 发起流式 chat completions 请求。

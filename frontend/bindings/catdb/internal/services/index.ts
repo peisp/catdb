@@ -51,6 +51,7 @@ export {
     DriverInfo,
     ExportOptions,
     ExportResult,
+    FetchModelsRequest,
     FileFilterDescriptor,
     ImportFormat,
     ImportOptions,
