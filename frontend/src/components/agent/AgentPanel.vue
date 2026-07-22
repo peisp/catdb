@@ -255,12 +255,23 @@ function finalizeStreaming(stopReason?: string, deliveryWarning?: boolean) {
   if (deliveryWarning && lastAssistant) lastAssistant.deliveryWarning = true
 }
 
+// A non-text entry (tool/approval/plan/result) means the current round of
+// thinking/text is complete — seal the trailing streaming assistant entry so
+// its thinking region auto-collapses right away (§10.4) instead of waiting
+// for the whole turn to end. Later deltas simply open a fresh entry.
+function sealStreamingAssistant() {
+  if (pendingDelta) { ensureAssistant().text += pendingDelta; pendingDelta = '' }
+  const last = entries.value[entries.value.length - 1]
+  if (last && last.kind === 'assistant' && last.streaming) last.streaming = false
+}
+
 function attachEvents(sessId: string) {
   offEvents?.()
   offEvents = agentApi.subscribe(sessId, {
     onDelta: (e) => { pendingDelta += e.text; scheduleFlush() },
     onThinking: (e) => { ensureAssistant().thinking += e.text; scrollToBottom() },
     onTool: (e) => {
+      sealStreamingAssistant()
       if (e.phase === 'start') {
         entries.value.push({ kind: 'tool', id: entryId(), callId: e.callId, name: e.name, phase: 'start', summary: '', isError: false })
       } else {
@@ -286,6 +297,7 @@ function attachEvents(sessId: string) {
     onDone: (e) => { finalizeStreaming(e.stopReason, e.deliveryWarning) },
     onError: (e) => { errorBar.value = { slug: e.slug, detail: e.detail }; finalizeStreaming() },
     onApproval: (e) => {
+      sealStreamingAssistant()
       entries.value.push({
         kind: 'approval', id: entryId(), approvalID: e.approvalID,
         sql: e.sql, class: e.class, verb: e.verb,
@@ -294,6 +306,7 @@ function attachEvents(sessId: string) {
       scrollToBottom()
     },
     onPlan: (e) => {
+      sealStreamingAssistant()
       entries.value.push({
         kind: 'plan', id: entryId(), planID: e.planID,
         goal: e.goal, statements: e.statements ?? [], impact: e.impact, status: 'pending',
@@ -302,6 +315,7 @@ function attachEvents(sessId: string) {
     },
     onTxPending: (e) => { txPending.value = e.statements ?? []; scrollToBottom() },
     onResult: (e) => {
+      sealStreamingAssistant()
       entries.value.push({
         kind: 'result', id: entryId(),
         columns: e.columns ?? [], rows: e.rows ?? [], truncated: !!e.truncated,

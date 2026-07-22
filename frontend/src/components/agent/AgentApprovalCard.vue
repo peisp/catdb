@@ -173,8 +173,9 @@ const badge = computed(() => {
   cursor: default;
   padding: 0;
 }
-.caret { transition: transform 130ms ease-out; opacity: 0.6; }
-.caret.open { transform: rotate(180deg); }
+/* Collapsed points right (>), expanded points down (v). */
+.caret { transition: transform 130ms ease-out; opacity: 0.6; transform: rotate(-90deg); }
+.caret.open { transform: rotate(0deg); }
 .explain-body {
   margin: 4px 0 0;
   padding: 6px 8px;

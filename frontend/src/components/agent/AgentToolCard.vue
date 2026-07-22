@@ -86,12 +86,14 @@ function prettyArgs(raw?: string): string {
   flex: 1 1 auto;
   min-width: 0;
 }
+/* Collapsed points right (>), expanded points down (v). */
 .tool-caret {
   flex: 0 0 auto;
   transition: transform 130ms ease-out;
   opacity: 0.5;
+  transform: rotate(-90deg);
 }
-.tool-caret.open { transform: rotate(180deg); }
+.tool-caret.open { transform: rotate(0deg); }
 .tool-detail {
   border-top: 1px solid var(--catdb-separator);
   padding: 6px 8px;

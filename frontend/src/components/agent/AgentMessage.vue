@@ -9,7 +9,7 @@
 //               actionable AgentSqlBlock when the fence closes. Thinking is a
 //               collapsible region; a max_iterations stop shows the "reply
 //               继续" hint (§4.1/§10.4).
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import AppIcon from '../shared/AppIcon.vue'
 import chevronDownIcon from '../../assets/icons/chevron-down.svg?raw'
 import AgentSqlBlock from './AgentSqlBlock.vue'
@@ -26,7 +26,28 @@ const segments = computed(() =>
     ? segmentMarkdown(asAssistant.value.text, asAssistant.value.streaming)
     : [],
 )
-const thinkingOpen = ref(false)
+
+// Thinking region (§10.4): auto-expanded WHILE the model is thinking (before
+// any answer text arrives), clipped to the last few lines with auto-scroll;
+// auto-collapses once thinking ends. A manual click overrides the automatics
+// from then on.
+const thinkingToggled = ref<boolean | null>(null)
+const thinkingActive = computed(() => {
+  const e = asAssistant.value
+  return !!e && e.streaming && !e.text
+})
+const thinkingOpen = computed(() => thinkingToggled.value ?? thinkingActive.value)
+function toggleThinking() {
+  thinkingToggled.value = !thinkingOpen.value
+}
+const thinkingRef = ref<HTMLElement | null>(null)
+watch(() => asAssistant.value?.thinking, () => {
+  if (!thinkingActive.value) return
+  void nextTick(() => {
+    const el = thinkingRef.value
+    if (el) el.scrollTop = el.scrollHeight
+  })
+})
 
 // User bubble: @mentions stay inline in the sentence (§10.3) and get
 // highlighted by splitting the text around each "@name" occurrence.
@@ -83,11 +104,11 @@ const userSegs = computed<{ mention: boolean; text: string }[] | null>(() => {
     <div class="assistant-body">
       <!-- Thinking (collapsible) -->
       <div v-if="entry.thinking" class="thinking">
-        <button type="button" class="thinking-head" @click="thinkingOpen = !thinkingOpen">
+        <button type="button" class="thinking-head" @click="toggleThinking">
           <AppIcon :src="chevronDownIcon" :size="11" class="caret" :class="{ open: thinkingOpen }" />
           {{ $t('agent.panel.thinking') }}
         </button>
-        <pre v-if="thinkingOpen" class="thinking-body">{{ entry.thinking }}</pre>
+        <pre v-if="thinkingOpen" ref="thinkingRef" class="thinking-body" :class="{ live: thinkingActive }">{{ entry.thinking }}</pre>
       </div>
 
       <!-- Markdown + sql blocks, streaming and finalized alike. -->
@@ -172,8 +193,9 @@ const userSegs = computed<{ mention: boolean; text: string }[] | null>(() => {
   cursor: default;
   padding: 0;
 }
-.caret { transition: transform 130ms ease-out; opacity: 0.6; }
-.caret.open { transform: rotate(180deg); }
+/* Collapsed points right (>), expanded points down (v). */
+.caret { transition: transform 130ms ease-out; opacity: 0.6; transform: rotate(-90deg); }
+.caret.open { transform: rotate(0deg); }
 .thinking-body {
   margin: 4px 0 0;
   padding: 6px 8px;
@@ -182,6 +204,11 @@ const userSegs = computed<{ mention: boolean; text: string }[] | null>(() => {
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--catdb-text-secondary);
+}
+/* While the model is thinking: show only the newest ~6 lines, auto-scrolled. */
+.thinking-body.live {
+  max-height: 120px;
+  overflow-y: auto;
 }
 
 .max-iter {

@@ -60,8 +60,9 @@ const detail = computed(() => props.statements.map((s) => ({ rows: s.rows ?? 0, 
   padding: 0;
   min-width: 0;
 }
-.caret { transition: transform 130ms ease-out; opacity: 0.6; flex: 0 0 auto; }
-.caret.open { transform: rotate(180deg); }
+/* Collapsed points right (>), expanded points down (v). */
+.caret { transition: transform 130ms ease-out; opacity: 0.6; flex: 0 0 auto; transform: rotate(-90deg); }
+.caret.open { transform: rotate(0deg); }
 .label { font-size: var(--catdb-fs-small); font-weight: 600; }
 .spacer { flex: 1 1 0; }
 
