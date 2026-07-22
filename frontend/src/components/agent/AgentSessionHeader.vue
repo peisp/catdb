@@ -80,7 +80,7 @@ const watermarkTip = computed(() => t('agent.panel.watermarkTooltip', { pct: Mat
 
 <style scoped>
 .header {
-  flex: 0 0 auto;
+  flex: 0 0 36px;
   display: flex;
   align-items: center;
   gap: 6px;

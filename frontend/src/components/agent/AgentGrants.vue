@@ -61,7 +61,6 @@ function toggle(v: string, on: boolean) {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px 12px;
   padding: 5px 8px 0;
 }
 .lead {
