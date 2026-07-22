@@ -17,6 +17,7 @@ import AgentResultTable from './AgentResultTable.vue'
 import AgentTxBar from './AgentTxBar.vue'
 import AgentGrants from './AgentGrants.vue'
 import AgentComposer, { INPUT_MAX_H, INPUT_MIN_H } from './AgentComposer.vue'
+import NsDropdown from './NsDropdown.vue'
 import AppIcon from '../shared/AppIcon.vue'
 import botIcon from '../../assets/icons/bot.svg?raw'
 import lockIcon from '../../assets/icons/lock.svg?raw'
@@ -420,9 +421,9 @@ async function loadTableNames() {
   } catch { tableNames.value = [] }
 }
 
-// Lazy-connect trigger shared by the db selector (pointerdown) and the @
-// completion menu (need-tables): connect + load the namespace on the first
-// user gesture that needs it, with an in-flight guard against repeats.
+// Lazy-connect trigger shared by the db dropdown (open) and the @ completion
+// menu (need-tables): connect + load the namespace on the first user gesture
+// that needs it, with an in-flight guard against repeats.
 const nsLoading = ref(false)
 async function ensureNamespace() {
   if (nsLoading.value || orphan.value || !panelConn.value) return
@@ -726,7 +727,7 @@ async function onDeleteSession(id: string) {
 
 // Rebind a fresh conversation to another connection (§10.2). Namespace state
 // resets; loadNamespace stays lazy — it only fetches if the new connection is
-// already live, otherwise the db selector's pointerdown connects on demand.
+// already live, otherwise opening the db dropdown connects on demand.
 async function onChangeConn(connId: string) {
   const s = session.value
   if (!s || connId === s.connId) return
@@ -1010,18 +1011,18 @@ onBeforeUnmount(() => {
             <AppIcon v-if="envKind === 'prod'" :src="lockIcon" :size="11" />
             <span class="env-text">{{ envLabel }}</span>
           </span>
-          <select
-            class="ns-select"
+          <!-- Self-drawn dropdown (NOT a native select): the db list loads
+               lazily on open, and a native popup can neither show a loading
+               state nor refresh its snapshotted options once open. -->
+          <NsDropdown
             :value="currentDb"
+            :options="databases"
+            :placeholder="$t('agent.panel.selectDb')"
             :disabled="!session || orphan"
-            @pointerdown="onRequestNamespace"
-            @change="onChangeDb(($event.target as HTMLSelectElement).value)"
-          >
-            <option value="" disabled>{{ $t('agent.panel.selectDb') }}</option>
-            <!-- Lazy connect: before the list loads, the session's saved db still shows. -->
-            <option v-if="currentDb && !databases.includes(currentDb)" :value="currentDb">{{ currentDb }}</option>
-            <option v-for="d in databases" :key="d" :value="d">{{ d }}</option>
-          </select>
+            :loading="nsLoading"
+            @open="onRequestNamespace"
+            @change="onChangeDb"
+          />
           <select
             v-if="schemasSupported"
             class="ns-select"

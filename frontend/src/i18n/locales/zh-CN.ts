@@ -739,6 +739,8 @@ export default {
       untitled: '未命名会话',
       selectConn: '选择连接',
       selectDb: '数据库',
+      loadingDbs: '加载中…',
+      noDbs: '没有可用数据库',
       selectSchema: 'Schema',
       selectModel: '模型',
       modeAsk: 'Ask',

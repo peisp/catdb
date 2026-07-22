@@ -748,6 +748,8 @@ export default {
       untitled: 'Untitled session',
       selectConn: 'Select connection',
       selectDb: 'Database',
+      loadingDbs: 'Loading…',
+      noDbs: 'No databases available',
       selectSchema: 'Schema',
       selectModel: 'Model',
       modeAsk: 'Ask',
