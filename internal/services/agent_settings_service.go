@@ -2,9 +2,14 @@ package services
 
 import (
 	"context"
+	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -163,4 +168,167 @@ func (s *AgentSettingsService) TestProvider(ctx context.Context, id, model strin
 			return err
 		}
 	}
+}
+
+// --- Agent runtime settings (privacy / limits / compaction / pricing) ---
+
+// GetAgentSettings returns the Agent runtime settings, unset keys falling back
+// to their defaults (AGENT_DESIGN.md §12).
+func (s *AgentSettingsService) GetAgentSettings(ctx context.Context) (llmconfig.AgentSettings, error) {
+	return llmconfig.LoadSettings(ctx, s.store)
+}
+
+// SetAgentSettings persists all Agent runtime settings at once (privacy switch,
+// limits, compaction, per-model pricing table).
+func (s *AgentSettingsService) SetAgentSettings(ctx context.Context, settings llmconfig.AgentSettings) error {
+	return llmconfig.SaveSettings(ctx, s.store, settings)
+}
+
+// --- Audit (settings page "审计" section) ---
+
+// AuditQuery scopes ListAudit / ExportAudit. SinceUnix/UntilUnix are
+// epoch-seconds bounds (0 = unbounded). Offset+Limit paginate the (most-recent-
+// first) result; storage itself has no OFFSET, so the service over-fetches and
+// slices — audit is small local data, so this stays cheap.
+type AuditQuery struct {
+	ConnID    string `json:"connId"`
+	SessionID string `json:"sessionId"`
+	SinceUnix int64  `json:"sinceUnix"`
+	UntilUnix int64  `json:"untilUnix"`
+	Limit     int    `json:"limit"`
+	Offset    int    `json:"offset"`
+}
+
+// AuditPage is one page of audit entries plus whether more exist after it.
+type AuditPage struct {
+	Entries []storage.AgentAuditEntry `json:"entries"`
+	HasMore bool                      `json:"hasMore"`
+}
+
+func (q AuditQuery) storageFilter(fetchLimit int) storage.AgentAuditFilter {
+	f := storage.AgentAuditFilter{
+		ConnID:    q.ConnID,
+		SessionID: q.SessionID,
+		Limit:     fetchLimit,
+	}
+	if q.SinceUnix > 0 {
+		f.Since = time.Unix(q.SinceUnix, 0)
+	}
+	if q.UntilUnix > 0 {
+		f.Until = time.Unix(q.UntilUnix, 0)
+	}
+	return f
+}
+
+// ListAudit returns one page of audit entries, most recent first.
+func (s *AgentSettingsService) ListAudit(ctx context.Context, q AuditQuery) (AuditPage, error) {
+	if q.Offset < 0 {
+		q.Offset = 0
+	}
+	// Over-fetch by one past the page so HasMore is known; Limit<=0 means all.
+	fetchLimit := 0
+	if q.Limit > 0 {
+		fetchLimit = q.Offset + q.Limit + 1
+	}
+	all, err := s.store.ListAgentAudit(ctx, q.storageFilter(fetchLimit))
+	if err != nil {
+		return AuditPage{}, err
+	}
+	if q.Offset >= len(all) {
+		return AuditPage{Entries: []storage.AgentAuditEntry{}, HasMore: false}, nil
+	}
+	rest := all[q.Offset:]
+	hasMore := false
+	if q.Limit > 0 && len(rest) > q.Limit {
+		rest = rest[:q.Limit]
+		hasMore = true
+	}
+	return AuditPage{Entries: rest, HasMore: hasMore}, nil
+}
+
+// ClearAudit deletes audit entries created strictly before beforeUnixSec.
+func (s *AgentSettingsService) ClearAudit(ctx context.Context, beforeUnixSec int64) error {
+	return s.store.ClearAgentAudit(ctx, beforeUnixSec)
+}
+
+// AuditExportResult is the synchronous return of ExportAudit.
+type AuditExportResult struct {
+	Path string `json:"path"`
+	Rows int    `json:"rows"`
+}
+
+// ExportAudit writes every audit entry matching the filter (no pagination) to
+// path as JSON or CSV. Rows are written straight to disk (never crossing IPC as
+// a bulk payload, 铁律 5); the front-end picks path via system.pickSaveFile.
+// format is "json" or "csv".
+func (s *AgentSettingsService) ExportAudit(ctx context.Context, q AuditQuery, format, path string) (AuditExportResult, error) {
+	if path == "" {
+		return AuditExportResult{}, fmt.Errorf("agent: export path is required")
+	}
+	q.Offset = 0
+	q.Limit = 0
+	entries, err := s.store.ListAgentAudit(ctx, q.storageFilter(0))
+	if err != nil {
+		return AuditExportResult{}, err
+	}
+
+	f, err := os.Create(path)
+	if err != nil {
+		return AuditExportResult{}, fmt.Errorf("agent: create %s: %w", path, err)
+	}
+	defer f.Close()
+
+	switch format {
+	case "csv":
+		if err := writeAuditCSV(f, entries); err != nil {
+			return AuditExportResult{}, err
+		}
+	default: // json
+		if err := writeAuditJSON(f, entries); err != nil {
+			return AuditExportResult{}, err
+		}
+	}
+	if err := f.Close(); err != nil {
+		return AuditExportResult{}, err
+	}
+	return AuditExportResult{Path: path, Rows: len(entries)}, nil
+}
+
+func writeAuditJSON(f *os.File, entries []storage.AgentAuditEntry) error {
+	enc := json.NewEncoder(f)
+	enc.SetEscapeHTML(false)
+	// One JSON object per line (JSON Lines) — streams row by row, no giant
+	// in-memory array marshal.
+	for i := range entries {
+		if err := enc.Encode(entries[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writeAuditCSV(f *os.File, entries []storage.AgentAuditEntry) error {
+	w := csv.NewWriter(f)
+	header := []string{"id", "sessionId", "connId", "sql", "class", "approval", "rows", "durationMs", "status", "error", "createdAt"}
+	if err := w.Write(header); err != nil {
+		return err
+	}
+	for _, e := range entries {
+		rows, dur := "", ""
+		if e.Rows != nil {
+			rows = strconv.FormatInt(*e.Rows, 10)
+		}
+		if e.DurationMS != nil {
+			dur = strconv.FormatInt(*e.DurationMS, 10)
+		}
+		rec := []string{
+			e.ID, e.SessionID, e.ConnID, e.SQL, e.Class, e.Approval,
+			rows, dur, e.Status, e.Error, e.CreatedAt.UTC().Format(time.RFC3339),
+		}
+		if err := w.Write(rec); err != nil {
+			return err
+		}
+	}
+	w.Flush()
+	return w.Error()
 }

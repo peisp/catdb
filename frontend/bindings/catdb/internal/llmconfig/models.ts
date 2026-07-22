@@ -10,6 +10,100 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as llm$0 from "../llm/models.js";
 
 /**
+ * AgentSettings 是 Agent 运行期设置的合集（不含 Provider/默认模型，那两半由
+ * Load/GetDefaults 管理）。Pricing 以 modelID 为键。
+ */
+export class AgentSettings {
+    "privacySendRowData": boolean;
+    "maxIterations": number;
+    "stmtTimeoutSec": number;
+    "txIdleTimeoutSec": number;
+    "llmResultRows": number;
+    "sessionTokenBudget": number;
+    "compactAuto": boolean;
+    "compactThreshold": number;
+    "pricing": { [_ in string]?: ModelPricing };
+
+    /** Creates a new AgentSettings instance. */
+    constructor($$source: Partial<AgentSettings> = {}) {
+        if (!("privacySendRowData" in $$source)) {
+            this["privacySendRowData"] = false;
+        }
+        if (!("maxIterations" in $$source)) {
+            this["maxIterations"] = 0;
+        }
+        if (!("stmtTimeoutSec" in $$source)) {
+            this["stmtTimeoutSec"] = 0;
+        }
+        if (!("txIdleTimeoutSec" in $$source)) {
+            this["txIdleTimeoutSec"] = 0;
+        }
+        if (!("llmResultRows" in $$source)) {
+            this["llmResultRows"] = 0;
+        }
+        if (!("sessionTokenBudget" in $$source)) {
+            this["sessionTokenBudget"] = 0;
+        }
+        if (!("compactAuto" in $$source)) {
+            this["compactAuto"] = false;
+        }
+        if (!("compactThreshold" in $$source)) {
+            this["compactThreshold"] = 0;
+        }
+        if (!("pricing" in $$source)) {
+            this["pricing"] = {};
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AgentSettings instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AgentSettings {
+        const $$createField8_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("pricing" in $$parsedSource) {
+            $$parsedSource["pricing"] = $$createField8_0($$parsedSource["pricing"]);
+        }
+        return new AgentSettings($$parsedSource as Partial<AgentSettings>);
+    }
+}
+
+/**
+ * ModelPricing 是单个模型的百万 token 单价（用于费用估算，§9）。空表 = 只显示
+ * token 不算费用。CacheReadPer1M 对齐 Anthropic prompt caching 的命中价。
+ */
+export class ModelPricing {
+    "inputPer1M": number;
+    "outputPer1M": number;
+    "cacheReadPer1M": number;
+
+    /** Creates a new ModelPricing instance. */
+    constructor($$source: Partial<ModelPricing> = {}) {
+        if (!("inputPer1M" in $$source)) {
+            this["inputPer1M"] = 0;
+        }
+        if (!("outputPer1M" in $$source)) {
+            this["outputPer1M"] = 0;
+        }
+        if (!("cacheReadPer1M" in $$source)) {
+            this["cacheReadPer1M"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ModelPricing instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ModelPricing {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ModelPricing($$parsedSource as Partial<ModelPricing>);
+    }
+}
+
+/**
  * ProviderConfig 是一个 Provider 实例的非敏感配置（存 SQLite，绝不含密钥）。
  * Models 为内置/自定义模型清单：ContextWindow 供上下文水位计算，SupportsTools
  * 决定工具能力，二者对 openai-compat 自定义模型无法探测，由配置提供（§3.1）。
@@ -50,7 +144,7 @@ export class ProviderConfig {
      * Creates a new ProviderConfig instance from a string or object.
      */
     static createFrom($$source: any = {}): ProviderConfig {
-        const $$createField4_0 = $$createType1;
+        const $$createField4_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("models" in $$parsedSource) {
             $$parsedSource["models"] = $$createField4_0($$parsedSource["models"]);
@@ -60,5 +154,7 @@ export class ProviderConfig {
 }
 
 // Private type creation functions
-const $$createType0 = llm$0.ModelInfo.createFrom;
-const $$createType1 = $Create.Array($$createType0);
+const $$createType0 = ModelPricing.createFrom;
+const $$createType1 = $Create.Map($Create.Any, $$createType0);
+const $$createType2 = llm$0.ModelInfo.createFrom;
+const $$createType3 = $Create.Array($$createType2);

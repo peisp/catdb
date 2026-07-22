@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 	"sync"
 
 	"catdb/internal/dbdriver"
@@ -54,11 +56,29 @@ type storedResult struct {
 	IsError bool   `json:"isError,omitempty"`
 }
 
-// Send runs one full agent turn for sessID: persists the user message, then
-// loops model ↔ tools until the model stops or the iteration cap is hit.
-// It blocks until the turn ends; cancelling ctx (front-end promise cancel or
-// Engine.Cancel) aborts both the LLM stream and any in-flight query.
-func (e *Engine) Send(ctx context.Context, sessID, text string) error {
+// msgMentions is the Extra payload of a user message carrying @table mentions
+// (§10.3): each table's structure is fetched at send time and pinned with the
+// message. The chat panel renders the chips from Tables[].Name.
+type msgMentions struct {
+	Tables []mentionTable `json:"tables"`
+	// Truncated: the user @-mentioned more tables than the cap — the prompt
+	// must say the structure list is incomplete (§4.3).
+	Truncated bool `json:"truncated,omitempty"`
+}
+
+type mentionTable struct {
+	DB        string `json:"db,omitempty"`
+	Schema    string `json:"schema,omitempty"`
+	Name      string `json:"name"`
+	Structure string `json:"structure"` // compact JSON: columns/indexes/foreignKeys/comment
+}
+
+// Send runs one full agent turn for sessID: persists the user message (with
+// any @table mentions, §10.3), then loops model ↔ tools until the model stops
+// or the iteration cap is hit. It blocks until the turn ends; cancelling ctx
+// (front-end promise cancel or Engine.Cancel) aborts both the LLM stream and
+// any in-flight query.
+func (e *Engine) Send(ctx context.Context, sessID, text string, mentions []string) error {
 	if e.txm.get(sessID) != nil {
 		// A task transaction awaits commit/rollback — no new turns until the
 		// user decides (§5 gate 5).
@@ -71,14 +91,14 @@ func (e *Engine) Send(ctx context.Context, sessID, text string) error {
 	}
 	defer e.end(sessID)
 
-	err := e.run(ctx, sessID, text)
+	err := e.run(ctx, sessID, text, mentions)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		e.emit("agent:error", map[string]any{"sessId": sessID, "slug": "agent.loop-failed", "detail": err.Error()})
 	}
 	return err
 }
 
-func (e *Engine) run(ctx context.Context, sessID, text string) error {
+func (e *Engine) run(ctx context.Context, sessID, text string, mentions []string) error {
 	sess, err := e.store.GetAgentSession(ctx, sessID)
 	if err != nil {
 		return fmt.Errorf("agent: load session: %w", err)
@@ -101,13 +121,27 @@ func (e *Engine) run(ctx context.Context, sessID, text string) error {
 	}
 	em := &emitter{emit: e.emit}
 
-	tools := buildTools(toolEnv{
-		conn:    conn,
-		dialect: drv.Dialect(),
-		caps:    drv.Capabilities(),
-		privacy: e.settingBool(ctx, "agent.privacy.sendRowData", true),
-	})
-	if sess.Mode == "agent" {
+	// Tool-less model degradation (§3.1): Ask mode falls back to a schema
+	// overview injected into the prompt + plain completion; Agent mode needs
+	// tools and asks for a different model.
+	mi := e.modelInfoOf(ctx, provider, sess.Model)
+	toolless := mi.ID != "" && !mi.SupportsTools
+	schemaOverview := ""
+	var tools []Tool
+	if toolless {
+		if sess.Mode == "agent" {
+			return fmt.Errorf("agent.model-no-tools: model %q does not support tool calls — switch to a tool-capable model for Agent mode", sess.Model)
+		}
+		schemaOverview = buildSchemaOverview(ctx, conn, sess.CurrentDB, sess.CurrentSchema)
+	} else {
+		tools = buildTools(toolEnv{
+			conn:    conn,
+			dialect: drv.Dialect(),
+			caps:    drv.Capabilities(),
+			privacy: e.settingBool(ctx, "agent.privacy.sendRowData", true),
+		})
+	}
+	if !toolless && sess.Mode == "agent" {
 		override, _ := drv.Dialect().(dbdriver.StatementClassifier)
 		rs := &runState{
 			sessID: sessID, connID: sess.ConnID, mode: sess.Mode,
@@ -124,19 +158,34 @@ func (e *Engine) run(ctx context.Context, sessID, text string) error {
 		}
 		tools = append(tools, buildRunSQL(rs, granted), buildSubmitPlan(rs))
 	}
+	environment := ""
+	if prof, perr := e.store.GetConnection(ctx, sess.ConnID); perr == nil {
+		environment = prof.Environment
+	}
 	system := buildSystemPrompt(promptEnv{
-		driverName:    drv.Name(),
-		driverVersion: drv.Version(),
-		quoteSample:   quoteSampleOf(drv.Dialect()),
-		currentDB:     sess.CurrentDB,
-		currentSchema: sess.CurrentSchema,
-		mode:          sess.Mode,
-		locale:        e.setting(ctx, "ui.locale"),
-		hasTools:      len(tools) > 0,
+		driverName:     drv.Name(),
+		driverVersion:  drv.Version(),
+		quoteSample:    quoteSampleOf(drv.Dialect()),
+		currentDB:      sess.CurrentDB,
+		currentSchema:  sess.CurrentSchema,
+		mode:           sess.Mode,
+		environment:    environment,
+		locale:         e.setting(ctx, "ui.locale"),
+		hasTools:       len(tools) > 0,
+		schemaOverview: schemaOverview,
 	})
 
+	userMsg := msgContent{Text: text}
+	if len(mentions) > 0 {
+		if tables, truncated := e.fetchMentions(ctx, conn, sess.CurrentDB, sess.CurrentSchema, mentions); len(tables) > 0 {
+			extra, err := json.Marshal(msgMentions{Tables: tables, Truncated: truncated})
+			if err == nil {
+				userMsg.Extra = extra
+			}
+		}
+	}
 	if _, err := e.store.AppendAgentMessage(ctx, storage.AgentMessage{
-		SessionID: sessID, Role: "user", Content: mustContent(msgContent{Text: text}),
+		SessionID: sessID, Role: "user", Content: mustContent(userMsg),
 	}); err != nil {
 		return fmt.Errorf("agent: persist user message: %w", err)
 	}
@@ -153,16 +202,50 @@ func (e *Engine) run(ctx context.Context, sessID, text string) error {
 		byName[t.Def.Name] = t
 	}
 	contextWindow := e.contextWindowOf(ctx, provider, sess.Model)
+	threshold := e.compactThreshold(ctx)
+	compactAuto := e.settingBool(ctx, "agent.compact.auto", true)
+	maxIter := e.settingInt(ctx, "agent.limits.maxIterations", e.maxIterations)
+	tokenBudget := e.settingInt(ctx, "agent.limits.sessionTokenBudget", 0)
+	sessionTokens := e.sessionTokenTotal(ctx, sessID)
+	emitMap := func(name string, data map[string]any) { em.send(name, data) }
+	overflowRetried := false
+	repairs := 0
+	ranSQL := false
 
-	for iter := 0; iter < e.maxIterations; iter++ {
+	for iter := 0; iter < maxIter; iter++ {
+		// Session token budget (§4.1): pause before the next model call once
+		// exceeded — the user raises the budget or compacts, then replies to
+		// continue.
+		if tokenBudget > 0 && sessionTokens >= tokenBudget {
+			e.emitTxPending(em, sessID)
+			em.send("agent:done", map[string]any{"sessId": sessID, "stopReason": "token_budget"})
+			return nil
+		}
+		// Level-1 eviction (build-time, lossless): trim old tool results from
+		// the request copy once the estimate crosses the threshold.
+		reqMsgs := messages
+		if contextWindow > 0 && float64(estimateTokens(messages)) > threshold*float64(contextWindow) {
+			reqMsgs = evictOldToolResults(messages, keepTailRounds)
+		}
 		turn, err := e.streamTurn(ctx, em, provider, llm.ChatRequest{
 			Model:     sess.Model,
 			System:    system,
-			Messages:  messages,
+			Messages:  reqMsgs,
 			Tools:     defs,
 			MaxTokens: 8192,
 		}, sessID)
 		if err != nil {
+			// Passive compaction (§9): a context-overflow error forces a fold
+			// and one retry — watermark estimates can undershoot.
+			if isContextOverflow(err) && !overflowRetried {
+				overflowRetried = true
+				if n, cerr := e.compactSession(ctx, sessID, provider, sess.Model, emitMap); cerr == nil && n > 0 {
+					if messages, err = e.loadHistory(ctx, sessID); err == nil {
+						iter--
+						continue
+					}
+				}
+			}
 			return fmt.Errorf("agent: llm stream: %w", err)
 		}
 
@@ -172,6 +255,7 @@ func (e *Engine) run(ctx context.Context, sessID, text string) error {
 			calls[i] = storedCall{ID: c.ID, Name: c.Name, Args: c.Args}
 		}
 		tokIn, tokOut := turn.usage.InputTokens+turn.usage.CacheReadTokens+turn.usage.CacheWriteTokens, turn.usage.OutputTokens
+		sessionTokens += tokIn + tokOut
 		if _, err := e.store.AppendAgentMessage(ctx, storage.AgentMessage{
 			SessionID: sessID, Role: "assistant",
 			Content:  mustContent(msgContent{Text: turn.text, Thinking: turn.thinking, ToolCalls: calls}),
@@ -189,13 +273,39 @@ func (e *Engine) run(ctx context.Context, sessID, text string) error {
 			"sessId": sessID, "tokensIn": tokIn, "tokensOut": tokOut, "watermark": watermark,
 		})
 
+		// Auto-compaction (§9): fold early rounds once the real usage crosses
+		// the threshold, then rebuild the context for the next iteration.
+		if compactAuto && contextWindow > 0 && watermark > threshold {
+			if n, cerr := e.compactSession(ctx, sessID, provider, sess.Model, emitMap); cerr == nil && n > 0 {
+				if rebuilt, lerr := e.loadHistory(ctx, sessID); lerr == nil {
+					messages = rebuilt
+				}
+			}
+		}
+
 		if len(turn.toolCalls) == 0 || turn.stop != llm.StopToolUse {
+			// Delivery validation (§6/§8): repair-and-retry a contract-breaking
+			// final answer, capped; then deliver with a warning, never discard.
+			if v := validateDelivery(sess.Mode, turn.text, ranSQL); !v.OK && repairs < maxDeliveryRepairs {
+				repairs++
+				messages = append(messages, llm.Message{Role: llm.RoleUser, Text: repairMessage(v.Missing)})
+				continue
+			} else if !v.OK {
+				e.emitTxPending(em, sessID)
+				em.send("agent:done", map[string]any{"sessId": sessID, "stopReason": string(turn.stop), "deliveryWarning": true})
+				return nil
+			}
 			e.emitTxPending(em, sessID)
 			em.send("agent:done", map[string]any{"sessId": sessID, "stopReason": string(turn.stop)})
 			return nil
 		}
 
 		results := e.execTools(ctx, em, sessID, byName, turn.toolCalls)
+		for i, r := range results {
+			if !r.IsError && turn.toolCalls[i].Name == "run_sql" {
+				ranSQL = true
+			}
+		}
 		for _, r := range results {
 			if _, err := e.store.AppendAgentMessage(ctx, storage.AgentMessage{
 				SessionID: sessID, Role: "tool", Content: mustContent(msgContent{Result: &r}),
@@ -213,6 +323,37 @@ func (e *Engine) run(ctx context.Context, sessID, text string) error {
 	e.emitTxPending(em, sessID)
 	em.send("agent:done", map[string]any{"sessId": sessID, "stopReason": "max_iterations"})
 	return nil
+}
+
+// fetchMentions resolves @table mentions against the session's current
+// namespace: full structure (columns/indexes/foreign keys) per table, capped
+// at 8 (§10.3). A table that fails to resolve is skipped — the model can
+// still look it up with tools.
+func (e *Engine) fetchMentions(ctx context.Context, conn dbdriver.Connection, db, schema string, names []string) ([]mentionTable, bool) {
+	meta := conn.Metadata()
+	if meta == nil {
+		return nil, false
+	}
+	truncated := false
+	if len(names) > 8 {
+		names = names[:8]
+		truncated = true
+	}
+	var out []mentionTable
+	for _, name := range names {
+		cols, err := meta.ListColumns(ctx, db, schema, name)
+		if err != nil || len(cols) == 0 {
+			continue
+		}
+		idx, _ := meta.ListIndexes(ctx, db, schema, name)
+		fks, _ := meta.ListForeignKeys(ctx, db, schema, name)
+		b, err := json.Marshal(map[string]any{"columns": cols, "indexes": idx, "foreignKeys": fks})
+		if err != nil {
+			continue
+		}
+		out = append(out, mentionTable{DB: db, Schema: schema, Name: name, Structure: string(b)})
+	}
+	return out, truncated
 }
 
 // emitTxPending announces an open task transaction awaiting the user's
@@ -334,58 +475,99 @@ func truncate(s string, n int) string {
 	return string(r[:n]) + "…"
 }
 
-// loadHistory rebuilds the LLM message sequence from persisted messages,
-// skipping compacted ones (§9: compaction affects only what the model sees).
+// loadHistory rebuilds the LLM message sequence from persisted messages in
+// logical order (anchor → summaries → live rounds), skipping compacted ones
+// (§9: compaction affects only what the model sees).
 func (e *Engine) loadHistory(ctx context.Context, sessID string) ([]llm.Message, error) {
-	stored, err := e.store.ListAgentMessages(ctx, sessID)
+	logical, err := e.loadLogical(ctx, sessID)
 	if err != nil {
-		return nil, fmt.Errorf("agent: load history: %w", err)
+		return nil, err
 	}
-	var out []llm.Message
-	for _, m := range stored {
-		if m.Compacted {
-			continue
-		}
-		var c msgContent
-		if err := json.Unmarshal([]byte(m.Content), &c); err != nil {
-			return nil, fmt.Errorf("agent: decode message %s: %w", m.ID, err)
-		}
-		switch m.Role {
-		case "assistant":
-			calls := make([]llm.ToolCall, len(c.ToolCalls))
-			for i, sc := range c.ToolCalls {
-				calls[i] = llm.ToolCall{ID: sc.ID, Name: sc.Name, Args: sc.Args}
-			}
-			out = append(out, llm.Message{Role: llm.RoleAssistant, Text: c.Text, ToolCalls: calls})
-		case "tool":
-			if c.Result != nil {
-				out = append(out, llm.Message{Role: llm.RoleTool, ToolResult: &llm.ToolResult{
-					CallID: c.Result.CallID, Content: wrapToolResult(c.Result.Content, c.Result.IsError), IsError: c.Result.IsError,
-				}})
-			}
-		default:
-			out = append(out, llm.Message{Role: llm.RoleUser, Text: c.Text})
-		}
-	}
-	return out, nil
+	return toLLMMessages(logical), nil
 }
 
 func (e *Engine) contextWindowOf(ctx context.Context, p llm.Provider, model string) int {
+	return e.modelInfoOf(ctx, p, model).ContextWindow
+}
+
+// modelInfoOf finds the session model's configured info; zero value when the
+// model isn't in the provider's list (unknown models are assumed
+// tool-capable — most are).
+func (e *Engine) modelInfoOf(ctx context.Context, p llm.Provider, model string) llm.ModelInfo {
 	models, err := p.Models(ctx)
 	if err != nil {
-		return 0
+		return llm.ModelInfo{}
 	}
 	for _, m := range models {
 		if m.ID == model {
-			return m.ContextWindow
+			return m
 		}
 	}
-	return 0
+	return llm.ModelInfo{}
+}
+
+// buildSchemaOverview is the tool-less degradation context (§3.1): database
+// list + current database's tables, capped.
+func buildSchemaOverview(ctx context.Context, conn dbdriver.Connection, db, schema string) string {
+	meta := conn.Metadata()
+	if meta == nil {
+		return ""
+	}
+	var b strings.Builder
+	if dbs, err := meta.ListDatabases(ctx); err == nil {
+		if len(dbs) > 50 {
+			dbs = dbs[:50]
+		}
+		fmt.Fprintf(&b, "Databases: %s\n", strings.Join(dbs, ", "))
+	}
+	if db != "" {
+		if ts, err := meta.ListTables(ctx, db, schema); err == nil {
+			if len(ts) > 100 {
+				ts = ts[:100]
+			}
+			fmt.Fprintf(&b, "Tables in %s:\n", db)
+			for _, t := range ts {
+				if t.Comment != "" {
+					fmt.Fprintf(&b, "- %s (%s)\n", t.Name, t.Comment)
+				} else {
+					fmt.Fprintf(&b, "- %s\n", t.Name)
+				}
+			}
+		}
+	}
+	return b.String()
 }
 
 func (e *Engine) setting(ctx context.Context, key string) string {
 	v, _ := e.store.GetSetting(ctx, key)
 	return v
+}
+
+func (e *Engine) settingInt(ctx context.Context, key string, def int) int {
+	if v := e.setting(ctx, key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			return n
+		}
+	}
+	return def
+}
+
+// sessionTokenTotal sums the session's recorded usage (budget accounting).
+func (e *Engine) sessionTokenTotal(ctx context.Context, sessID string) int {
+	msgs, err := e.store.ListAgentMessages(ctx, sessID)
+	if err != nil {
+		return 0
+	}
+	total := 0
+	for _, m := range msgs {
+		if m.TokensIn != nil {
+			total += *m.TokensIn
+		}
+		if m.TokensOut != nil {
+			total += *m.TokensOut
+		}
+	}
+	return total
 }
 
 func (e *Engine) settingBool(ctx context.Context, key string, def bool) bool {

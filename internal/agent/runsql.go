@@ -139,7 +139,7 @@ func (rs *runState) execOne(ctx context.Context, db string, st sqlclass.Classifi
 		if v.AutoApprovable && rs.autoVerbs[st.C.Verb] {
 			approvalMode = "auto"
 		} else {
-			d, err := rs.requestApproval(ctx, st, v)
+			d, err := rs.requestApproval(ctx, db, st, v)
 			if err != nil {
 				return "", err
 			}
@@ -171,15 +171,41 @@ func (rs *runState) execOne(ctx context.Context, db string, st sqlclass.Classifi
 }
 
 // requestApproval emits the approval card and suspends until decided (gate 4).
-func (rs *runState) requestApproval(ctx context.Context, st sqlclass.Classified, v gateVerdict) (approvalDecision, error) {
+// The card carries a best-effort EXPLAIN estimate when the driver can plan
+// write statements (§5 gate 4) — failures are silently omitted.
+func (rs *runState) requestApproval(ctx context.Context, db string, st sqlclass.Classified, v gateVerdict) (approvalDecision, error) {
 	id := uuid.NewString()
 	ch := rs.e.broker.create(id) // register BEFORE emitting — Approve may race
 	rs.em.send("agent:approval", map[string]any{
 		"sessId": rs.sessID, "approvalID": id,
 		"sql": st.SQL, "class": string(st.C.Class), "verb": string(st.C.Verb),
 		"warning": v.Warning, "autoOffered": v.AutoApprovable,
+		"explain": rs.explainEstimate(ctx, db, st.SQL),
 	})
 	return rs.e.broker.waitOn(ctx, id, ch)
+}
+
+// explainEstimate renders a short plan preview for the approval card.
+func (rs *runState) explainEstimate(ctx context.Context, db, sql string) string {
+	if !rs.caps.ExplainPlan {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	q, err := dbdriver.RouteQuerier(ctx, rs.conn, db)
+	if err != nil {
+		return ""
+	}
+	set, err := q.Explain(ctx, sql)
+	if err != nil {
+		return ""
+	}
+	defer set.Close()
+	out, err := renderResultSet(set, 5)
+	if err != nil {
+		return ""
+	}
+	return truncate(out, 600)
 }
 
 // execRead runs a read statement — through the open task tx when one exists
@@ -200,6 +226,16 @@ func (rs *runState) execRead(ctx context.Context, db string, st sqlclass.Classif
 			return "", err
 		}
 	}
+	// Pre-flight EXPLAIN (§8): catches syntax errors without executing; the
+	// error feeds straight back to the model for self-repair.
+	if rs.caps.ExplainPlan && st.C.Verb == "select" {
+		if pre, err := q.Explain(ctx, st.SQL); err != nil {
+			rs.audit(ctx, st, "n/a", -1, nil, "error", err.Error())
+			return "", fmt.Errorf("EXPLAIN pre-check failed: %w", err)
+		} else {
+			pre.Close()
+		}
+	}
 	started := time.Now()
 	resSet, err := q.Query(ctx, st.SQL)
 	if err != nil {
@@ -218,6 +254,18 @@ func (rs *runState) execRead(ctx context.Context, db string, st sqlclass.Classif
 		"truncated": len(userRows) >= userResultRowCap, "done": true,
 	})
 	rs.auditRows(ctx, st, "n/a", rows, &started, "ok", "")
+	if !rs.e.settingBool(ctx, "agent.privacy.sendRowData", true) {
+		// Privacy switch off (§7): the model gets shape only — row data goes
+		// exclusively to the user path emitted above.
+		b, jerr := json.Marshal(map[string]any{
+			"columns": cols, "rowCount": rows,
+			"note": "row data withheld by the user's privacy setting — it is shown to the user directly; answer from the row count and columns, or ask the user to read the values",
+		})
+		if jerr != nil {
+			return "", jerr
+		}
+		return string(b), nil
+	}
 	return modelView, nil
 }
 

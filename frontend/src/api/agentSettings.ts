@@ -6,12 +6,28 @@
 // read back — HasProviderKey only reports a boolean "configured" state.
 import { AgentSettingsService } from '../../bindings/catdb/internal/services'
 import { ProviderConfig as BoundProviderConfig } from '../../bindings/catdb/internal/llmconfig/models'
+import {
+  AgentSettings as BoundAgentSettings,
+  ModelPricing as BoundModelPricing,
+} from '../../bindings/catdb/internal/llmconfig/models'
 import { ModelInfo as BoundModelInfo } from '../../bindings/catdb/internal/llm/models'
-import { AgentDefaults as BoundAgentDefaults } from '../../bindings/catdb/internal/services/models'
+import {
+  AgentDefaults as BoundAgentDefaults,
+  AuditQuery as BoundAuditQuery,
+  AuditPage as BoundAuditPage,
+  AuditExportResult as BoundAuditExportResult,
+} from '../../bindings/catdb/internal/services/models'
+import { AgentAuditEntry as BoundAuditEntry } from '../../bindings/catdb/internal/storage/models'
 
 export type ProviderConfig = BoundProviderConfig
 export type ModelInfo = BoundModelInfo
 export type AgentDefaults = BoundAgentDefaults
+export type AgentSettings = BoundAgentSettings
+export type ModelPricing = BoundModelPricing
+export type AuditQuery = BoundAuditQuery
+export type AuditPage = BoundAuditPage
+export type AuditEntry = BoundAuditEntry
+export type AuditExportResult = BoundAuditExportResult
 
 /** A draft for SaveProvider: id empty → insert, id set → update. */
 export interface ProviderDraft {
@@ -56,4 +72,35 @@ export function setDefaults(providerId: string, model: string): Promise<void> {
 /** Probe connectivity with a minimal ping stream; resolves on success, rejects with the raw error. */
 export function testProvider(id: string, model: string): Promise<void> {
   return AgentSettingsService.TestProvider(id, model)
+}
+
+// --- Agent runtime settings (privacy / limits / compaction / pricing) ---
+
+export function getAgentSettings(): Promise<AgentSettings> {
+  return AgentSettingsService.GetAgentSettings()
+}
+
+export function setAgentSettings(settings: AgentSettings): Promise<void> {
+  return AgentSettingsService.SetAgentSettings(BoundAgentSettings.createFrom(settings))
+}
+
+// --- Audit ---
+
+/** One page of audit entries, most recent first. Offset+Limit paginate. */
+export function listAudit(q: Partial<AuditQuery>): Promise<AuditPage> {
+  return AgentSettingsService.ListAudit(BoundAuditQuery.createFrom(q))
+}
+
+/** Delete audit entries created strictly before the given epoch-seconds. */
+export function clearAudit(beforeUnixSec: number): Promise<void> {
+  return AgentSettingsService.ClearAudit(beforeUnixSec)
+}
+
+/** Stream all matching audit entries to `path` (never crosses IPC as bulk). format: 'json' | 'csv'. */
+export function exportAudit(
+  q: Partial<AuditQuery>,
+  format: 'json' | 'csv',
+  path: string,
+): Promise<AuditExportResult> {
+  return AgentSettingsService.ExportAudit(BoundAuditQuery.createFrom(q), format, path)
 }

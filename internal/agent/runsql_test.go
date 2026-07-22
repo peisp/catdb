@@ -238,7 +238,7 @@ func TestRunSQLReadNoApproval(t *testing.T) {
 		endRound("两行数据"),
 	)
 	e, store, sessID, probe, log := newAgentEngine(t, p, "dev", []string{"select"}, nil)
-	if err := e.Send(context.Background(), sessID, "查用户"); err != nil {
+	if err := e.Send(context.Background(), sessID, "查用户", nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(probe.execs) != 1 || !strings.Contains(probe.execs[0], "SELECT") {
@@ -266,7 +266,7 @@ func TestWriteWithoutPlanRejected(t *testing.T) {
 		endRound("ok"),
 	)
 	e, store, sessID, probe, _ := newAgentEngine(t, p, "dev", []string{"select", "insert"}, nil)
-	if err := e.Send(context.Background(), sessID, "插入"); err != nil {
+	if err := e.Send(context.Background(), sessID, "插入", nil); err != nil {
 		t.Fatal(err)
 	}
 	r := lastToolResult(t, store, sessID)
@@ -285,7 +285,7 @@ func TestProdHardReadonly(t *testing.T) {
 	)
 	// All grants on — prod must still refuse.
 	e, store, sessID, probe, _ := newAgentEngine(t, p, "prod", []string{"select", "insert", "update", "delete", "ddl"}, nil)
-	if err := e.Send(context.Background(), sessID, "删一行"); err != nil {
+	if err := e.Send(context.Background(), sessID, "删一行", nil); err != nil {
 		t.Fatal(err)
 	}
 	r := lastToolResult(t, store, sessID)
@@ -309,7 +309,7 @@ func TestPlanApproveExecuteCommit(t *testing.T) {
 	)
 	e, store, sessID, probe, log := newAgentEngine(t, p, "dev", []string{"select", "insert"},
 		[]decision{{approve: true, scope: scopeOnce}, {approve: true, scope: scopeOnce}})
-	if err := e.Send(context.Background(), sessID, "插入一行"); err != nil {
+	if err := e.Send(context.Background(), sessID, "插入一行", nil); err != nil {
 		t.Fatal(err)
 	}
 	if log.count("agent:plan") != 1 || log.count("agent:approval") != 1 {
@@ -327,7 +327,7 @@ func TestPlanApproveExecuteCommit(t *testing.T) {
 		t.Fatalf("tx audit must be buffered until commit, got %+v", audits)
 	}
 	// New turns are blocked while the tx is pending.
-	if err := e.Send(context.Background(), sessID, "再来"); err == nil || !strings.Contains(err.Error(), slugTxPending) {
+	if err := e.Send(context.Background(), sessID, "再来", nil); err == nil || !strings.Contains(err.Error(), slugTxPending) {
 		t.Fatalf("want tx-pending block, got %v", err)
 	}
 	if err := e.CommitTx(context.Background(), sessID); err != nil {
@@ -349,7 +349,7 @@ func TestRejectionFedBackToModel(t *testing.T) {
 	)
 	e, store, sessID, _, _ := newAgentEngine(t, p, "dev", []string{"select", "delete"},
 		[]decision{{approve: false, reason: "太危险"}})
-	if err := e.Send(context.Background(), sessID, "清空表"); err != nil {
+	if err := e.Send(context.Background(), sessID, "清空表", nil); err != nil {
 		t.Fatal(err)
 	}
 	r := lastToolResult(t, store, sessID)
@@ -369,7 +369,7 @@ func TestTaskVerbAutoApprove(t *testing.T) {
 	// must NOT produce an approval event.
 	e, _, sessID, probe, log := newAgentEngine(t, p, "dev", []string{"select", "insert"},
 		[]decision{{approve: true, scope: scopeOnce}, {approve: true, scope: scopeTaskVerb}})
-	if err := e.Send(context.Background(), sessID, "插两行"); err != nil {
+	if err := e.Send(context.Background(), sessID, "插两行", nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := log.count("agent:approval"); got != 1 {

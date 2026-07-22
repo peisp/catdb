@@ -176,7 +176,7 @@ func TestTaskTxCommitAgainstMySQL(t *testing.T) {
 	e, store, sessID := newRealEngine(t, env, p,
 		[]decision{{approve: true, scope: scopeOnce}, {approve: true, scope: scopeOnce}})
 
-	if err := e.Send(ctx, sessID, "插入一行"); err != nil {
+	if err := e.Send(ctx, sessID, "插入一行", nil); err != nil {
 		t.Fatal(err)
 	}
 	// Read-your-writes: the SELECT inside the open tx saw the uncommitted row.
@@ -217,7 +217,7 @@ func TestTaskTxRollbackAgainstMySQL(t *testing.T) {
 	e, store, sessID := newRealEngine(t, env, p,
 		[]decision{{approve: true, scope: scopeOnce}, {approve: true, scope: scopeOnce}})
 
-	if err := e.Send(ctx, sessID, "插入"); err != nil {
+	if err := e.Send(ctx, sessID, "插入", nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.RollbackTx(ctx, sessID); err != nil {

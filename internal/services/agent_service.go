@@ -93,19 +93,25 @@ func (s *AgentService) SetSessionModel(ctx context.Context, sessID, providerID, 
 
 // --- conversation ---
 
-// SendMessage runs one agent turn. It blocks until the turn completes;
-// cancelling the front-end promise aborts the loop (LLM stream + queries).
-func (s *AgentService) SendMessage(ctx context.Context, sessID, text string) error {
+// SendMessage runs one agent turn. mentions are @table chips (§10.3) resolved
+// against the session's current namespace. It blocks until the turn
+// completes; cancelling the front-end promise aborts the loop.
+func (s *AgentService) SendMessage(ctx context.Context, sessID, text string, mentions []string) error {
 	if text == "" {
 		return fmt.Errorf("AgentService: empty message")
 	}
-	return s.engine.Send(ctx, sessID, text)
+	return s.engine.Send(ctx, sessID, text, mentions)
 }
 
 // Cancel stops the session's running loop, if any.
 func (s *AgentService) Cancel(ctx context.Context, sessID string) error {
 	s.engine.Cancel(sessID)
 	return nil
+}
+
+// Compact manually folds the session's early rounds into a summary (§9).
+func (s *AgentService) Compact(ctx context.Context, sessID string) error {
+	return s.engine.ManualCompact(ctx, sessID)
 }
 
 // --- approvals & task transaction (M2, §5 gates 4/5) ---

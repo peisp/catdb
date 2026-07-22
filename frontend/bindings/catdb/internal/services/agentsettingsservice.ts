@@ -22,6 +22,13 @@ import * as llmconfig$0 from "../llmconfig/models.js";
 import * as $models from "./models.js";
 
 /**
+ * ClearAudit deletes audit entries created strictly before beforeUnixSec.
+ */
+export function ClearAudit(beforeUnixSec: number): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.AgentSettingsService.ClearAudit", beforeUnixSec);
+}
+
+/**
  * DeleteProvider removes a Provider instance, its keyring key, and clears the
  * default provider/model if they pointed at it.
  */
@@ -30,11 +37,33 @@ export function DeleteProvider(id: string): $CancellablePromise<void> {
 }
 
 /**
+ * ExportAudit writes every audit entry matching the filter (no pagination) to
+ * path as JSON or CSV. Rows are written straight to disk (never crossing IPC as
+ * a bulk payload, 铁律 5); the front-end picks path via system.pickSaveFile.
+ * format is "json" or "csv".
+ */
+export function ExportAudit(q: $models.AuditQuery, format: string, path: string): $CancellablePromise<$models.AuditExportResult> {
+    return $Call.ByName("catdb/internal/services.AgentSettingsService.ExportAudit", q, format, path).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
+/**
+ * GetAgentSettings returns the Agent runtime settings, unset keys falling back
+ * to their defaults (AGENT_DESIGN.md §12).
+ */
+export function GetAgentSettings(): $CancellablePromise<llmconfig$0.AgentSettings> {
+    return $Call.ByName("catdb/internal/services.AgentSettingsService.GetAgentSettings").then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
  * GetDefaults returns the default Provider instance + model.
  */
 export function GetDefaults(): $CancellablePromise<$models.AgentDefaults> {
     return $Call.ByName("catdb/internal/services.AgentSettingsService.GetDefaults").then(($result: any) => {
-        return $$createType0($result);
+        return $$createType2($result);
     });
 }
 
@@ -47,11 +76,20 @@ export function HasProviderKey(id: string): $CancellablePromise<boolean> {
 }
 
 /**
+ * ListAudit returns one page of audit entries, most recent first.
+ */
+export function ListAudit(q: $models.AuditQuery): $CancellablePromise<$models.AuditPage> {
+    return $Call.ByName("catdb/internal/services.AgentSettingsService.ListAudit", q).then(($result: any) => {
+        return $$createType3($result);
+    });
+}
+
+/**
  * ListProviders returns all configured Provider instances (never any key).
  */
 export function ListProviders(): $CancellablePromise<llmconfig$0.ProviderConfig[]> {
     return $Call.ByName("catdb/internal/services.AgentSettingsService.ListProviders").then(($result: any) => {
-        return $$createType2($result);
+        return $$createType5($result);
     });
 }
 
@@ -62,8 +100,16 @@ export function ListProviders(): $CancellablePromise<llmconfig$0.ProviderConfig[
  */
 export function SaveProvider(p: llmconfig$0.ProviderConfig): $CancellablePromise<llmconfig$0.ProviderConfig> {
     return $Call.ByName("catdb/internal/services.AgentSettingsService.SaveProvider", p).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType4($result);
     });
+}
+
+/**
+ * SetAgentSettings persists all Agent runtime settings at once (privacy switch,
+ * limits, compaction, per-model pricing table).
+ */
+export function SetAgentSettings(settings: llmconfig$0.AgentSettings): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.AgentSettingsService.SetAgentSettings", settings);
 }
 
 /**
@@ -91,6 +137,9 @@ export function TestProvider(id: string, model: string): $CancellablePromise<voi
 }
 
 // Private type creation functions
-const $$createType0 = $models.AgentDefaults.createFrom;
-const $$createType1 = llmconfig$0.ProviderConfig.createFrom;
-const $$createType2 = $Create.Array($$createType1);
+const $$createType0 = $models.AuditExportResult.createFrom;
+const $$createType1 = llmconfig$0.AgentSettings.createFrom;
+const $$createType2 = $models.AgentDefaults.createFrom;
+const $$createType3 = $models.AuditPage.createFrom;
+const $$createType4 = llmconfig$0.ProviderConfig.createFrom;
+const $$createType5 = $Create.Array($$createType4);

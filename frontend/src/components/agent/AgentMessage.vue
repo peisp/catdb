@@ -32,12 +32,22 @@ const thinkingOpen = ref(false)
 <template>
   <!-- User -->
   <div v-if="entry.kind === 'user'" class="row user">
-    <div class="bubble user-bubble">{{ entry.text }}</div>
+    <div class="user-col">
+      <div v-if="entry.mentions && entry.mentions.length" class="mention-chips">
+        <span v-for="m in entry.mentions" :key="m" class="mention-chip">@{{ m }}</span>
+      </div>
+      <div class="bubble user-bubble">{{ entry.text }}</div>
+    </div>
   </div>
 
   <!-- System notice -->
   <div v-else-if="entry.kind === 'system'" class="row system">
     <span class="system-line">{{ entry.text }}</span>
+  </div>
+
+  <!-- Context-compacted notice line (§9) -->
+  <div v-else-if="entry.kind === 'compacted'" class="row system">
+    <span class="system-line">{{ entry.count != null ? $t('agent.compact.line', { n: entry.count }) : $t('agent.compact.lineGeneric') }}</span>
   </div>
 
   <!-- Assistant -->
@@ -63,6 +73,15 @@ const thinkingOpen = ref(false)
       <div v-if="entry.stopReason === 'max_iterations'" class="max-iter">
         {{ $t('agent.panel.maxIterations') }}
       </div>
+      <!-- Session token-budget hit (§4.1 / §9). -->
+      <div v-else-if="entry.stopReason === 'token_budget'" class="max-iter">
+        {{ $t('agent.panel.tokenBudget') }}
+      </div>
+
+      <!-- Delivery-contract warning (§6/§8): answer delivered but unvalidated. -->
+      <div v-if="entry.deliveryWarning" class="delivery-warn">
+        {{ $t('agent.panel.deliveryWarning') }}
+      </div>
     </div>
   </div>
 </template>
@@ -84,6 +103,29 @@ const thinkingOpen = ref(false)
   user-select: text;
   -webkit-user-select: text;
   cursor: text;
+}
+.user-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  max-width: 85%;
+  min-width: 0;
+}
+.user-col .bubble { max-width: 100%; }
+.mention-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+}
+.mention-chip {
+  font-size: var(--catdb-fs-mini);
+  color: var(--catdb-accent);
+  background: var(--catdb-accent-soft);
+  border-radius: var(--catdb-rounded-sm);
+  padding: 1px 6px;
+  white-space: nowrap;
 }
 .user-bubble {
   background: var(--catdb-accent-soft);
@@ -139,6 +181,15 @@ const thinkingOpen = ref(false)
   background: var(--catdb-accent-soft);
   font-size: var(--catdb-fs-small);
   color: var(--catdb-text-secondary);
+}
+
+.delivery-warn {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: var(--catdb-rounded-sm);
+  background: color-mix(in srgb, var(--catdb-warning) 12%, transparent);
+  font-size: var(--catdb-fs-small);
+  color: var(--catdb-warning);
 }
 
 /* Markdown prose */

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -286,6 +287,29 @@ func (s *Store) MarkMessagesCompacted(ctx context.Context, sessID string, upToSe
 		`UPDATE agent_messages SET compacted=1 WHERE session_id=? AND seq<=?`, sessID, upToSeq,
 	); err != nil {
 		return fmt.Errorf("storage: mark agent messages compacted: %w", err)
+	}
+	return nil
+}
+
+// MarkMessagesCompactedByID flags specific messages as folded. Used by the
+// compactor: after the first fold the logical order diverges from seq order
+// (summary rows have high seqs but sit early logically), so folding selects
+// by ID, not by a seq cutoff.
+func (s *Store) MarkMessagesCompactedByID(ctx context.Context, sessID string, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	q := `UPDATE agent_messages SET compacted=1 WHERE session_id=? AND id IN (?` +
+		strings.Repeat(",?", len(ids)-1) + `)`
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, sessID)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	if _, err := s.db.ExecContext(ctx, q, args...); err != nil {
+		return fmt.Errorf("storage: mark agent messages compacted by id: %w", err)
 	}
 	return nil
 }

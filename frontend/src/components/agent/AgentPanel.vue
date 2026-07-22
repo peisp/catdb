@@ -22,6 +22,7 @@ import { AGENT_SQL_ACTIONS, type AgentSqlActions } from './sqlActions'
 import { entryId, type ApprovalEntry, type AssistantEntry, type Entry, type PlanEntry, type ToolEntry } from './types'
 import * as agentApi from '../../api/agent'
 import type { AgentSession } from '../../api/agent'
+import { getAgentSettings, listProviders, type ModelPricing, type ProviderConfig } from '../../api/agentSettings'
 import { useQueryStore } from '../../stores/query'
 import { useMetadataStore } from '../../stores/metadata'
 import { openTextPrompt } from '../../api/prompts'
@@ -42,6 +43,15 @@ const sessions = ref<AgentSession[]>([])
 const entries = ref<Entry[]>([])
 const busy = ref(false)
 const tokens = ref(0)
+const tokensIn = ref(0)
+const tokensOut = ref(0)
+// Latest context watermark 0~1 (§9); undefined until the first usage event of a
+// turn (or when the model window is unknown) → the header bar stays hidden.
+const watermark = ref<number | undefined>(undefined)
+const compacting = ref(false)
+const pricing = ref<{ [k: string]: ModelPricing | undefined }>({})
+// Configured Provider instances — the session-header model selector's source (§10.1).
+const providers = ref<ProviderConfig[]>([])
 const errorBar = ref<{ slug: string; detail: string } | null>(null)
 const loading = ref(false)
 
@@ -51,6 +61,20 @@ const schemas = ref<string[]>([])
 const schemasSupported = ref(false)
 const currentDb = ref('')
 const currentSchema = ref('')
+// Table names of the current namespace, the @mention completion source (§10.3).
+const tableNames = ref<string[]>([])
+
+// Estimated cumulative cost (§9): session model's per-1M pricing × tokens.
+// null when the model has no pricing row → the header shows tokens only.
+const cost = computed<string | null>(() => {
+  const model = session.value?.model
+  if (!model) return null
+  const p = pricing.value[model]
+  if (!p) return null
+  const c = (tokensIn.value / 1e6) * (p.inputPer1M || 0) + (tokensOut.value / 1e6) * (p.outputPer1M || 0)
+  if (!(c > 0)) return null
+  return '$' + c.toFixed(4)
+})
 
 const mode = computed<'ask' | 'agent'>(() => (session.value?.mode === 'agent' ? 'agent' : 'ask'))
 const connectionName = computed(() => props.connection?.name ?? '')
@@ -119,7 +143,7 @@ function scheduleFlush() {
   })
 }
 
-function finalizeStreaming(stopReason?: string) {
+function finalizeStreaming(stopReason?: string, deliveryWarning?: boolean) {
   // Flush any buffered delta before we freeze the entries.
   if (pendingDelta) { ensureAssistant().text += pendingDelta; pendingDelta = '' }
   let lastAssistant: AssistantEntry | null = null
@@ -127,7 +151,15 @@ function finalizeStreaming(stopReason?: string) {
     if (e.kind === 'assistant' && e.streaming) { e.streaming = false; lastAssistant = e }
     else if (e.kind === 'assistant') lastAssistant = e
   }
-  if (lastAssistant && stopReason) lastAssistant.stopReason = stopReason
+  // token_budget / max_iterations (or a lone delivery warning) may fire before any
+  // text; ensure a host entry so the tail hint (AgentMessage) still renders.
+  const needHost = stopReason === 'token_budget' || stopReason === 'max_iterations' || deliveryWarning
+  if (!lastAssistant && needHost) {
+    lastAssistant = ensureAssistant()
+    lastAssistant.streaming = false
+  }
+  if (stopReason && lastAssistant) lastAssistant.stopReason = stopReason
+  if (deliveryWarning && lastAssistant) lastAssistant.deliveryWarning = true
 }
 
 function attachEvents(sessId: string) {
@@ -147,14 +179,24 @@ function attachEvents(sessId: string) {
       }
       scrollToBottom()
     },
-    onUsage: (e) => { tokens.value += (e.tokensIn || 0) + (e.tokensOut || 0) },
-    onDone: (e) => { finalizeStreaming(e.stopReason) },
+    onUsage: (e) => {
+      tokensIn.value += e.tokensIn || 0
+      tokensOut.value += e.tokensOut || 0
+      tokens.value = tokensIn.value + tokensOut.value
+      if (e.watermark != null) watermark.value = e.watermark
+    },
+    onCompacted: (e) => {
+      entries.value.push({ kind: 'compacted', id: entryId(), count: e.foldedCount })
+      if (e.after != null) watermark.value = e.after
+      scrollToBottom()
+    },
+    onDone: (e) => { finalizeStreaming(e.stopReason, e.deliveryWarning) },
     onError: (e) => { errorBar.value = { slug: e.slug, detail: e.detail }; finalizeStreaming() },
     onApproval: (e) => {
       entries.value.push({
         kind: 'approval', id: entryId(), approvalID: e.approvalID,
         sql: e.sql, class: e.class, verb: e.verb,
-        warning: e.warning, autoOffered: e.autoOffered, status: 'pending',
+        warning: e.warning, autoOffered: e.autoOffered, explain: e.explain, status: 'pending',
       })
       scrollToBottom()
     },
@@ -185,9 +227,16 @@ function historyToEntries(msgs: agentApi.AgentMessage[]): Entry[] {
   const out: Entry[] = []
   const toolById = new Map<string, ToolEntry>()
   for (const m of msgs) {
+    // Persisted summary rounds (§9) render as the same centered compacted line;
+    // the folded originals stay visible, so we add the line without hiding them.
+    if (m.role === 'summary') {
+      out.push({ kind: 'compacted', id: entryId() })
+      continue
+    }
     const c = agentApi.parseContent(m.content)
     if (m.role === 'user') {
-      out.push({ kind: 'user', id: entryId(), text: c.text ?? '' })
+      const mentions = (c.extra?.tables ?? []).map((tbl) => tbl.name).filter(Boolean)
+      out.push({ kind: 'user', id: entryId(), text: c.text ?? '', mentions: mentions.length ? mentions : undefined })
     } else if (m.role === 'assistant') {
       if ((c.text && c.text.trim()) || (c.thinking && c.thinking.trim())) {
         out.push({ kind: 'assistant', id: entryId(), text: c.text ?? '', thinking: c.thinking ?? '', streaming: false })
@@ -223,6 +272,18 @@ async function loadNamespace() {
   if (schemasSupported.value && currentDb.value) {
     try { schemas.value = await metaStore.ensureSchemas(conn.id, currentDb.value) } catch { schemas.value = [] }
   }
+  await loadTableNames()
+}
+
+// @mention completion source: table names of the current namespace (§10.3),
+// served from the metadata store's existing cache.
+async function loadTableNames() {
+  const conn = props.connection
+  if (!conn || !currentDb.value) { tableNames.value = []; return }
+  try {
+    const list = await metaStore.ensureTables(conn.id, currentDb.value, false, currentSchema.value)
+    tableNames.value = (list ?? []).map((tbl) => tbl.name)
+  } catch { tableNames.value = [] }
 }
 
 // --- session lifecycle ---
@@ -232,13 +293,19 @@ async function loadSession(s: AgentSession) {
   entries.value = []
   errorBar.value = null
   tokens.value = 0
+  tokensIn.value = 0
+  tokensOut.value = 0
+  watermark.value = undefined
+  compacting.value = false
   busy.value = false
   txPending.value = null
   txBusy.value = false
   try {
     const msgs = await agentApi.getMessages(s.id)
     entries.value = historyToEntries(msgs)
-    tokens.value = msgs.reduce((sum, m) => sum + (m.tokensIn ?? 0) + (m.tokensOut ?? 0), 0)
+    tokensIn.value = msgs.reduce((sum, m) => sum + (m.tokensIn ?? 0), 0)
+    tokensOut.value = msgs.reduce((sum, m) => sum + (m.tokensOut ?? 0), 0)
+    tokens.value = tokensIn.value + tokensOut.value
   } catch (e) {
     errorBar.value = { slug: '', detail: String(e) }
   }
@@ -254,6 +321,8 @@ async function init() {
   entries.value = []
   if (!conn) return
   loading.value = true
+  try { pricing.value = (await getAgentSettings()).pricing ?? {} } catch { pricing.value = {} }
+  try { providers.value = (await listProviders()) ?? [] } catch { providers.value = [] }
   try {
     const list = await agentApi.listSessions(conn.id)
     sessions.value = list ?? []
@@ -272,14 +341,14 @@ async function init() {
 }
 
 // --- actions ---
-function onSend(text: string) {
+function onSend(text: string, mentions: string[] = []) {
   const s = session.value
   if (!s || busy.value || txPending.value) return
   errorBar.value = null
-  entries.value.push({ kind: 'user', id: entryId(), text })
+  entries.value.push({ kind: 'user', id: entryId(), text, mentions: mentions.length ? mentions : undefined })
   busy.value = true
   scrollToBottom()
-  const h = agentApi.sendMessage(s.id, text)
+  const h = agentApi.sendMessage(s.id, text, mentions)
   currentSend = h
   h.done
     .catch((err: unknown) => {
@@ -296,6 +365,21 @@ function onSend(text: string) {
 function onStop() {
   currentSend?.stop()
   busy.value = false
+}
+
+// --- manual context compaction (§9) ---
+async function onCompact() {
+  const s = session.value
+  if (!s || compacting.value) return
+  compacting.value = true
+  try {
+    // The compacted line + watermark update arrive via the agent:compacted event.
+    await agentApi.compact(s.id)
+  } catch (e) {
+    message.error(String(e))
+  } finally {
+    compacting.value = false
+  }
 }
 
 // --- approval / plan resolution (mutate the reactive entry in place) ---
@@ -431,6 +515,7 @@ async function onChangeDb(db: string) {
   }
   try { await agentApi.setNamespace(s.id, db, '') } catch { /* best-effort */ }
   s.currentDb = db
+  await loadTableNames()
   entries.value.push({ kind: 'system', id: entryId(), text: t('agent.panel.nsSwitched', { ns: db }) })
   scrollToBottom()
 }
@@ -440,9 +525,25 @@ async function onChangeSchema(schema: string) {
   currentSchema.value = schema
   try { await agentApi.setNamespace(s.id, currentDb.value, schema) } catch { /* best-effort */ }
   s.currentSchema = schema
+  await loadTableNames()
   const ns = [currentDb.value, schema].filter(Boolean).join('.')
   entries.value.push({ kind: 'system', id: entryId(), text: t('agent.panel.nsSwitched', { ns }) })
   scrollToBottom()
+}
+// Switch the session's provider/model (§10.1). Takes effect next turn; on
+// success mirror it onto the local session and drop a system notice line.
+async function onChangeModel(providerId: string, model: string) {
+  const s = session.value
+  if (!s || (s.providerId === providerId && s.model === model)) return
+  try {
+    await agentApi.setSessionModel(s.id, providerId, model)
+    s.providerId = providerId
+    s.model = model
+    entries.value.push({ kind: 'system', id: entryId(), text: t('agent.panel.modelSwitched', { model }) })
+    scrollToBottom()
+  } catch (e) {
+    message.error(String(e))
+  }
 }
 async function onChangeMode(m: 'ask' | 'agent') {
   const s = session.value
@@ -542,7 +643,11 @@ watch(() => props.connection?.id, () => { void init() })
         :current-db="currentDb"
         :current-schema="currentSchema"
         :tokens="tokens"
+        :watermark="watermark"
+        :cost="cost"
+        :compacting="compacting"
         :mode="mode"
+        :providers="providers"
         @new-session="onNewSession"
         @select-session="onSelectSession"
         @rename-session="onRenameSession"
@@ -550,6 +655,8 @@ watch(() => props.connection?.id, () => { void init() })
         @change-db="onChangeDb"
         @change-schema="onChangeSchema"
         @change-mode="onChangeMode"
+        @change-model="onChangeModel"
+        @compact="onCompact"
       />
 
       <div ref="scrollerRef" class="messages">
@@ -594,7 +701,7 @@ watch(() => props.connection?.id, () => { void init() })
         @update="onChangeGrants"
       />
 
-      <AgentComposer :busy="busy" :disabled="!session || !!txPending" @send="onSend" @stop="onStop" />
+      <AgentComposer :busy="busy" :disabled="!session || !!txPending" :tables="tableNames" @send="onSend" @stop="onStop" />
     </template>
   </aside>
 </template>

@@ -142,7 +142,7 @@ func TestTextOnlyTurn(t *testing.T) {
 	e, store, log := newTestEngine(t, p)
 	sess := newTestSession(t, store)
 
-	if err := e.Send(context.Background(), sess.ID, "hi"); err != nil {
+	if err := e.Send(context.Background(), sess.ID, "hi", nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := log.count("agent:delta"); got != 2 {
@@ -188,7 +188,7 @@ func TestToolCallRound(t *testing.T) {
 	e, store, log := newTestEngine(t, p)
 	sess := newTestSession(t, store)
 
-	if err := e.Send(context.Background(), sess.ID, "shop 库有哪些表"); err != nil {
+	if err := e.Send(context.Background(), sess.ID, "shop 库有哪些表", nil); err != nil {
 		t.Fatal(err)
 	}
 	// user, assistant(tool call), tool result, assistant(final)
@@ -257,7 +257,7 @@ func TestUnknownToolBecomesError(t *testing.T) {
 	)
 	e, store, _ := newTestEngine(t, p)
 	sess := newTestSession(t, store)
-	if err := e.Send(context.Background(), sess.ID, "x"); err != nil {
+	if err := e.Send(context.Background(), sess.ID, "x", nil); err != nil {
 		t.Fatal(err)
 	}
 	msgs, _ := store.ListAgentMessages(context.Background(), sess.ID)
@@ -284,7 +284,7 @@ func TestIterationCap(t *testing.T) {
 	e.maxIterations = 3
 	sess := newTestSession(t, store)
 
-	if err := e.Send(context.Background(), sess.ID, "x"); err != nil {
+	if err := e.Send(context.Background(), sess.ID, "x", nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.Requests) != 3 {
@@ -308,7 +308,7 @@ func TestConcurrentSendRejected(t *testing.T) {
 	if err := e.begin(sess.ID, func() {}); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.Send(context.Background(), sess.ID, "x"); err == nil {
+	if err := e.Send(context.Background(), sess.ID, "x", nil); err == nil {
 		t.Fatal("want busy error")
 	}
 }
@@ -323,16 +323,16 @@ func TestCancelStopsLoop(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := e.Send(ctx, sess.ID, "x"); err == nil {
+	if err := e.Send(ctx, sess.ID, "x", nil); err == nil {
 		t.Fatal("want ctx error")
 	}
 }
 
 func TestSystemPromptAndTools(t *testing.T) {
-	p := llmtest.New("fake", []llm.Event{llm.Stop{Reason: llm.StopEndTurn}})
+	p := llmtest.New("fake", []llm.Event{llm.TextDelta{Text: "ok"}, llm.Stop{Reason: llm.StopEndTurn}})
 	e, store, _ := newTestEngine(t, p)
 	sess := newTestSession(t, store)
-	if err := e.Send(context.Background(), sess.ID, "x"); err != nil {
+	if err := e.Send(context.Background(), sess.ID, "x", nil); err != nil {
 		t.Fatal(err)
 	}
 	req := p.Requests[0]
@@ -350,6 +350,37 @@ func TestSystemPromptAndTools(t *testing.T) {
 	// run_sql must never be registered in ask mode (M1 has no run_sql at all).
 	if names["run_sql"] {
 		t.Fatal("run_sql must not be registered")
+	}
+}
+
+func TestMentionsInjectedAndPinned(t *testing.T) {
+	p := llmtest.New("fake", []llm.Event{llm.TextDelta{Text: "见结构。"}, llm.Stop{Reason: llm.StopEndTurn}})
+	e, store, _ := newTestEngine(t, p)
+	sess := newTestSession(t, store)
+
+	if err := e.Send(context.Background(), sess.ID, "orders 表怎么查", []string{"orders"}); err != nil {
+		t.Fatal(err)
+	}
+	// The request's user message carries the fetched structure.
+	req := p.Requests[0]
+	um := req.Messages[len(req.Messages)-1]
+	if um.Role != llm.RoleUser || !strings.Contains(um.Text, "Referenced table structures") ||
+		!strings.Contains(um.Text, `"total"`) {
+		t.Fatalf("mention structure not injected: %q", um.Text)
+	}
+	// The message is pinned in logical order.
+	logical, err := e.loadLogical(context.Background(), sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pinned bool
+	for _, m := range logical {
+		if m.rec.Role == "user" && len(m.content.Extra) > 0 {
+			pinned = m.pinned
+		}
+	}
+	if !pinned {
+		t.Fatal("mention message must be pinned")
 	}
 }
 

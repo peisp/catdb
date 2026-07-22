@@ -13,6 +13,63 @@ import * as dbdriver$0 from "../dbdriver/models.js";
 import * as time$0 from "../../../time/models.js";
 
 /**
+ * AgentAuditEntry is one audited statement execution (§5 "审计"). Rows and
+ * DurationMS are nil when not applicable (e.g. a rejected statement never
+ * ran). Error is "" when Status is not "error".
+ */
+export class AgentAuditEntry {
+    "id": string;
+    "sessionId": string;
+    "connId": string;
+    "sql": string;
+    "class": string;
+    "approval": string;
+    "rows"?: number | null;
+    "durationMs"?: number | null;
+    "status": string;
+    "error"?: string;
+    "createdAt": time$0.Time;
+
+    /** Creates a new AgentAuditEntry instance. */
+    constructor($$source: Partial<AgentAuditEntry> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("sessionId" in $$source)) {
+            this["sessionId"] = "";
+        }
+        if (!("connId" in $$source)) {
+            this["connId"] = "";
+        }
+        if (!("sql" in $$source)) {
+            this["sql"] = "";
+        }
+        if (!("class" in $$source)) {
+            this["class"] = "";
+        }
+        if (!("approval" in $$source)) {
+            this["approval"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("createdAt" in $$source)) {
+            this["createdAt"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AgentAuditEntry instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AgentAuditEntry {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AgentAuditEntry($$parsedSource as Partial<AgentAuditEntry>);
+    }
+}
+
+/**
  * AgentMessage is one turn in a session's message log (role: user | assistant
  * | tool). Content holds the raw JSON blob the agent package already
  * serialized (text/tool-call/tool-result) — storage does not interpret it.

@@ -31,8 +31,20 @@ export interface ToolEvent {
   summary?: string
 }
 export interface UsageEvent { sessId: string; seq?: number; tokensIn: number; tokensOut: number; watermark?: number }
-export interface DoneEvent { sessId: string; seq?: number; stopReason: string }
+// deliveryWarning is set when the final answer was delivered despite failing the
+// delivery-contract check (§6/§8) — the UI shows a soft warning line.
+export interface DoneEvent { sessId: string; seq?: number; stopReason: string; deliveryWarning?: boolean }
 export interface ErrorEvent { sessId: string; seq?: number; slug: string; detail: string }
+
+// Context was compacted (§9). Manual Compact() carries no seq — the reorder
+// layer flushes it immediately; automatic compaction rides the turn's seq.
+export interface CompactedEvent {
+  sessId: string
+  seq?: number
+  before: number
+  after: number
+  foldedCount: number
+}
 
 // Statement approval (§5 gate 4). warning may be "no-where-clause" — the card
 // turns into a red warning with second-confirm semantics; autoOffered gates the
@@ -46,6 +58,9 @@ export interface ApprovalEvent {
   verb: string
   warning?: string
   autoOffered?: boolean
+  // EXPLAIN estimate for the statement (§5 gate 4), a JSON string when the driver
+  // has ExplainPlan capability; may be empty. Rendered as a collapsible region.
+  explain?: string
 }
 
 // Task plan awaiting approval (§6 task contract).
@@ -192,15 +207,20 @@ export function cancel(sessId: string): Promise<void> {
   return Promise.resolve(AgentService.Cancel(sessId))
 }
 
+/** Manually fold the session's early rounds into a summary (§9). Emits agent:compacted. */
+export function compact(sessId: string): Promise<void> {
+  return Promise.resolve(AgentService.Compact(sessId))
+}
+
 /**
  * Run one agent turn. Returns a handle whose `done` promise settles when the
  * turn ends and whose `stop()` aborts it — mirroring the api/query cancel
  * pattern: cancelling the front-end promise routes to the Go ctx, and we also
  * fire Cancel so the loop is torn down even if the promise is already settled.
  */
-export function sendMessage(sessId: string, text: string): { done: Promise<void>; stop: () => void } {
+export function sendMessage(sessId: string, text: string, mentions: string[] = []): { done: Promise<void>; stop: () => void } {
   resetOrder(sessId) // each turn's seq restarts at 0 (fresh emitter per run)
-  const p = AgentService.SendMessage(sessId, text)
+  const p = AgentService.SendMessage(sessId, text, mentions)
   return {
     done: Promise.resolve(p as PromiseLike<void>),
     stop: () => {
@@ -217,6 +237,7 @@ export interface AgentEventHandlers {
   onThinking?: (e: ThinkingEvent) => void
   onTool?: (e: ToolEvent) => void
   onUsage?: (e: UsageEvent) => void
+  onCompacted?: (e: CompactedEvent) => void
   onDone?: (e: DoneEvent) => void
   onError?: (e: ErrorEvent) => void
   onApproval?: (e: ApprovalEvent) => void
@@ -242,6 +263,7 @@ export function subscribe(sessId: string, handlers: AgentEventHandlers): () => v
   bind<ThinkingEvent>('agent:thinking', handlers.onThinking)
   bind<ToolEvent>('agent:tool', handlers.onTool)
   bind<UsageEvent>('agent:usage', handlers.onUsage)
+  bind<CompactedEvent>('agent:compacted', handlers.onCompacted)
   bind<DoneEvent>('agent:done', handlers.onDone)
   bind<ErrorEvent>('agent:error', handlers.onError)
   bind<ApprovalEvent>('agent:approval', handlers.onApproval)
@@ -263,6 +285,9 @@ export interface MessageContent {
   thinking?: string
   toolCalls?: StoredCall[]
   result?: StoredResult
+  // @table mentions the user attached to this turn (§10.3), rendered as chips
+  // above the user bubble on history restore.
+  extra?: { tables?: { name: string }[] }
 }
 
 export function parseContent(raw: string): MessageContent {

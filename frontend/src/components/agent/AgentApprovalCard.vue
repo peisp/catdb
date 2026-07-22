@@ -7,6 +7,8 @@
 // autoOffered) / reject (inline, optional reason). Once decided the card
 // freezes into a status line and the buttons disappear.
 import { computed, ref } from 'vue'
+import AppIcon from '../shared/AppIcon.vue'
+import chevronDownIcon from '../../assets/icons/chevron-down.svg?raw'
 import { highlightSql } from './markdown'
 import { t } from '../../i18n'
 import type { ApprovalEntry } from './types'
@@ -20,6 +22,19 @@ const emit = defineEmits<{
 const html = computed(() => highlightSql(props.entry.sql))
 const danger = computed(() => props.entry.warning === 'no-where-clause')
 const pending = computed(() => props.entry.status === 'pending')
+
+// EXPLAIN estimate (§5 gate 4): pretty-print the JSON payload; fall back to the
+// raw string when it does not parse. Empty → the region hides.
+const explainText = computed(() => {
+  const raw = props.entry.explain
+  if (!raw || !raw.trim()) return ''
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2)
+  } catch {
+    return raw
+  }
+})
+const explainOpen = ref(false)
 
 const rejecting = ref(false)
 const reason = ref('')
@@ -43,6 +58,15 @@ const badge = computed(() => {
     </div>
 
     <pre class="sql mono"><code v-html="html" /></pre>
+
+    <!-- EXPLAIN estimate (collapsible). Hidden when the payload is empty. -->
+    <div v-if="explainText" class="explain">
+      <button type="button" class="explain-head" @click="explainOpen = !explainOpen">
+        <AppIcon :src="chevronDownIcon" :size="11" class="caret" :class="{ open: explainOpen }" />
+        {{ $t('agent.approval.explainTitle') }}
+      </button>
+      <pre v-if="explainOpen" class="explain-body mono">{{ explainText }}</pre>
+    </div>
 
     <div v-if="danger" class="warning">{{ $t('agent.approval.noWhere') }}</div>
 
@@ -135,6 +159,36 @@ const badge = computed(() => {
   cursor: text;
 }
 .sql :deep(.kw) { color: var(--catdb-accent); font-weight: 600; }
+
+.explain { margin-top: 6px; }
+.explain-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: var(--catdb-fs-mini);
+  color: var(--catdb-text-secondary);
+  cursor: default;
+  padding: 0;
+}
+.caret { transition: transform 130ms ease-out; opacity: 0.6; }
+.caret.open { transform: rotate(180deg); }
+.explain-body {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  border-radius: var(--catdb-rounded-xs);
+  background: var(--catdb-surface-chrome);
+  overflow-x: auto;
+  font-size: var(--catdb-fs-mono-small);
+  line-height: 1.5;
+  color: var(--catdb-text-secondary);
+  white-space: pre;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
 
 .warning {
   margin-top: 6px;

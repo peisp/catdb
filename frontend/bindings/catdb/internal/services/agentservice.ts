@@ -39,6 +39,13 @@ export function CommitTx(sessID: string): $CancellablePromise<void> {
 }
 
 /**
+ * Compact manually folds the session's early rounds into a summary (§9).
+ */
+export function Compact(sessID: string): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.AgentService.Compact", sessID);
+}
+
+/**
  * CreateSession opens a new session bound to connID. mode is "ask" or
  * "agent"; provider/model default from settings when empty.
  */
@@ -96,11 +103,12 @@ export function RollbackTx(sessID: string): $CancellablePromise<void> {
 }
 
 /**
- * SendMessage runs one agent turn. It blocks until the turn completes;
- * cancelling the front-end promise aborts the loop (LLM stream + queries).
+ * SendMessage runs one agent turn. mentions are @table chips (§10.3) resolved
+ * against the session's current namespace. It blocks until the turn
+ * completes; cancelling the front-end promise aborts the loop.
  */
-export function SendMessage(sessID: string, text: string): $CancellablePromise<void> {
-    return $Call.ByName("catdb/internal/services.AgentService.SendMessage", sessID, text);
+export function SendMessage(sessID: string, text: string, mentions: string[]): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.AgentService.SendMessage", sessID, text, mentions);
 }
 
 /**
