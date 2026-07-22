@@ -74,6 +74,7 @@ func buildSystemPrompt(env promptEnv) string {
 	if env.locale != "" {
 		fmt.Fprintf(&b, "- Answer in the user's interface language: %s (unless the user writes in a different language).\n", env.locale)
 	}
+	b.WriteString("- Answer precisely the question that was asked and stay within its scope. Do not digress: no unsolicited suggestions, alternatives, background explanations, or follow-up topics unless the user asks for them. Keep answers focused and concise.\n")
 	b.WriteString("- Structure final answers as: conclusion first, then the SQL block (if any), then key data, then caveats.\n")
 	return b.String()
 }
