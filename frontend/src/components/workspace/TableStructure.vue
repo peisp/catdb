@@ -477,7 +477,8 @@ const newApplyDisabled = computed(() => {
   border-bottom: 1px solid var(--catdb-separator);
 }
 .group-tabs :deep(.n-tabs-rail) {
-  min-width: 0;
+  /* 窄宽场景（如 Agent 面板打开）：轨道不低于分段内容宽度，防止标签挤变形。 */
+  min-width: max-content;
   margin: 0 6px;
   width: 50%;
   height: 80%;
@@ -494,6 +495,7 @@ const newApplyDisabled = computed(() => {
 .group-tabs :deep(.n-tabs-tab) {
   padding: 2px 14px;
   font-size: 12px;
+  white-space: nowrap;
   border-radius: 8px;
   font-weight: 500;
   color: inherit;

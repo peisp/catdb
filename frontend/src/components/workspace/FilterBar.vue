@@ -455,7 +455,9 @@ watch(
   font-size: var(--catdb-fs-small);
   position: relative;
   flex: 1 1 0;
-  min-width: 0;
+  /* 窄宽场景（如 Agent 面板打开）：整条过滤区不再无限收缩，
+     低于此宽度时 actionbar 尾部控件溢出裁切，输入框不挤变形。 */
+  min-width: 320px;
   z-index: 10;
 }
 
@@ -464,7 +466,7 @@ watch(
   align-items: center;
   gap: 6px;
   flex: 1 1 0;
-  min-width: 0;
+  min-width: 110px;
   height: 24px;
   position: relative;
   background: var(--catdb-surface-content);

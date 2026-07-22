@@ -313,6 +313,8 @@ watch(selectedTable, () => { if (ddlPanelOpen.value) void loadDdl() })
   min-width: 0;
   flex: 0 0 auto;
 }
+/* 窄宽场景（如 Agent 面板打开）：控件保持原始宽度，溢出被 .to 裁切而非挤变形。 */
+.toolbar > * { flex-shrink: 0; }
 .title { font-size: var(--catdb-fs-small); }
 .mute { opacity: 0.55; font-size: var(--catdb-fs-mini); }
 .grow { flex: 1 1 auto; }

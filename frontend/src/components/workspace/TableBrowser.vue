@@ -843,6 +843,9 @@ async function loadDdl() {
   min-width: 0;
   flex: 0 0 auto;
 }
+/* 窄宽场景（如 Agent 面板打开）：按钮/下拉保持原始宽度，溢出被 .tb 裁切而非挤变形。 */
+.actionbar > .n-button,
+.actionbar > .export-select { flex: 0 0 auto; }
 .ab-btn {
   display: inline-flex;
   align-items: center;
