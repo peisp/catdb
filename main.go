@@ -52,7 +52,9 @@ func main() {
 	}
 	defer store.Close()
 
-	secrets := storage.NewSecrets("catdb")
+	// Empty service name → storage's build-tag default ("catdb" / "catdb-dev"),
+	// keeping dev keyring entries separate from a production install.
+	secrets := storage.NewSecrets("")
 	mgr := session.NewManager(store, secrets)
 	defer mgr.CloseAll()
 

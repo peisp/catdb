@@ -14,10 +14,10 @@ import (
 type Secrets struct{ service string }
 
 // NewSecrets returns a Secrets that stores under the given service name
-// (default "catdb").
+// (default: the build-tag appName — "catdb" in production, "catdb-dev" in dev).
 func NewSecrets(service string) *Secrets {
 	if service == "" {
-		service = "catdb"
+		service = appName
 	}
 	return &Secrets{service: service}
 }

@@ -13,10 +13,10 @@ import (
 	"path/filepath"
 )
 
-const appDirName = "catdb"
-
 // AppConfigDir returns the platform-appropriate user-config dir for catdb and
 // ensures it exists. Used for the SQLite database, future preferences, etc.
+// Dev builds use "catdb-dev" instead (see appname_dev.go) so development data
+// never mixes with a production install.
 //
 //	macOS:   ~/Library/Application Support/catdb
 //	Linux:   $XDG_CONFIG_HOME/catdb  (or ~/.config/catdb)
@@ -26,7 +26,7 @@ func AppConfigDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("storage: locate user config dir: %w", err)
 	}
-	dir := filepath.Join(base, appDirName)
+	dir := filepath.Join(base, appName)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("storage: create %s: %w", dir, err)
 	}

@@ -33,7 +33,7 @@ type Manager struct {
 }
 
 // NewManager wires up the dependencies. store + secrets are required —
-// callers should usually pass storage.Open(...) and storage.NewSecrets("catdb").
+// callers should usually pass storage.Open(...) and storage.NewSecrets("").
 func NewManager(store *storage.Store, secrets *storage.Secrets) *Manager {
 	return &Manager{
 		store:   store,
