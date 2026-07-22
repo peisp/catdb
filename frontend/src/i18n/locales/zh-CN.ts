@@ -735,6 +735,7 @@ export default {
       searchPlaceholder: '搜索对话…',
       noMatches: '没有匹配的会话',
       untitled: '未命名会话',
+      selectConn: '选择连接',
       selectDb: '数据库',
       selectSchema: 'Schema',
       selectModel: '模型',

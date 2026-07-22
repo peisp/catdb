@@ -744,6 +744,7 @@ export default {
       searchPlaceholder: 'Search sessions…',
       noMatches: 'No matching sessions',
       untitled: 'Untitled session',
+      selectConn: 'Select connection',
       selectDb: 'Database',
       selectSchema: 'Schema',
       selectModel: 'Model',

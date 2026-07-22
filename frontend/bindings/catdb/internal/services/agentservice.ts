@@ -121,6 +121,15 @@ export function SendMessage(sessID: string, text: string, mentions: string[]): $
 }
 
 /**
+ * SetConnection rebinds a message-less session to another connection (a new
+ * conversation may pick its connection freely, §10.2); once the conversation
+ * has history the binding is fixed.
+ */
+export function SetConnection(sessID: string, connID: string): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.AgentService.SetConnection", sessID, connID);
+}
+
+/**
  * SetGrants replaces the session's statement grants (§5 gate 3).
  */
 export function SetGrants(sessID: string, grants: string[]): $CancellablePromise<void> {

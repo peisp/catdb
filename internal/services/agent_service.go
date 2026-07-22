@@ -91,6 +91,16 @@ func (s *AgentService) SetGrants(ctx context.Context, sessID string, grants []st
 	return s.updateMeta(ctx, sessID, func(m *storage.AgentSessionMeta) { m.Grants = grants })
 }
 
+// SetConnection rebinds a message-less session to another connection (a new
+// conversation may pick its connection freely, §10.2); once the conversation
+// has history the binding is fixed.
+func (s *AgentService) SetConnection(ctx context.Context, sessID, connID string) error {
+	if connID == "" {
+		return fmt.Errorf("AgentService: empty connId")
+	}
+	return s.store.SetAgentSessionConn(ctx, sessID, connID)
+}
+
 // SetNamespace switches the session's selected database/schema (§10.2).
 func (s *AgentService) SetNamespace(ctx context.Context, sessID, db, schema string) error {
 	return s.updateMeta(ctx, sessID, func(m *storage.AgentSessionMeta) {

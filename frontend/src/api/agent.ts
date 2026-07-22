@@ -198,6 +198,11 @@ export function rollbackTx(sessId: string): Promise<void> {
   return Promise.resolve(AgentService.RollbackTx(sessId))
 }
 
+/** Rebind a message-less session to another connection (§10.2 new-conversation picker). */
+export function setConnection(sessId: string, connId: string): Promise<void> {
+  return Promise.resolve(AgentService.SetConnection(sessId, connId))
+}
+
 /** Switch the session's selected database/schema (§10.2). */
 export function setNamespace(sessId: string, db: string, schema = ''): Promise<void> {
   return Promise.resolve(AgentService.SetNamespace(sessId, db, schema))

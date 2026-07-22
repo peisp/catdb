@@ -194,6 +194,37 @@ func (s *Store) UpdateAgentSessionMeta(ctx context.Context, id string, meta Agen
 	return nil
 }
 
+// SetAgentSessionConn rebinds a session to another connection and clears its
+// selected namespace. Only message-less sessions may be rebound — once a
+// conversation has history it stays with its original connection (§10.2).
+func (s *Store) SetAgentSessionConn(ctx context.Context, id, connID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if connID == "" {
+		return fmt.Errorf("storage: set agent session conn: connId is required")
+	}
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE agent_sessions SET conn_id=?, current_db=NULL, current_schema=NULL, updated_at=?
+		WHERE id=? AND NOT EXISTS (SELECT 1 FROM agent_messages WHERE session_id=agent_sessions.id)`,
+		connID, time.Now().Unix(), id)
+	if err != nil {
+		return fmt.Errorf("storage: set agent session conn: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		var exists bool
+		if err := s.db.QueryRowContext(ctx,
+			`SELECT EXISTS(SELECT 1 FROM agent_sessions WHERE id=?)`, id).Scan(&exists); err != nil {
+			return fmt.Errorf("storage: set agent session conn: %w", err)
+		}
+		if !exists {
+			return ErrNotFound
+		}
+		return fmt.Errorf("storage: set agent session conn: session already has messages")
+	}
+	return nil
+}
+
 // DeleteAgentSession removes a session and cascades its messages (FK ON
 // DELETE CASCADE). Audit entries are intentionally preserved — agent_audit
 // has no FK back to agent_sessions (see migrate()).

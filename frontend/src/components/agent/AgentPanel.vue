@@ -19,8 +19,8 @@ import AgentGrants from './AgentGrants.vue'
 import AgentComposer, { INPUT_MAX_H, INPUT_MIN_H } from './AgentComposer.vue'
 import AppIcon from '../shared/AppIcon.vue'
 import botIcon from '../../assets/icons/bot.svg?raw'
-import databaseIcon from '../../assets/icons/database.svg?raw'
 import lockIcon from '../../assets/icons/lock.svg?raw'
+import { driverLogo } from '../../assets/logo'
 import { AGENT_SQL_ACTIONS, type AgentSqlActions } from './sqlActions'
 import { entryId, type ApprovalEntry, type AssistantEntry, type Entry, type PlanEntry, type ToolEntry } from './types'
 import * as agentApi from '../../api/agent'
@@ -100,6 +100,11 @@ const panelConn = computed<ConnectionProfile | null>(() => {
 // Orphan session: bound connection deleted → read-only archive (§10.2).
 const orphan = computed(() => !!session.value && !panelConn.value)
 const connectionName = computed(() => panelConn.value?.name ?? '')
+// A NEW conversation may pick its connection freely (§10.2); once real
+// messages exist (system notice lines don't count) the binding is fixed —
+// the backend enforces the same rule on persisted messages.
+const hasMessages = computed(() => entries.value.some((e) => e.kind !== 'system'))
+const canPickConn = computed(() => !!session.value && !busy.value && !hasMessages.value)
 // Databases with the object tree's schema filter applied — the panel shows
 // the same visible set as the tree / query-tab dropdowns, live-updating when
 // the filter changes.
@@ -701,6 +706,28 @@ async function onDeleteSession(id: string) {
   }
 }
 
+// Rebind a fresh conversation to another connection (§10.2). Namespace state
+// resets; loadNamespace stays lazy — it only fetches if the new connection is
+// already live, otherwise the db selector's pointerdown connects on demand.
+async function onChangeConn(connId: string) {
+  const s = session.value
+  if (!s || connId === s.connId) return
+  try {
+    await agentApi.setConnection(s.id, connId)
+  } catch (e) {
+    message.error(String(e))
+    return
+  }
+  s.connId = connId
+  s.currentDb = ''
+  s.currentSchema = ''
+  allDatabases.value = []
+  schemas.value = []
+  tableNames.value = []
+  schemasSupported.value = false
+  await loadNamespace()
+}
+
 async function onChangeDb(db: string) {
   const s = session.value
   if (!s || db === currentDb.value) return
@@ -933,17 +960,30 @@ onBeforeUnmount(() => {
         />
         <div v-if="orphan" class="dock-hint">{{ $t('agent.panel.orphanHint') }}</div>
 
-        <!-- Connection + namespace context, above the input box. -->
+        <!-- Connection + namespace context, above the input box. The database
+             selector follows the connection inline (left-aligned, not pushed
+             to the right edge); a driver logo marks the connection's type. -->
         <div class="ctx-row">
-          <span class="conn" :title="orphan ? $t('agent.panel.connDeleted') : connectionName">
-            <AppIcon :src="databaseIcon" :size="13" />
+          <AppIcon class="conn-logo" :src="driverLogo(panelConn?.driver ?? '')" :size="14" />
+          <!-- A fresh conversation picks its connection freely; once messages
+               exist the binding is fixed and renders as a plain label. -->
+          <select
+            v-if="canPickConn"
+            class="ns-select conn-select"
+            :value="session?.connId ?? ''"
+            :title="$t('agent.panel.selectConn')"
+            @change="onChangeConn(($event.target as HTMLSelectElement).value)"
+          >
+            <option v-if="orphan" :value="session?.connId ?? ''" disabled>{{ $t('agent.panel.connDeleted') }}</option>
+            <option v-for="c in connStore.connections" :key="c.id" :value="c.id">{{ c.name }}</option>
+          </select>
+          <span v-else class="conn" :title="orphan ? $t('agent.panel.connDeleted') : connectionName">
             <span class="conn-name" :class="{ deleted: orphan }">{{ orphan ? $t('agent.panel.connDeleted') : connectionName }}</span>
           </span>
           <span v-if="!orphan" class="env-badge" :class="`env-${envKind}`" :title="envTooltip">
             <AppIcon v-if="envKind === 'prod'" :src="lockIcon" :size="11" />
             <span class="env-text">{{ envLabel }}</span>
           </span>
-          <span class="spacer" />
           <select
             class="ns-select"
             :value="currentDb"
@@ -966,6 +1006,7 @@ onBeforeUnmount(() => {
             <option value="" disabled>{{ $t('agent.panel.selectSchema') }}</option>
             <option v-for="sc in schemas" :key="sc" :value="sc">{{ sc }}</option>
           </select>
+          <span class="spacer" />
         </div>
 
         <AgentComposer
@@ -1122,10 +1163,11 @@ onBeforeUnmount(() => {
 }
 .spacer { flex: 1 1 0; min-width: 0; }
 
+.conn-logo { flex: 0 0 auto; }
+.conn-select { max-width: 130px; }
 .conn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
   min-width: 0;
   max-width: 130px;
 }
