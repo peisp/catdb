@@ -94,6 +94,15 @@ func RouteBegin(ctx context.Context, conn Connection, db string, opts *TxOptions
 	return conn.Begin(ctx, opts)
 }
 
+// StatementClassifier is an OPTIONAL extension a driver's Dialect may
+// implement to override classification of dialect-specific statements the
+// generic lexical classifier can't know (PG's COPY, MySQL's LOAD DATA).
+// Returning Class ClassUnknown hands the statement back to the generic
+// classifier. Probed by type assertion, same pattern as BulkMetadata.
+type StatementClassifier interface {
+	ClassifyStatement(sql string) StatementClassification
+}
+
 // Querier runs SQL on a Connection or Tx.
 //
 // All methods MUST honor ctx — long-running queries must be cancellable from

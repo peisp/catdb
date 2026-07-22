@@ -39,6 +39,10 @@ func init() {
 	application.RegisterEvent[map[string]any]("agent:usage")
 	application.RegisterEvent[map[string]any]("agent:done")
 	application.RegisterEvent[map[string]any]("agent:error")
+	application.RegisterEvent[map[string]any]("agent:approval")
+	application.RegisterEvent[map[string]any]("agent:plan")
+	application.RegisterEvent[map[string]any]("agent:tx-pending")
+	application.RegisterEvent[map[string]any]("agent:result")
 }
 
 func main() {

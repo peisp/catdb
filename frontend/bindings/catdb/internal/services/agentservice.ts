@@ -17,10 +17,25 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as storage$0 from "../storage/models.js";
 
 /**
+ * Approve resolves a pending statement approval or task plan.
+ * scope: "once" | "task-verb" (auto-approve same verb for the rest of the task).
+ */
+export function Approve(approvalID: string, scope: string): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.AgentService.Approve", approvalID, scope);
+}
+
+/**
  * Cancel stops the session's running loop, if any.
  */
 export function Cancel(sessID: string): $CancellablePromise<void> {
     return $Call.ByName("catdb/internal/services.AgentService.Cancel", sessID);
+}
+
+/**
+ * CommitTx commits the session's pending task transaction.
+ */
+export function CommitTx(sessID: string): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.AgentService.CommitTx", sessID);
 }
 
 /**
@@ -60,10 +75,24 @@ export function ListSessions(connID: string): $CancellablePromise<storage$0.Agen
 }
 
 /**
+ * Reject declines a pending approval; reason (optional) is fed back to the model.
+ */
+export function Reject(approvalID: string, reason: string): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.AgentService.Reject", approvalID, reason);
+}
+
+/**
  * RenameSession sets a session's title.
  */
 export function RenameSession(sessID: string, title: string): $CancellablePromise<void> {
     return $Call.ByName("catdb/internal/services.AgentService.RenameSession", sessID, title);
+}
+
+/**
+ * RollbackTx rolls the session's pending task transaction back.
+ */
+export function RollbackTx(sessID: string): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.AgentService.RollbackTx", sessID);
 }
 
 /**

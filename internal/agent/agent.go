@@ -28,12 +28,20 @@ type ProviderResolver func(ctx context.Context, providerID string) (llm.Provider
 // tests inject fakes.
 type ConnectFunc func(ctx context.Context, connID string) (dbdriver.Connection, dbdriver.Driver, error)
 
+// DedicatedFunc opens a NEW physical connection for a task transaction
+// (production: session.Manager.OpenDedicated). The caller owns closing it.
+type DedicatedFunc func(ctx context.Context, connID string) (dbdriver.Connection, error)
+
 // Engine owns every running agent loop. One Engine per app.
 type Engine struct {
-	store   *storage.Store
-	resolve ProviderResolver
-	connect ConnectFunc
-	emit    func(name string, data any)
+	store     *storage.Store
+	resolve   ProviderResolver
+	connect   ConnectFunc
+	dedicated DedicatedFunc
+	emit      func(name string, data any)
+
+	broker *approvalBroker
+	txm    *txManager
 
 	maxIterations int
 
@@ -47,9 +55,23 @@ func NewEngine(store *storage.Store, mgr *session.Manager, resolve ProviderResol
 		store:         store,
 		resolve:       resolve,
 		connect:       managerConnect(mgr),
+		dedicated:     mgr.OpenDedicated,
 		emit:          wailsbridge.Emit,
+		broker:        newApprovalBroker(),
+		txm:           newTxManager(),
 		maxIterations: 25,
 	}
+}
+
+// Approve resolves a pending gate-4 approval (scope: once | task-verb) or a
+// pending task plan.
+func (e *Engine) Approve(approvalID, scope string) error {
+	return e.broker.resolve(approvalID, approvalDecision{Approved: true, Scope: scope})
+}
+
+// Reject declines a pending approval; reason is fed back to the model.
+func (e *Engine) Reject(approvalID, reason string) error {
+	return e.broker.resolve(approvalID, approvalDecision{Approved: false, Reason: reason})
 }
 
 func managerConnect(mgr *session.Manager) ConnectFunc {

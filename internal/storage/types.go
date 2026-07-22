@@ -12,19 +12,24 @@ import (
 // Use time.Time RFC3339 in JSON; the SQLite columns are stored as INTEGER
 // unix-epoch seconds for trivial portability.
 type ConnectionProfile struct {
-	ID        string              `json:"id"`
-	Name      string              `json:"name"`
-	Driver    string              `json:"driver"`
-	GroupID   string              `json:"groupId,omitempty"`
-	Host      string              `json:"host"`
-	Port      int                 `json:"port"`
-	User      string              `json:"user"`
-	Database  string              `json:"database,omitempty"`
-	Params    map[string]string   `json:"params,omitempty"`
-	SSL       *dbdriver.SSLConfig `json:"ssl,omitempty"`
-	SSHTunnel *dbdriver.SSHConfig `json:"sshTunnel,omitempty"`
-	CreatedAt time.Time           `json:"createdAt"`
-	UpdatedAt time.Time           `json:"updatedAt"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Driver  string `json:"driver"`
+	GroupID string `json:"groupId,omitempty"`
+	// Environment is the deployment-tier label (dev/test/staging/prod, "" =
+	// unmarked). Non-secret; it is the data basis for the AI Agent safety
+	// model's environment gate — prod connections are hard read-only for the
+	// Agent (docs/AGENT_DESIGN.md §5 gate 1).
+	Environment string              `json:"environment"`
+	Host        string              `json:"host"`
+	Port        int                 `json:"port"`
+	User        string              `json:"user"`
+	Database    string              `json:"database,omitempty"`
+	Params      map[string]string   `json:"params,omitempty"`
+	SSL         *dbdriver.SSLConfig `json:"ssl,omitempty"`
+	SSHTunnel   *dbdriver.SSHConfig `json:"sshTunnel,omitempty"`
+	CreatedAt   time.Time           `json:"createdAt"`
+	UpdatedAt   time.Time           `json:"updatedAt"`
 }
 
 // Group is a logical folder for connections in the sidebar tree.

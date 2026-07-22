@@ -107,6 +107,15 @@ export default {
       name: 'Name',
       group: 'Group',
       ungrouped: 'Ungrouped',
+      environment: 'Environment',
+      // Environment labels (闸 1); values persist as raw English keys.
+      environments: {
+        unmarked: 'Unmarked',
+        dev: 'Development',
+        test: 'Test',
+        staging: 'Staging',
+        prod: 'Production',
+      },
       nameRequired: 'Please enter a connection name',
       driverRequired: 'Please select a connection type',
       testConn: 'Test Connection',
@@ -577,6 +586,10 @@ export default {
       'env-readonly': 'Production connection — the Agent is read-only',
       'not-granted': 'This statement type is not permitted in this session',
       'no-where-clause': 'UPDATE/DELETE without a WHERE clause was blocked',
+      'stmt-forbidden': 'This statement type is forbidden for the Agent',
+      'plan-required': 'A write requires an approved task plan first',
+      'tx-timeout': 'The pending transaction timed out and was rolled back',
+      'tx-pending-block': 'Commit or roll back the pending transaction first',
     },
   },
   // Result-grid right-click module (api/gridContextMenu.ts).
@@ -728,6 +741,12 @@ export default {
       deleteConfirm: 'Delete this session? Its messages will be removed.',
       genericError: 'Something went wrong.',
       resizeHint: 'Drag to resize',
+      // Session-header environment badge (闸 1, AGENT_DESIGN §10.2).
+      env: {
+        unmarked: 'Unmarked',
+        prodTooltip: 'Production connection — Agent is read-only',
+        unmarkedTooltip: 'Environment not marked — label this connection in its settings',
+      },
       tool: {
         args: 'Arguments',
         result: 'Result',
@@ -740,6 +759,55 @@ export default {
         noEditor: 'No editor to insert into',
         copyFailed: 'Copy failed',
       },
+    },
+    // Statement approval card (§5 gate 4).
+    approval: {
+      title: 'Approve statement',
+      approveOnce: 'Approve this',
+      approveVerb: 'Auto-approve {verb} for this task',
+      reject: 'Reject',
+      confirmReject: 'Reject',
+      reasonPlaceholder: 'Reason (optional)',
+      noWhere: 'No WHERE clause — this affects the entire table.',
+      statusApproved: 'Approved',
+      statusApprovedVerb: 'Approved · auto-approving {verb} for this task',
+      statusRejected: 'Rejected',
+      statusRejectedReason: 'Rejected: {reason}',
+    },
+    // Task plan card (§6).
+    plan: {
+      badge: 'Plan',
+      statements: 'Statements',
+      impact: 'Estimated impact',
+      approve: 'Approve plan',
+      reject: 'Reject',
+      confirmReject: 'Reject',
+      reasonPlaceholder: 'Reason (optional)',
+      statusApproved: 'Plan approved',
+      statusRejected: 'Plan rejected',
+      statusRejectedReason: 'Plan rejected: {reason}',
+    },
+    // Pending-transaction bar (§5 gate 5).
+    tx: {
+      pending: '{n} statements pending · {rows} rows affected',
+      commit: 'Commit',
+      rollback: 'Rollback',
+      rowsAffected: '{n} rows',
+      committed: 'Committed {n} statements',
+      rolledBack: 'Transaction rolled back',
+      blockHint: 'Commit or roll back the transaction to continue',
+    },
+    // Inline result table (§7).
+    result: {
+      rowCount: '{n} rows',
+      showingCapped: 'Showing first {shown} of {total} rows',
+      truncated: 'Truncated',
+      empty: 'No rows',
+    },
+    // Session authorization row (§5 gate 3).
+    grants: {
+      label: 'Allow:',
+      prodDisabled: 'Production connection — writes are disabled',
     },
     settings: {
       providers: {

@@ -35,7 +35,55 @@ export interface ToolEntry {
 
 export interface SystemEntry { kind: 'system'; id: string; text: string }
 
-export type Entry = UserEntry | AssistantEntry | ToolEntry | SystemEntry
+// Statement approval card (§5 gate 4). Buttons live while pending; once decided
+// the card freezes into a status line (approved / rejected + reason).
+export interface ApprovalEntry {
+  kind: 'approval'
+  id: string
+  approvalID: string
+  sql: string
+  class: string
+  verb: string
+  /** e.g. "no-where-clause" — red warning card + second-confirm semantics. */
+  warning?: string
+  /** Only true offers the "auto-approve same verb" option (未标记 env never). */
+  autoOffered?: boolean
+  status: 'pending' | 'approved' | 'rejected'
+  /** Scope chosen on approval: 'once' | 'task-verb'. */
+  scope?: 'once' | 'task-verb'
+  /** Reason given on rejection (may be empty). */
+  reason?: string
+}
+
+// Task plan card (§6). Same pending → frozen lifecycle as ApprovalEntry.
+export interface PlanEntry {
+  kind: 'plan'
+  id: string
+  planID: string
+  goal: string
+  statements: string[]
+  impact?: string
+  status: 'pending' | 'approved' | 'rejected'
+  reason?: string
+}
+
+// Inline query result table (§7 user path). columns + capped rows.
+export interface ResultEntry {
+  kind: 'result'
+  id: string
+  columns: string[]
+  rows: unknown[][]
+  truncated: boolean
+}
+
+export type Entry =
+  | UserEntry
+  | AssistantEntry
+  | ToolEntry
+  | SystemEntry
+  | ApprovalEntry
+  | PlanEntry
+  | ResultEntry
 
 let seq = 0
 export function entryId(): string {

@@ -103,6 +103,15 @@ export default {
       name: '名称',
       group: '分组',
       ungrouped: '未分组',
+      environment: '环境',
+      // 环境标签（闸 1）；存储值为英文原始 key。
+      environments: {
+        unmarked: '未标记',
+        dev: '开发',
+        test: '测试',
+        staging: '预发',
+        prod: '生产',
+      },
       nameRequired: '请填写连接名称',
       driverRequired: '请选择连接类型',
       testConn: '测试连接',
@@ -568,6 +577,10 @@ export default {
       'env-readonly': '生产连接，Agent 仅只读',
       'not-granted': '当前会话不允许该类语句',
       'no-where-clause': '已拦截缺少 WHERE 的 UPDATE/DELETE',
+      'stmt-forbidden': 'Agent 不允许该类语句',
+      'plan-required': '写操作需先提交并批准任务计划',
+      'tx-timeout': '待提交事务已超时并回滚',
+      'tx-pending-block': '请先提交或回滚待处理的事务',
     },
   },
   // 结果网格右键模块（api/gridContextMenu.ts）。
@@ -719,6 +732,12 @@ export default {
       deleteConfirm: '删除该会话？其消息记录将一并移除。',
       genericError: '出现了一些问题。',
       resizeHint: '拖动调整宽度',
+      // 会话头环境徽标（闸 1，AGENT_DESIGN §10.2）。
+      env: {
+        unmarked: '未标记',
+        prodTooltip: '生产连接，Agent 只读',
+        unmarkedTooltip: '环境未标记，建议在连接设置中补标',
+      },
       tool: {
         args: '参数',
         result: '结果',
@@ -731,6 +750,55 @@ export default {
         noEditor: '没有可插入的编辑器',
         copyFailed: '复制失败',
       },
+    },
+    // 语句审批卡（闸 4）。
+    approval: {
+      title: '审批语句',
+      approveOnce: '批准这条',
+      approveVerb: '本任务内自动批准 {verb}',
+      reject: '拒绝',
+      confirmReject: '拒绝',
+      reasonPlaceholder: '拒绝理由（可选）',
+      noWhere: '无 WHERE 子句，将影响整张表。',
+      statusApproved: '已批准',
+      statusApprovedVerb: '已批准 · 本任务内自动批准 {verb}',
+      statusRejected: '已拒绝',
+      statusRejectedReason: '已拒绝：{reason}',
+    },
+    // 任务计划卡（§6）。
+    plan: {
+      badge: '计划',
+      statements: '语句清单',
+      impact: '预估影响',
+      approve: '批准计划',
+      reject: '拒绝',
+      confirmReject: '拒绝',
+      reasonPlaceholder: '拒绝理由（可选）',
+      statusApproved: '计划已批准',
+      statusRejected: '计划已拒绝',
+      statusRejectedReason: '计划已拒绝：{reason}',
+    },
+    // 事务待提交条（闸 5）。
+    tx: {
+      pending: '{n} 条语句待提交 · 影响 {rows} 行',
+      commit: '提交',
+      rollback: '回滚',
+      rowsAffected: '{n} 行',
+      committed: '已提交 {n} 条语句',
+      rolledBack: '事务已回滚',
+      blockHint: '请先提交或回滚事务以继续',
+    },
+    // 内嵌结果表格（§7）。
+    result: {
+      rowCount: '共 {n} 行',
+      showingCapped: '显示前 {shown} 行，共 {total} 行',
+      truncated: '已截断',
+      empty: '无数据行',
+    },
+    // 会话授权行（闸 3）。
+    grants: {
+      label: '授权：',
+      prodDisabled: '生产连接，写操作已禁用',
     },
     settings: {
       providers: {

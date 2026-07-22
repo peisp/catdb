@@ -147,6 +147,14 @@ export class ConnectionProfile {
     "name": string;
     "driver": string;
     "groupId"?: string;
+
+    /**
+     * Environment is the deployment-tier label (dev/test/staging/prod, "" =
+     * unmarked). Non-secret; it is the data basis for the AI Agent safety
+     * model's environment gate — prod connections are hard read-only for the
+     * Agent (docs/AGENT_DESIGN.md §5 gate 1).
+     */
+    "environment": string;
     "host": string;
     "port": number;
     "user": string;
@@ -167,6 +175,9 @@ export class ConnectionProfile {
         }
         if (!("driver" in $$source)) {
             this["driver"] = "";
+        }
+        if (!("environment" in $$source)) {
+            this["environment"] = "";
         }
         if (!("host" in $$source)) {
             this["host"] = "";
@@ -191,18 +202,18 @@ export class ConnectionProfile {
      * Creates a new ConnectionProfile instance from a string or object.
      */
     static createFrom($$source: any = {}): ConnectionProfile {
-        const $$createField8_0 = $$createType1;
-        const $$createField9_0 = $$createType3;
-        const $$createField10_0 = $$createType5;
+        const $$createField9_0 = $$createType1;
+        const $$createField10_0 = $$createType3;
+        const $$createField11_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("params" in $$parsedSource) {
-            $$parsedSource["params"] = $$createField8_0($$parsedSource["params"]);
+            $$parsedSource["params"] = $$createField9_0($$parsedSource["params"]);
         }
         if ("ssl" in $$parsedSource) {
-            $$parsedSource["ssl"] = $$createField9_0($$parsedSource["ssl"]);
+            $$parsedSource["ssl"] = $$createField10_0($$parsedSource["ssl"]);
         }
         if ("sshTunnel" in $$parsedSource) {
-            $$parsedSource["sshTunnel"] = $$createField10_0($$parsedSource["sshTunnel"]);
+            $$parsedSource["sshTunnel"] = $$createField11_0($$parsedSource["sshTunnel"]);
         }
         return new ConnectionProfile($$parsedSource as Partial<ConnectionProfile>);
     }

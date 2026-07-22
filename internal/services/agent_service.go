@@ -108,6 +108,32 @@ func (s *AgentService) Cancel(ctx context.Context, sessID string) error {
 	return nil
 }
 
+// --- approvals & task transaction (M2, §5 gates 4/5) ---
+
+// Approve resolves a pending statement approval or task plan.
+// scope: "once" | "task-verb" (auto-approve same verb for the rest of the task).
+func (s *AgentService) Approve(ctx context.Context, approvalID, scope string) error {
+	if scope != "once" && scope != "task-verb" {
+		return fmt.Errorf("AgentService: invalid approval scope %q", scope)
+	}
+	return s.engine.Approve(approvalID, scope)
+}
+
+// Reject declines a pending approval; reason (optional) is fed back to the model.
+func (s *AgentService) Reject(ctx context.Context, approvalID, reason string) error {
+	return s.engine.Reject(approvalID, reason)
+}
+
+// CommitTx commits the session's pending task transaction.
+func (s *AgentService) CommitTx(ctx context.Context, sessID string) error {
+	return s.engine.CommitTx(ctx, sessID)
+}
+
+// RollbackTx rolls the session's pending task transaction back.
+func (s *AgentService) RollbackTx(ctx context.Context, sessID string) error {
+	return s.engine.RollbackTx(ctx, sessID)
+}
+
 // updateMeta loads current session state, applies patch, writes it back —
 // UpdateAgentSessionMeta overwrites all mutable fields together.
 func (s *AgentService) updateMeta(ctx context.Context, sessID string, patch func(*storage.AgentSessionMeta)) error {

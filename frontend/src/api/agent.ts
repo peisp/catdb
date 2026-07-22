@@ -34,6 +34,50 @@ export interface UsageEvent { sessId: string; seq?: number; tokensIn: number; to
 export interface DoneEvent { sessId: string; seq?: number; stopReason: string }
 export interface ErrorEvent { sessId: string; seq?: number; slug: string; detail: string }
 
+// Statement approval (§5 gate 4). warning may be "no-where-clause" — the card
+// turns into a red warning with second-confirm semantics; autoOffered gates the
+// "auto-approve same verb for this task" option (未标记 env never offers it).
+export interface ApprovalEvent {
+  sessId: string
+  seq?: number
+  approvalID: string
+  sql: string
+  class: string
+  verb: string
+  warning?: string
+  autoOffered?: boolean
+}
+
+// Task plan awaiting approval (§6 task contract).
+export interface PlanEvent {
+  sessId: string
+  seq?: number
+  planID: string
+  goal: string
+  statements: string[]
+  impact?: string
+}
+
+export interface TxStmt { sql: string; rows: number }
+
+// Transaction awaiting commit/rollback (§5 gate 5). Drives the persistent
+// commit/rollback bar above the composer.
+export interface TxPendingEvent {
+  sessId: string
+  seq?: number
+  statements: TxStmt[]
+}
+
+// One (batch of a) run_sql SELECT result on the user path (§7).
+export interface ResultEvent {
+  sessId: string
+  seq?: number
+  columns: string[]
+  rows: unknown[][]
+  truncated: boolean
+  done: boolean
+}
+
 // --- in-order dispatch --------------------------------------------------------
 // One reorder state per session. Events dispatch strictly in seq order; a
 // seq-less event (or a runaway gap) flushes whatever is buffered, in order —
@@ -112,6 +156,28 @@ export function setGrants(sessId: string, grants: string[]): Promise<void> {
   return Promise.resolve(AgentService.SetGrants(sessId, grants))
 }
 
+// --- approvals / plans / transactions ---------------------------------------
+
+/** Resolve a pending approval or plan. scope: 'once' | 'task-verb' (§5 gate 4). */
+export function approve(approvalID: string, scope: 'once' | 'task-verb'): Promise<void> {
+  return Promise.resolve(AgentService.Approve(approvalID, scope))
+}
+
+/** Decline a pending approval or plan; reason (may be empty) is fed to the model. */
+export function reject(approvalID: string, reason: string): Promise<void> {
+  return Promise.resolve(AgentService.Reject(approvalID, reason))
+}
+
+/** Commit the session's pending task transaction (§5 gate 5). */
+export function commitTx(sessId: string): Promise<void> {
+  return Promise.resolve(AgentService.CommitTx(sessId))
+}
+
+/** Roll the session's pending task transaction back. */
+export function rollbackTx(sessId: string): Promise<void> {
+  return Promise.resolve(AgentService.RollbackTx(sessId))
+}
+
 /** Switch the session's selected database/schema (§10.2). */
 export function setNamespace(sessId: string, db: string, schema = ''): Promise<void> {
   return Promise.resolve(AgentService.SetNamespace(sessId, db, schema))
@@ -153,6 +219,10 @@ export interface AgentEventHandlers {
   onUsage?: (e: UsageEvent) => void
   onDone?: (e: DoneEvent) => void
   onError?: (e: ErrorEvent) => void
+  onApproval?: (e: ApprovalEvent) => void
+  onPlan?: (e: PlanEvent) => void
+  onTxPending?: (e: TxPendingEvent) => void
+  onResult?: (e: ResultEvent) => void
 }
 
 /**
@@ -174,6 +244,10 @@ export function subscribe(sessId: string, handlers: AgentEventHandlers): () => v
   bind<UsageEvent>('agent:usage', handlers.onUsage)
   bind<DoneEvent>('agent:done', handlers.onDone)
   bind<ErrorEvent>('agent:error', handlers.onError)
+  bind<ApprovalEvent>('agent:approval', handlers.onApproval)
+  bind<PlanEvent>('agent:plan', handlers.onPlan)
+  bind<TxPendingEvent>('agent:tx-pending', handlers.onTxPending)
+  bind<ResultEvent>('agent:result', handlers.onResult)
   return () => { for (const off of offs) off() }
 }
 

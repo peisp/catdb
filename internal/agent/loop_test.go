@@ -48,6 +48,7 @@ func (fakeDialect) QuoteIdentifier(name string) string { return "`" + name + "`"
 func (fakeDialect) Paginate(baseSQL string, limit, offset int) string {
 	return baseSQL + " LIMIT 50"
 }
+func (fakeDialect) ScriptRules() dbdriver.ScriptRules { return dbdriver.ScriptRules{} }
 
 type fakeDriver struct{ dbdriver.Driver }
 
@@ -111,6 +112,8 @@ func newTestEngine(t *testing.T, p llm.Provider) (*Engine, *storage.Store, *even
 			return fakeConn{}, fakeDriver{}, nil
 		},
 		emit:          log.emit,
+		broker:        newApprovalBroker(),
+		txm:           newTxManager(),
 		maxIterations: 25,
 	}
 	return e, store, log

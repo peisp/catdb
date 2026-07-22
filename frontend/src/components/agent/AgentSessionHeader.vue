@@ -5,17 +5,22 @@
 // editable. db/schema switch the session namespace; the session list popover
 // switches / renames / deletes sessions. Cumulative tokens are plain text
 // (cost + watermark bar are a later milestone).
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { NPopover } from 'naive-ui'
 import AppIcon from '../shared/AppIcon.vue'
 import databaseIcon from '../../assets/icons/database.svg?raw'
 import plusIcon from '../../assets/icons/plus.svg?raw'
 import historyIcon from '../../assets/icons/history.svg?raw'
 import xIcon from '../../assets/icons/x.svg?raw'
+import lockIcon from '../../assets/icons/lock.svg?raw'
+import { t } from '../../i18n'
 import type { AgentSession } from '../../api/agent'
 
 const props = defineProps<{
   connectionName: string
+  // Environment label of the anchored connection (闸 1): '' | dev | test |
+  // staging | prod. Drives the read-only badge (AGENT_DESIGN §10.2).
+  environment: string
   session: AgentSession | null
   sessions: AgentSession[]
   databases: string[]
@@ -39,6 +44,26 @@ const emit = defineEmits<{
 
 const listOpen = ref(false)
 
+// Environment badge: prod = red + lock (hard read-only), dev/test/staging =
+// neutral tag, '' = gray "unmarked" nudge. Tier names reuse the connection
+// form's localized labels so there is a single source of truth.
+const envKind = computed<'prod' | 'other' | 'unmarked'>(() => {
+  const e = props.environment
+  if (e === 'prod') return 'prod'
+  if (e === 'dev' || e === 'test' || e === 'staging') return 'other'
+  return 'unmarked'
+})
+const envLabel = computed(() =>
+  envKind.value === 'unmarked'
+    ? t('agent.panel.env.unmarked')
+    : t(`connection.form.environments.${props.environment}`),
+)
+const envTooltip = computed(() => {
+  if (envKind.value === 'prod') return t('agent.panel.env.prodTooltip')
+  if (envKind.value === 'unmarked') return t('agent.panel.env.unmarkedTooltip')
+  return ''
+})
+
 function pickSession(id: string) {
   listOpen.value = false
   if (id !== props.session?.id) emit('select-session', id)
@@ -51,6 +76,11 @@ function pickSession(id: string) {
       <span class="conn" :title="connectionName">
         <AppIcon :src="databaseIcon" :size="13" />
         <span class="conn-name">{{ connectionName }}</span>
+      </span>
+
+      <span class="env-badge" :class="`env-${envKind}`" :title="envTooltip">
+        <AppIcon v-if="envKind === 'prod'" :src="lockIcon" :size="11" />
+        <span class="env-text">{{ envLabel }}</span>
       </span>
 
       <select
@@ -141,6 +171,34 @@ function pickSession(id: string) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Environment badge (闸 1). Small, semantic color, no shadow (DESIGN.md). */
+.env-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: var(--catdb-rounded-sm);
+  font-size: var(--catdb-fs-mini);
+  line-height: 1;
+  white-space: nowrap;
+}
+.env-badge .env-text { font-weight: 600; }
+.env-prod {
+  color: var(--catdb-error);
+  background: color-mix(in srgb, var(--catdb-error) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--catdb-error) 32%, transparent);
+}
+.env-other {
+  color: var(--catdb-text-secondary);
+  background: var(--catdb-hover-fill);
+}
+.env-unmarked {
+  color: var(--catdb-text-tertiary);
+  background: var(--catdb-hover-fill);
 }
 
 .ns-select {

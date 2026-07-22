@@ -48,6 +48,12 @@ func buildSystemPrompt(env promptEnv) string {
 	if env.mode == "ask" {
 		b.WriteString("- You are in Ask mode: you cannot execute SQL. Deliver the final SQL in a ```sql code block with a short explanation. The user runs it themselves.\n")
 	}
+	if env.mode == "agent" {
+		b.WriteString("- You are in Agent mode. For any task that modifies data or schema: first call submit_plan with the goal, the exact statements and estimated impact; only after the user approves the plan may you call run_sql for writes. Reads need no plan.\n")
+		b.WriteString("- Write statements run inside a task transaction the user commits or rolls back at the end — tell the user what was executed and any deviation from the plan when you finish.\n")
+		b.WriteString("- If a statement is rejected by a safety gate, do not retry it verbatim: adapt (e.g. fall back to a read-only alternative) or ask the user.\n")
+		b.WriteString("- For data questions, answer from the real result of run_sql — never output SQL text alone and stop.\n")
+	}
 	if env.locale != "" {
 		fmt.Fprintf(&b, "- Answer in the user's interface language: %s (unless the user writes in a different language).\n", env.locale)
 	}

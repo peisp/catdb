@@ -121,6 +121,34 @@ type ColumnMeta struct {
 	Comment        string      `json:"comment,omitempty"`
 }
 
+// StatementClass is the risk class of one SQL statement, used by the AI
+// Agent's safety gates (AGENT_DESIGN.md §5 gate 2). Direction is strict:
+// anything unrecognizable is ClassUnknown and treated as highest risk.
+type StatementClass string
+
+const (
+	ClassRead     StatementClass = "read"
+	ClassWriteDML StatementClass = "write_dml"
+	ClassDDL      StatementClass = "ddl"
+	ClassAdmin    StatementClass = "admin"
+	ClassUnknown  StatementClass = "unknown"
+)
+
+// StatementVerb is the verb-level subdivision (lowercase canonical first
+// keyword: "select", "insert", "update", …). Session grants and per-approval
+// scopes match on the verb, not the coarse class — otherwise approving one
+// INSERT would wave through a later DELETE.
+type StatementVerb string
+
+// StatementClassification is the classifier verdict for one statement.
+type StatementClassification struct {
+	Class StatementClass `json:"class"`
+	Verb  StatementVerb  `json:"verb"`
+	// MissingWhere marks an UPDATE/DELETE without a top-level WHERE clause
+	// (gate 5 hard intercept).
+	MissingWhere bool `json:"missingWhere,omitempty"`
+}
+
 // ScriptRules describes the lexical rules a SQL-script splitter needs to
 // tokenize this database's scripts: which quote characters exist, which
 // comment styles apply, and whether client-side DELIMITER directives are

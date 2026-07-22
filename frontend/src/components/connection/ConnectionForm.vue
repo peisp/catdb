@@ -122,6 +122,16 @@ const name = ref<string>(props.initial?.name ?? '')
 // created from the sidebar's right-click menu (新建分组) — keeping the
 // concerns separate avoids cluttering the connection form with group CRUD.
 const groupId = ref<string | null>(props.initial?.groupId ?? null)
+// Environment label (闸 1, AGENT_DESIGN §5). Stored value is the raw English
+// key ('' | dev | test | staging | prod); labels are localized. '' = unmarked.
+const environment = ref<string>(props.initial?.environment ?? '')
+const ENVIRONMENTS = ['', 'dev', 'test', 'staging', 'prod'] as const
+const environmentOptions = computed(() =>
+  ENVIRONMENTS.map((e) => ({
+    value: e,
+    label: e ? t(`connection.form.environments.${e}`) : t('connection.form.environments.unmarked'),
+  })),
+)
 
 // Walk dotted-key segments. Returns undefined when the path is unset.
 function getPath(obj: any, path: string): any {
@@ -226,6 +236,7 @@ function buildDraft(): ConnectionDraft {
     name: name.value.trim(),
     driver: selectedDriver.value?.name ?? '',
     groupId: groupId.value ?? undefined,
+    environment: environment.value || undefined,
     host: v.host ?? '',
     port: v.port != null && v.port !== '' ? Number(v.port) : 0,
     user: v.user ?? '',
@@ -421,6 +432,13 @@ function selectOptions(opts: string[]) {
             >
               <option :value="null">{{ $t('connection.form.ungrouped') }}</option>
               <option v-for="g in store.groups" :key="g.id" :value="g.id">{{ g.name }}</option>
+            </select>
+          </n-form-item>
+          <!-- Environment label (闸 1). Same native <select> chrome as the
+               group picker; raw English key is stored, label is localized. -->
+          <n-form-item :label="$t('connection.form.environment')" label-width="82px" class="header-item header-item-env">
+            <select v-model="environment" class="group-select">
+              <option v-for="o in environmentOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
             </select>
           </n-form-item>
         </div>
@@ -665,7 +683,8 @@ function selectOptions(opts: string[]) {
 }
 .header-item { margin-bottom: 0 !important; min-width: 0; }
 .header-item-grow { flex: 1 1 auto; }
-.header-item-group { flex: 0 0 220px; }
+.header-item-group { flex: 0 0 180px; }
+.header-item-env { flex: 0 0 200px; }
 .header-form :deep(.n-form-item-feedback-wrapper) { min-height: 0; padding: 0; }
 
 /* Native <select> for the group picker — sized to align with Naive's small

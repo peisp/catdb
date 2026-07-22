@@ -330,6 +330,7 @@ export class ConnectionDraft {
     "name": string;
     "driver": string;
     "groupId"?: string;
+    "environment"?: string;
     "host": string;
     "port": number;
     "user": string;
@@ -366,18 +367,18 @@ export class ConnectionDraft {
      * Creates a new ConnectionDraft instance from a string or object.
      */
     static createFrom($$source: any = {}): ConnectionDraft {
-        const $$createField8_0 = $$createType11;
-        const $$createField9_0 = $$createType13;
-        const $$createField10_0 = $$createType15;
+        const $$createField9_0 = $$createType11;
+        const $$createField10_0 = $$createType13;
+        const $$createField11_0 = $$createType15;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("params" in $$parsedSource) {
-            $$parsedSource["params"] = $$createField8_0($$parsedSource["params"]);
+            $$parsedSource["params"] = $$createField9_0($$parsedSource["params"]);
         }
         if ("ssl" in $$parsedSource) {
-            $$parsedSource["ssl"] = $$createField9_0($$parsedSource["ssl"]);
+            $$parsedSource["ssl"] = $$createField10_0($$parsedSource["ssl"]);
         }
         if ("sshTunnel" in $$parsedSource) {
-            $$parsedSource["sshTunnel"] = $$createField10_0($$parsedSource["sshTunnel"]);
+            $$parsedSource["sshTunnel"] = $$createField11_0($$parsedSource["sshTunnel"]);
         }
         return new ConnectionDraft($$parsedSource as Partial<ConnectionDraft>);
     }

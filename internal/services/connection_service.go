@@ -67,17 +67,18 @@ func (s *ConnectionService) ListDrivers(_ context.Context) []DriverInfo {
 // ConnectionDraft is what the front-end sends to Save/Test. Secrets are
 // passed via dedicated fields so we never persist them into the SQLite blob.
 type ConnectionDraft struct {
-	ID        string              `json:"id,omitempty"`
-	Name      string              `json:"name"`
-	Driver    string              `json:"driver"`
-	GroupID   string              `json:"groupId,omitempty"`
-	Host      string              `json:"host"`
-	Port      int                 `json:"port"`
-	User      string              `json:"user"`
-	Database  string              `json:"database,omitempty"`
-	Params    map[string]string   `json:"params,omitempty"`
-	SSL       *dbdriver.SSLConfig `json:"ssl,omitempty"`
-	SSHTunnel *dbdriver.SSHConfig `json:"sshTunnel,omitempty"`
+	ID          string              `json:"id,omitempty"`
+	Name        string              `json:"name"`
+	Driver      string              `json:"driver"`
+	GroupID     string              `json:"groupId,omitempty"`
+	Environment string              `json:"environment,omitempty"`
+	Host        string              `json:"host"`
+	Port        int                 `json:"port"`
+	User        string              `json:"user"`
+	Database    string              `json:"database,omitempty"`
+	Params      map[string]string   `json:"params,omitempty"`
+	SSL         *dbdriver.SSLConfig `json:"ssl,omitempty"`
+	SSHTunnel   *dbdriver.SSHConfig `json:"sshTunnel,omitempty"`
 
 	Password       string `json:"password,omitempty"`
 	SSHPassword    string `json:"sshPassword,omitempty"`
@@ -102,17 +103,18 @@ func (s *ConnectionService) SaveConnection(ctx context.Context, d ConnectionDraf
 		return storage.ConnectionProfile{}, err
 	}
 	prof := storage.ConnectionProfile{
-		ID:        d.ID,
-		Name:      d.Name,
-		Driver:    d.Driver,
-		GroupID:   d.GroupID,
-		Host:      d.Host,
-		Port:      d.Port,
-		User:      d.User,
-		Database:  d.Database,
-		Params:    d.Params,
-		SSL:       d.SSL,
-		SSHTunnel: cloneSSHWithoutSecrets(d.SSHTunnel),
+		ID:          d.ID,
+		Name:        d.Name,
+		Driver:      d.Driver,
+		GroupID:     d.GroupID,
+		Environment: d.Environment,
+		Host:        d.Host,
+		Port:        d.Port,
+		User:        d.User,
+		Database:    d.Database,
+		Params:      d.Params,
+		SSL:         d.SSL,
+		SSHTunnel:   cloneSSHWithoutSecrets(d.SSHTunnel),
 	}
 	saved, err := s.store.SaveConnection(ctx, prof)
 	if err != nil {

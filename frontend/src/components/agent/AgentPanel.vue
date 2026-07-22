@@ -10,11 +10,16 @@ import { useMessage } from 'naive-ui'
 import AgentSessionHeader from './AgentSessionHeader.vue'
 import AgentMessage from './AgentMessage.vue'
 import AgentToolCard from './AgentToolCard.vue'
+import AgentApprovalCard from './AgentApprovalCard.vue'
+import AgentPlanCard from './AgentPlanCard.vue'
+import AgentResultTable from './AgentResultTable.vue'
+import AgentTxBar from './AgentTxBar.vue'
+import AgentGrants from './AgentGrants.vue'
 import AgentComposer from './AgentComposer.vue'
 import AppIcon from '../shared/AppIcon.vue'
 import botIcon from '../../assets/icons/bot.svg?raw'
 import { AGENT_SQL_ACTIONS, type AgentSqlActions } from './sqlActions'
-import { entryId, type AssistantEntry, type Entry, type ToolEntry } from './types'
+import { entryId, type ApprovalEntry, type AssistantEntry, type Entry, type PlanEntry, type ToolEntry } from './types'
 import * as agentApi from '../../api/agent'
 import type { AgentSession } from '../../api/agent'
 import { useQueryStore } from '../../stores/query'
@@ -49,6 +54,15 @@ const currentSchema = ref('')
 
 const mode = computed<'ask' | 'agent'>(() => (session.value?.mode === 'agent' ? 'agent' : 'ask'))
 const connectionName = computed(() => props.connection?.name ?? '')
+
+// --- transaction / grants state (Agent mode) ---
+// txPending drives the AgentTxBar and disables the composer until the user
+// commits or rolls back (§5 gate 5). Not restored across panel reloads — the
+// backend rejects new SendMessage with agent.tx-pending-block if one lingers.
+const txPending = ref<agentApi.TxStmt[] | null>(null)
+const txBusy = ref(false)
+const grants = computed(() => session.value?.grants ?? [])
+const isProd = computed(() => props.connection?.environment === 'prod')
 
 let offEvents: (() => void) | null = null
 let currentSend: { done: Promise<void>; stop: () => void } | null = null
@@ -136,6 +150,29 @@ function attachEvents(sessId: string) {
     onUsage: (e) => { tokens.value += (e.tokensIn || 0) + (e.tokensOut || 0) },
     onDone: (e) => { finalizeStreaming(e.stopReason) },
     onError: (e) => { errorBar.value = { slug: e.slug, detail: e.detail }; finalizeStreaming() },
+    onApproval: (e) => {
+      entries.value.push({
+        kind: 'approval', id: entryId(), approvalID: e.approvalID,
+        sql: e.sql, class: e.class, verb: e.verb,
+        warning: e.warning, autoOffered: e.autoOffered, status: 'pending',
+      })
+      scrollToBottom()
+    },
+    onPlan: (e) => {
+      entries.value.push({
+        kind: 'plan', id: entryId(), planID: e.planID,
+        goal: e.goal, statements: e.statements ?? [], impact: e.impact, status: 'pending',
+      })
+      scrollToBottom()
+    },
+    onTxPending: (e) => { txPending.value = e.statements ?? []; scrollToBottom() },
+    onResult: (e) => {
+      entries.value.push({
+        kind: 'result', id: entryId(),
+        columns: e.columns ?? [], rows: e.rows ?? [], truncated: !!e.truncated,
+      })
+      scrollToBottom()
+    },
   })
 }
 
@@ -196,6 +233,8 @@ async function loadSession(s: AgentSession) {
   errorBar.value = null
   tokens.value = 0
   busy.value = false
+  txPending.value = null
+  txBusy.value = false
   try {
     const msgs = await agentApi.getMessages(s.id)
     entries.value = historyToEntries(msgs)
@@ -235,7 +274,7 @@ async function init() {
 // --- actions ---
 function onSend(text: string) {
   const s = session.value
-  if (!s || busy.value) return
+  if (!s || busy.value || txPending.value) return
   errorBar.value = null
   entries.value.push({ kind: 'user', id: entryId(), text })
   busy.value = true
@@ -257,6 +296,74 @@ function onSend(text: string) {
 function onStop() {
   currentSend?.stop()
   busy.value = false
+}
+
+// --- approval / plan resolution (mutate the reactive entry in place) ---
+async function onApprove(entry: ApprovalEntry, scope: 'once' | 'task-verb') {
+  try {
+    await agentApi.approve(entry.approvalID, scope)
+    entry.status = 'approved'
+    entry.scope = scope
+  } catch (e) { message.error(String(e)) }
+}
+async function onReject(entry: ApprovalEntry, reason: string) {
+  try {
+    await agentApi.reject(entry.approvalID, reason)
+    entry.status = 'rejected'
+    entry.reason = reason
+  } catch (e) { message.error(String(e)) }
+}
+async function onApprovePlan(entry: PlanEntry) {
+  try {
+    await agentApi.approve(entry.planID, 'once')
+    entry.status = 'approved'
+  } catch (e) { message.error(String(e)) }
+}
+async function onRejectPlan(entry: PlanEntry, reason: string) {
+  try {
+    await agentApi.reject(entry.planID, reason)
+    entry.status = 'rejected'
+    entry.reason = reason
+  } catch (e) { message.error(String(e)) }
+}
+
+// --- transaction commit / rollback (§5 gate 5) ---
+async function onCommitTx() {
+  const s = session.value
+  if (!s || !txPending.value || txBusy.value) return
+  const n = txPending.value.length
+  txBusy.value = true
+  try {
+    await agentApi.commitTx(s.id)
+    entries.value.push({ kind: 'system', id: entryId(), text: t('agent.tx.committed', { n }) })
+    txPending.value = null
+  } catch (e) { message.error(String(e)) }
+  finally { txBusy.value = false; scrollToBottom() }
+}
+async function onRollbackTx() {
+  const s = session.value
+  if (!s || !txPending.value || txBusy.value) return
+  txBusy.value = true
+  try {
+    await agentApi.rollbackTx(s.id)
+    entries.value.push({ kind: 'system', id: entryId(), text: t('agent.tx.rolledBack') })
+    txPending.value = null
+  } catch (e) { message.error(String(e)) }
+  finally { txBusy.value = false; scrollToBottom() }
+}
+
+// --- session grants (§5 gate 3) ---
+async function onChangeGrants(next: string[]) {
+  const s = session.value
+  if (!s) return
+  const prev = s.grants
+  s.grants = next
+  try {
+    await agentApi.setGrants(s.id, next)
+  } catch (e) {
+    s.grants = prev
+    message.error(String(e))
+  }
 }
 
 async function onNewSession() {
@@ -426,6 +533,7 @@ watch(() => props.connection?.id, () => { void init() })
     <template v-else>
       <AgentSessionHeader
         :connection-name="connectionName"
+        :environment="connection?.environment ?? ''"
         :session="session"
         :sessions="sessions"
         :databases="databases"
@@ -448,6 +556,19 @@ watch(() => props.connection?.id, () => { void init() })
         <div v-if="entries.length === 0 && !loading" class="hint-empty">{{ $t('agent.panel.startHint') }}</div>
         <template v-for="e in entries" :key="e.id">
           <AgentToolCard v-if="e.kind === 'tool'" :entry="e" />
+          <AgentApprovalCard
+            v-else-if="e.kind === 'approval'"
+            :entry="e"
+            @approve="(scope) => onApprove(e, scope)"
+            @reject="(reason) => onReject(e, reason)"
+          />
+          <AgentPlanCard
+            v-else-if="e.kind === 'plan'"
+            :entry="e"
+            @approve="() => onApprovePlan(e)"
+            @reject="(reason) => onRejectPlan(e, reason)"
+          />
+          <AgentResultTable v-else-if="e.kind === 'result'" :entry="e" />
           <AgentMessage v-else :entry="e" />
         </template>
       </div>
@@ -457,7 +578,23 @@ watch(() => props.connection?.id, () => { void init() })
         <button type="button" class="error-close" :title="$t('common.close')" @click="errorBar = null">×</button>
       </div>
 
-      <AgentComposer :busy="busy" :disabled="!session" @send="onSend" @stop="onStop" />
+      <AgentTxBar
+        v-if="txPending"
+        :statements="txPending"
+        :busy="txBusy"
+        @commit="onCommitTx"
+        @rollback="onRollbackTx"
+      />
+      <div v-if="txPending" class="tx-hint">{{ $t('agent.tx.blockHint') }}</div>
+
+      <AgentGrants
+        v-if="mode === 'agent'"
+        :grants="grants"
+        :readonly="isProd"
+        @update="onChangeGrants"
+      />
+
+      <AgentComposer :busy="busy" :disabled="!session || !!txPending" @send="onSend" @stop="onStop" />
     </template>
   </aside>
 </template>
@@ -533,6 +670,14 @@ watch(() => props.connection?.id, () => { void init() })
   line-height: 1;
   cursor: default;
   padding: 0 2px;
+}
+
+.tx-hint {
+  flex: 0 0 auto;
+  margin: 0 8px 6px;
+  font-size: var(--catdb-fs-mini);
+  color: var(--catdb-text-tertiary);
+  text-align: center;
 }
 
 .empty {

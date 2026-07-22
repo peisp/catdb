@@ -8,6 +8,7 @@ import (
 	"io"
 	"sync"
 
+	"catdb/internal/dbdriver"
 	"catdb/internal/llm"
 	"catdb/internal/storage"
 )
@@ -58,6 +59,11 @@ type storedResult struct {
 // It blocks until the turn ends; cancelling ctx (front-end promise cancel or
 // Engine.Cancel) aborts both the LLM stream and any in-flight query.
 func (e *Engine) Send(ctx context.Context, sessID, text string) error {
+	if e.txm.get(sessID) != nil {
+		// A task transaction awaits commit/rollback — no new turns until the
+		// user decides (§5 gate 5).
+		return fmt.Errorf("%s: commit or roll back the pending transaction first", slugTxPending)
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if err := e.begin(sessID, cancel); err != nil {
@@ -101,6 +107,23 @@ func (e *Engine) run(ctx context.Context, sessID, text string) error {
 		caps:    drv.Capabilities(),
 		privacy: e.settingBool(ctx, "agent.privacy.sendRowData", true),
 	})
+	if sess.Mode == "agent" {
+		override, _ := drv.Dialect().(dbdriver.StatementClassifier)
+		rs := &runState{
+			sessID: sessID, connID: sess.ConnID, mode: sess.Mode,
+			conn: conn, dialect: drv.Dialect(), caps: drv.Capabilities(),
+			rules: drv.Dialect().ScriptRules(), override: override,
+			em: em, e: e,
+			autoVerbs: map[dbdriver.StatementVerb]bool{},
+		}
+		var granted []string
+		for _, g := range sess.Grants {
+			if g != "select" {
+				granted = append(granted, g)
+			}
+		}
+		tools = append(tools, buildRunSQL(rs, granted), buildSubmitPlan(rs))
+	}
 	system := buildSystemPrompt(promptEnv{
 		driverName:    drv.Name(),
 		driverVersion: drv.Version(),
@@ -167,6 +190,7 @@ func (e *Engine) run(ctx context.Context, sessID, text string) error {
 		})
 
 		if len(turn.toolCalls) == 0 || turn.stop != llm.StopToolUse {
+			e.emitTxPending(em, sessID)
 			em.send("agent:done", map[string]any{"sessId": sessID, "stopReason": string(turn.stop)})
 			return nil
 		}
@@ -186,8 +210,19 @@ func (e *Engine) run(ctx context.Context, sessID, text string) error {
 
 	// Iteration cap: not a failure — keep what was produced, the front-end
 	// renders the "reply 继续 to keep going" hint off this stop reason (§4.1).
+	e.emitTxPending(em, sessID)
 	em.send("agent:done", map[string]any{"sessId": sessID, "stopReason": "max_iterations"})
 	return nil
+}
+
+// emitTxPending announces an open task transaction awaiting the user's
+// commit/rollback decision (§5 gate 5) when the turn ends.
+func (e *Engine) emitTxPending(em *emitter, sessID string) {
+	t := e.txm.get(sessID)
+	if t == nil {
+		return
+	}
+	em.send("agent:tx-pending", map[string]any{"sessId": sessID, "statements": t.statements()})
 }
 
 // turnData is everything one model turn produced.
