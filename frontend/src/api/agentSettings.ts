@@ -18,6 +18,7 @@ import {
   AuditExportResult as BoundAuditExportResult,
 } from '../../bindings/catdb/internal/services/models'
 import { AgentAuditEntry as BoundAuditEntry } from '../../bindings/catdb/internal/storage/models'
+import { on } from './events'
 
 export type ProviderConfig = BoundProviderConfig
 export type ModelInfo = BoundModelInfo
@@ -49,6 +50,11 @@ export function saveProvider(draft: ProviderDraft): Promise<ProviderConfig> {
 
 export function deleteProvider(id: string): Promise<void> {
   return AgentSettingsService.DeleteProvider(id)
+}
+
+/** Fired by the Go side after a provider is saved or deleted (any window). */
+export function onProvidersChanged(cb: () => void): () => void {
+  return on<null>('agent:providers-changed', () => cb())
 }
 
 /** Store (write-only) the API key for a provider. Empty key is rejected server-side. */

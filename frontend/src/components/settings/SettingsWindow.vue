@@ -5,7 +5,7 @@
 // Layout mirrors ConnectionEditorWindow/ConnectionForm: a titlebar on top, then
 // a two-column body — a left category rail + a right settings panel. Categories:
 // 语言 (Language) and 关于 (About, incl. check-for-updates).
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Window } from '@wailsio/runtime'
 import { NButton, useMessage } from 'naive-ui'
 import { settings as settingsApi } from '../../api'
@@ -34,6 +34,19 @@ function toggleMaximise() {
 
 type Category = 'language' | 'ai' | 'about'
 const category = ref<Category>('language')
+
+// The Go side re-points an already-open settings window at a new `?section=`
+// via SetURL, which only changes the hash — no page reload — so we read the
+// hash on mount and again on every hashchange (SystemService.OpenSettingsWindow).
+function applyHashSection() {
+  const m = /[?&]section=([a-z]+)/.exec(window.location.hash)
+  const s = m?.[1]
+  if (s === 'language' || s === 'ai' || s === 'about') category.value = s
+  // Strip the query once applied so the next SetURL with the same section is
+  // still a hash *change* (otherwise no hashchange fires and a re-open would
+  // not re-select the category). replaceState fires no hashchange → no loop.
+  if (m) history.replaceState(null, '', '#/settings')
+}
 
 // --- Language panel ---
 // Fixed two options; labels stay in their native form (not translated).
@@ -66,7 +79,14 @@ function onChannelChange(e: Event) {
 }
 
 // Load the persisted channel so the select reflects the effective value.
-onMounted(() => { void updates.loadChannel() })
+onMounted(() => {
+  void updates.loadChannel()
+  applyHashSection()
+  window.addEventListener('hashchange', applyHashSection)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('hashchange', applyHashSection)
+})
 async function onCheckUpdate() {
   if (updates.currentVersion === 'dev') {
     message.info(tr('settingsWindow.devBuildNoUpdate'))

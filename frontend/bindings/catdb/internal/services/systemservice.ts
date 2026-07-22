@@ -89,10 +89,11 @@ export function OpenExternalURL(target: string): $CancellablePromise<void> {
 
 /**
  * OpenSettingsWindow opens the app settings as its own native child window,
- * keyed by name "settings".
+ * keyed by name "settings". section optionally pre-selects a settings
+ * category (e.g. "ai"); empty string means the default category.
  */
-export function OpenSettingsWindow(): $CancellablePromise<void> {
-    return $Call.ByName("catdb/internal/services.SystemService.OpenSettingsWindow");
+export function OpenSettingsWindow(section: string): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.SystemService.OpenSettingsWindow", section);
 }
 
 /**

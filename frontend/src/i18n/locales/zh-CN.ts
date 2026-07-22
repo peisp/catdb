@@ -717,6 +717,8 @@ export default {
       emptyDesc: '创建一个连接后即可开始 AI 会话。',
       connDeleted: '连接已删除',
       orphanHint: '该会话绑定的连接已删除，仅可查看历史。',
+      noProviderHint: '尚未配置模型服务商。',
+      openProviderSettings: '前往设置',
       startHint: '向 AI 询问关于该数据库的任何问题。',
       thinking: '思考过程',
       maxIterations: '已达轮数上限，回复“继续”可接着执行。',

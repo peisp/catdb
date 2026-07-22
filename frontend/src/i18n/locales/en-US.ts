@@ -726,6 +726,8 @@ export default {
       emptyDesc: 'Create a connection to start an AI session.',
       connDeleted: 'Connection deleted',
       orphanHint: "This session's connection was deleted — history is read-only.",
+      noProviderHint: 'No AI provider is configured yet.',
+      openProviderSettings: 'Set up in Settings',
       startHint: 'Ask anything about this database.',
       thinking: 'Thinking',
       maxIterations: 'Reached the iteration limit. Reply “continue” to keep going.',

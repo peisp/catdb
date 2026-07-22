@@ -25,12 +25,13 @@ import { AGENT_SQL_ACTIONS, type AgentSqlActions } from './sqlActions'
 import { entryId, type ApprovalEntry, type AssistantEntry, type Entry, type PlanEntry, type ToolEntry } from './types'
 import * as agentApi from '../../api/agent'
 import type { AgentSession } from '../../api/agent'
-import { getAgentSettings, listProviders, type ModelPricing, type ProviderConfig } from '../../api/agentSettings'
+import { getAgentSettings, listProviders, onProvidersChanged, type ModelPricing, type ProviderConfig } from '../../api/agentSettings'
 import { useQueryStore } from '../../stores/query'
 import { useMetadataStore } from '../../stores/metadata'
 import { useConnectionsStore } from '../../stores/connections'
 import { confirm } from '../../api/dialogs'
 import type { ConnectionProfile } from '../../api/connections'
+import { openSettingsWindow } from '../../api/system'
 import { i18n, t } from '../../i18n'
 
 // props.connection is only a HINT (§10.2): the cold-start / new-session
@@ -99,6 +100,8 @@ const panelConn = computed<ConnectionProfile | null>(() => {
 })
 // Orphan session: bound connection deleted → read-only archive (§10.2).
 const orphan = computed(() => !!session.value && !panelConn.value)
+// No AI provider configured at all — the dock shows a hint linking to Settings.
+const noProvider = computed(() => !loading.value && providers.value.length === 0)
 const connectionName = computed(() => panelConn.value?.name ?? '')
 // A NEW conversation may pick its connection freely (§10.2); once real
 // messages exist (system notice lines don't count) the binding is fixed —
@@ -182,6 +185,7 @@ const grants = computed(() => session.value?.grants ?? [])
 const isProd = computed(() => panelConn.value?.environment === 'prod')
 
 let offEvents: (() => void) | null = null
+let offProviders: (() => void) | null = null
 let currentSend: { done: Promise<void>; stop: () => void } | null = null
 
 // --- SQL block actions (provided to nested AgentSqlBlock via inject) ---
@@ -864,10 +868,14 @@ function onWindowResize() {
 onMounted(() => {
   window.addEventListener('resize', onWindowResize)
   void init()
+  offProviders = onProvidersChanged(() => {
+    void listProviders().then((list) => { providers.value = list ?? [] }).catch(() => {})
+  })
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onWindowResize)
   offEvents?.()
+  offProviders?.()
 })
 // Note: the panel deliberately does NOT watch props.connection — its context
 // follows the current session (§10.2); the main UI switching connections
@@ -973,6 +981,10 @@ onBeforeUnmount(() => {
           @update="onChangeGrants"
         />
         <div v-if="orphan" class="dock-hint">{{ $t('agent.panel.orphanHint') }}</div>
+        <div v-if="noProvider" class="provider-hint">
+          <span class="provider-hint-text">{{ $t('agent.panel.noProviderHint') }}</span>
+          <button type="button" class="provider-hint-btn" @click="openSettingsWindow('ai')">{{ $t('agent.panel.openProviderSettings') }}</button>
+        </div>
 
         <!-- Connection + namespace context, above the input box. The database
              selector follows the connection inline (left-aligned, not pushed
@@ -1169,6 +1181,30 @@ onBeforeUnmount(() => {
   color: var(--catdb-text-tertiary);
   text-align: center;
 }
+.provider-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  padding: 4px 8px;
+  border-radius: var(--catdb-rounded-sm);
+  background: color-mix(in srgb, var(--catdb-warning) 12%, transparent);
+}
+.provider-hint-text {
+  font-size: var(--catdb-fs-small);
+  color: var(--catdb-text-secondary);
+}
+.provider-hint-btn {
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: var(--catdb-fs-small);
+  color: var(--catdb-accent);
+  cursor: default;
+}
+.provider-hint-btn:hover { text-decoration: underline; }
 .ctx-row, .mode-row {
   display: flex;
   align-items: center;

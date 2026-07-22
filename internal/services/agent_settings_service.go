@@ -16,6 +16,7 @@ import (
 	"catdb/internal/llm"
 	"catdb/internal/llmconfig"
 	"catdb/internal/storage"
+	"catdb/wailsbridge"
 )
 
 // AgentSettingsService exposes AI Agent Provider configuration to the settings
@@ -72,6 +73,7 @@ func (s *AgentSettingsService) SaveProvider(ctx context.Context, p llmconfig.Pro
 	if err := llmconfig.Save(ctx, s.store, providers); err != nil {
 		return llmconfig.ProviderConfig{}, err
 	}
+	wailsbridge.Emit("agent:providers-changed", nil)
 	return p, nil
 }
 
@@ -100,6 +102,7 @@ func (s *AgentSettingsService) DeleteProvider(ctx context.Context, id string) er
 			return err
 		}
 	}
+	wailsbridge.Emit("agent:providers-changed", nil)
 	return nil
 }
 
