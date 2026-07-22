@@ -83,6 +83,13 @@ type ConnectionDraft struct {
 	Password       string `json:"password,omitempty"`
 	SSHPassword    string `json:"sshPassword,omitempty"`
 	SSHKeyPassword string `json:"sshKeyPassword,omitempty"`
+
+	// Explicit clear flags. On edit a blank secret normally keeps the stored
+	// keyring value; setting the matching flag removes it instead. A non-empty
+	// secret always wins over its flag.
+	ClearPassword       bool `json:"clearPassword,omitempty"`
+	ClearSSHPassword    bool `json:"clearSSHPassword,omitempty"`
+	ClearSSHKeyPassword bool `json:"clearSSHKeyPassword,omitempty"`
 }
 
 // ListConnections returns every saved profile (no secrets).
@@ -97,11 +104,14 @@ func (s *ConnectionService) GetConnection(ctx context.Context, id string) (stora
 
 // SaveConnection upserts a profile and writes secrets to the keyring.
 // New profiles get a fresh UUID. Returns the persisted profile (with ID +
-// timestamps populated).
+// timestamps populated). Secrets are write-only: on edit, a blank password
+// field keeps the stored keyring value (same semantics as the AI provider
+// API key) — only a non-empty value overwrites.
 func (s *ConnectionService) SaveConnection(ctx context.Context, d ConnectionDraft) (storage.ConnectionProfile, error) {
 	if err := s.validateDraft(d, true); err != nil {
 		return storage.ConnectionProfile{}, err
 	}
+	s.mergeStoredSecret(&d)
 	prof := storage.ConnectionProfile{
 		ID:          d.ID,
 		Name:        d.Name,
@@ -179,11 +189,14 @@ func (s *ConnectionService) MoveConnection(ctx context.Context, id, groupID stri
 // --- runtime ---
 
 // TestConnection opens a Connection from the draft, calls Ping, and closes —
-// nothing is persisted. Used by the form's "Test" button.
+// nothing is persisted. Used by the form's "Test" button. When editing an
+// existing profile, blank password fields fall back to the stored secrets so
+// the test matches what SaveConnection would persist.
 func (s *ConnectionService) TestConnection(ctx context.Context, d ConnectionDraft) error {
 	if err := s.validateDraft(d, false); err != nil {
 		return err
 	}
+	s.mergeStoredSecret(&d)
 	return s.openAndPing(ctx, d)
 }
 
@@ -286,6 +299,29 @@ func draftFieldEmpty(d ConnectionDraft, key string) bool {
 		return d.Params[k] == ""
 	}
 	return false
+}
+
+// mergeStoredSecret fills blank secret fields on an edit draft from the
+// keyring, so leaving a password empty keeps the stored value instead of
+// wiping it. Fields whose Clear* flag is set stay blank (explicit removal).
+// No-op for new profiles or when no secret exists.
+func (s *ConnectionService) mergeStoredSecret(d *ConnectionDraft) {
+	if d.ID == "" {
+		return
+	}
+	old, err := s.secrets.Load(d.ID)
+	if err != nil {
+		return
+	}
+	if d.Password == "" && !d.ClearPassword {
+		d.Password = old.Password
+	}
+	if d.SSHPassword == "" && !d.ClearSSHPassword {
+		d.SSHPassword = old.SSHPassword
+	}
+	if d.SSHKeyPassword == "" && !d.ClearSSHKeyPassword {
+		d.SSHKeyPassword = old.SSHKeyPassword
+	}
 }
 
 func (s *ConnectionService) draftToConfig(d ConnectionDraft) dbdriver.ConnConfig {

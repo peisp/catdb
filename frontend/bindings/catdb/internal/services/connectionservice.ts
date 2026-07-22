@@ -137,7 +137,9 @@ export function Ping(id: string): $CancellablePromise<void> {
 /**
  * SaveConnection upserts a profile and writes secrets to the keyring.
  * New profiles get a fresh UUID. Returns the persisted profile (with ID +
- * timestamps populated).
+ * timestamps populated). Secrets are write-only: on edit, a blank password
+ * field keeps the stored keyring value (same semantics as the AI provider
+ * API key) — only a non-empty value overwrites.
  */
 export function SaveConnection(d: $models.ConnectionDraft): $CancellablePromise<storage$0.ConnectionProfile> {
     return $Call.ByName("catdb/internal/services.ConnectionService.SaveConnection", d).then(($result: any) => {
@@ -156,7 +158,9 @@ export function SaveGroup(g: storage$0.Group): $CancellablePromise<storage$0.Gro
 
 /**
  * TestConnection opens a Connection from the draft, calls Ping, and closes —
- * nothing is persisted. Used by the form's "Test" button.
+ * nothing is persisted. Used by the form's "Test" button. When editing an
+ * existing profile, blank password fields fall back to the stored secrets so
+ * the test matches what SaveConnection would persist.
  */
 export function TestConnection(d: $models.ConnectionDraft): $CancellablePromise<void> {
     return $Call.ByName("catdb/internal/services.ConnectionService.TestConnection", d);

@@ -452,6 +452,15 @@ export class ConnectionDraft {
     "sshPassword"?: string;
     "sshKeyPassword"?: string;
 
+    /**
+     * Explicit clear flags. On edit a blank secret normally keeps the stored
+     * keyring value; setting the matching flag removes it instead. A non-empty
+     * secret always wins over its flag.
+     */
+    "clearPassword"?: boolean;
+    "clearSSHPassword"?: boolean;
+    "clearSSHKeyPassword"?: boolean;
+
     /** Creates a new ConnectionDraft instance. */
     constructor($$source: Partial<ConnectionDraft> = {}) {
         if (!("name" in $$source)) {

@@ -123,6 +123,10 @@ export default {
       testing: 'Testing connection…',
       testSuccess: 'Connection succeeded',
       testCanceled: 'Test canceled',
+      passwordKeepHint: 'The password is kept in the system keychain and, for security, never shown here. Leave blank to keep it; enter a new one to replace it.',
+      passwordWillClear: 'The saved password will be cleared on save.',
+      passwordClear: 'Clear saved password',
+      passwordClearUndo: 'Undo',
       // Driver ConnectionSchema groups (stable keys from the Go driver).
       groups: {
         general: 'General',

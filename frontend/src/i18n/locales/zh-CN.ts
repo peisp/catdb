@@ -119,6 +119,10 @@ export default {
       testing: '正在测试连接…',
       testSuccess: '连接成功',
       testCanceled: '已取消测试',
+      passwordKeepHint: '密码保存在系统钥匙串中，出于安全考虑不在此回显；留空则保留当前密码，输入新密码可覆盖。',
+      passwordWillClear: '将在保存时清除已存密码。',
+      passwordClear: '清除已存密码',
+      passwordClearUndo: '撤销',
       // 驱动 ConnectionSchema 分组（来自 Go 驱动的稳定 key）。
       groups: {
         general: '常规',
