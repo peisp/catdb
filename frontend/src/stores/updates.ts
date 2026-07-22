@@ -52,9 +52,24 @@ export const useUpdatesStore = defineStore('updates', () => {
 
   let unsubscribe: (() => void) | null = null
 
+  // Wails dispatches each Go-side Emit to the WebView on its own goroutine, so
+  // back-to-back events can arrive out of order (a final "downloading" tick
+  // overtaking "downloaded" wedges the UI in the spinner forever). Rank the
+  // phases and drop any event that would move the phase backwards; forward
+  // transitions and same-phase progress updates pass through.
+  const PHASE_RANK: Record<UpdatePhase, number> = {
+    idle: 0,
+    downloading: 1,
+    downloaded: 2,
+    installing: 3,
+    ready: 4,
+    error: 5,
+  }
+
   function attachProgress() {
     if (unsubscribe) return
     unsubscribe = updateApi.onUpdateProgress((p) => {
+      if (!(p.phase in PHASE_RANK) || PHASE_RANK[p.phase] < PHASE_RANK[phase.value]) return
       phase.value = p.phase
       if (typeof p.downloaded === 'number') downloaded.value = p.downloaded
       if (typeof p.total === 'number') total.value = p.total
@@ -153,6 +168,10 @@ export const useUpdatesStore = defineStore('updates', () => {
     lastError.value = ''
     try {
       await updateApi.downloadUpdate(currentVersion.value)
+      // The call resolving is the authoritative success signal — don't depend
+      // on the "downloaded" event alone (its dispatch may lose the goroutine
+      // race against the last progress tick, or get dropped entirely).
+      if (phase.value === 'downloading') phase.value = 'downloaded'
     } catch (e) {
       phase.value = 'error'
       lastError.value = e instanceof Error ? e.message : String(e)
@@ -168,6 +187,9 @@ export const useUpdatesStore = defineStore('updates', () => {
     lastError.value = ''
     try {
       await updateApi.restartAndInstall()
+      // Same fallback as download(): the resolved call means Go reached
+      // "ready" — the app quits ~800ms later.
+      if (phase.value === 'installing') phase.value = 'ready'
     } catch (e) {
       phase.value = 'error'
       lastError.value = e instanceof Error ? e.message : String(e)
