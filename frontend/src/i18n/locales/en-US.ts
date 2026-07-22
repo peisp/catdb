@@ -787,6 +787,7 @@ export default {
     // @table mention completion (§10.3).
     mention: {
       empty: 'No matching tables',
+      loading: 'Loading tables…',
     },
     // Statement approval card (§5 gate 4).
     approval: {

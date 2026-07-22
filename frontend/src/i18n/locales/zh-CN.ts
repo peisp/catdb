@@ -778,6 +778,7 @@ export default {
     // @表名提及补全（§10.3）。
     mention: {
       empty: '没有匹配的表',
+      loading: '正在加载表清单…',
     },
     // 语句审批卡（闸 4）。
     approval: {

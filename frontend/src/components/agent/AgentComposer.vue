@@ -1,6 +1,6 @@
 <script lang="ts">
 // Input height bounds, shared with the panel's resize grip (§10.1).
-export const INPUT_MIN_H = 44
+export const INPUT_MIN_H = 64
 export const INPUT_MAX_H = 220
 </script>
 
@@ -21,8 +21,22 @@ export const INPUT_MAX_H = 220
 // auto height when set.
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
-const props = defineProps<{ busy: boolean; disabled?: boolean; tables: string[]; manualHeight?: number | null }>()
-const emit = defineEmits<{ (e: 'send', text: string, mentions: string[]): void; (e: 'stop'): void }>()
+const props = defineProps<{
+  busy: boolean
+  disabled?: boolean
+  tables: string[]
+  // The panel is lazily loading the namespace — the mention menu shows a
+  // loading line instead of "no matches" (§10.2 lazy connect).
+  tablesLoading?: boolean
+  manualHeight?: number | null
+}>()
+const emit = defineEmits<{
+  (e: 'send', text: string, mentions: string[]): void
+  (e: 'stop'): void
+  // Fired when the mention menu opens without a table list — the user gesture
+  // that lazily connects and loads the namespace (§10.2).
+  (e: 'need-tables'): void
+}>()
 
 const text = ref('')
 const taRef = ref<HTMLTextAreaElement | null>(null)
@@ -76,7 +90,11 @@ function refreshMention() {
   if (m) {
     atStart = pos - m[2].length - 1
     query.value = m[2]
-    if (!menuOpen.value) { activeIndex.value = 0; debouncedQuery.value = m[2] }
+    if (!menuOpen.value) {
+      activeIndex.value = 0
+      debouncedQuery.value = m[2]
+      if (props.tables.length === 0) emit('need-tables')
+    }
     menuOpen.value = true
   } else {
     menuOpen.value = false
@@ -148,7 +166,8 @@ watch(filtered, (f) => { if (activeIndex.value >= f.length) activeIndex.value = 
   <div class="composer">
     <div class="input-wrap">
       <div v-if="menuOpen" class="mention-menu">
-        <div v-if="filtered.length === 0" class="mention-empty">{{ $t('agent.mention.empty') }}</div>
+        <div v-if="filtered.length === 0 && tablesLoading" class="mention-empty">{{ $t('agent.mention.loading') }}</div>
+        <div v-else-if="filtered.length === 0" class="mention-empty">{{ $t('agent.mention.empty') }}</div>
         <button
           v-for="(t, i) in filtered"
           :key="t"
@@ -257,7 +276,7 @@ watch(filtered, (f) => { if (activeIndex.value >= f.length) activeIndex.value = 
   /* Right padding keeps text clear of the round send button. */
   padding: 6px 36px 6px 8px;
   outline: none;
-  min-height: 44px;
+  min-height: 64px;
   overflow-y: auto;
   user-select: text;
   -webkit-user-select: text;

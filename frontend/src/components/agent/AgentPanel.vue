@@ -65,7 +65,9 @@ const loading = ref(true)
 const view = ref<'chat' | 'history'>('chat')
 
 // namespace
-const databases = ref<string[]>([])
+// Raw db list as fetched; the visible list applies the object tree's schema
+// filter below (computed after panelConn is defined).
+const allDatabases = ref<string[]>([])
 const schemas = ref<string[]>([])
 const schemasSupported = ref(false)
 const currentDb = ref('')
@@ -98,6 +100,15 @@ const panelConn = computed<ConnectionProfile | null>(() => {
 // Orphan session: bound connection deleted → read-only archive (§10.2).
 const orphan = computed(() => !!session.value && !panelConn.value)
 const connectionName = computed(() => panelConn.value?.name ?? '')
+// Databases with the object tree's schema filter applied — the panel shows
+// the same visible set as the tree / query-tab dropdowns, live-updating when
+// the filter changes.
+const databases = computed<string[]>(() => {
+  const conn = panelConn.value
+  if (!conn) return []
+  const filter = queryStore.schemaFilterFor(conn.id)
+  return filter ? allDatabases.value.filter((d) => filter.includes(d)) : allDatabases.value
+})
 // Connection name + environment per session, for the global session list's badges.
 const connsById = computed<Record<string, { name: string; environment: string }>>(() => {
   const m: Record<string, { name: string; environment: string }> = {}
@@ -344,7 +355,7 @@ async function loadNamespace(force = false) {
   currentSchema.value = s?.currentSchema ?? ''
   const conn = panelConn.value
   if (!conn || (!force && !connStore.isLive(conn.id))) {
-    databases.value = []
+    allDatabases.value = []
     schemas.value = []
     tableNames.value = []
     schemasSupported.value = false
@@ -360,13 +371,14 @@ async function loadNamespace(force = false) {
     connStore.markLive(conn.id) // the fetch opened the connection server-side
   } catch { dbs = [] }
   if (session.value !== s) return // user switched sessions while loading
-  databases.value = dbs
+  allDatabases.value = dbs
   // A fresh session has no db yet — once the list is here, default to the
-  // first one so the user can just type (§10.2 cold start).
-  if (s && !currentDb.value && dbs.length > 0) {
-    currentDb.value = dbs[0]
-    s.currentDb = dbs[0]
-    try { await agentApi.setNamespace(s.id, dbs[0], '') } catch { /* best-effort */ }
+  // first VISIBLE one (object tree filter applied) so the user can just type.
+  const visible = databases.value
+  if (s && !currentDb.value && visible.length > 0) {
+    currentDb.value = visible[0]
+    s.currentDb = visible[0]
+    try { await agentApi.setNamespace(s.id, visible[0], '') } catch { /* best-effort */ }
   }
   if (schemasSupported.value && currentDb.value) {
     try { schemas.value = await metaStore.ensureSchemas(conn.id, currentDb.value) } catch { schemas.value = [] }
@@ -385,10 +397,20 @@ async function loadTableNames() {
   } catch { tableNames.value = [] }
 }
 
-// The header's db selector was opened before the list was loaded — the user
-// gesture is the lazy-connect trigger.
+// Lazy-connect trigger shared by the db selector (pointerdown) and the @
+// completion menu (need-tables): connect + load the namespace on the first
+// user gesture that needs it, with an in-flight guard against repeats.
+const nsLoading = ref(false)
+async function ensureNamespace() {
+  if (nsLoading.value || orphan.value || !panelConn.value) return
+  const loaded = allDatabases.value.length > 0 &&
+    (tableNames.value.length > 0 || !currentDb.value)
+  if (loaded) return
+  nsLoading.value = true
+  try { await loadNamespace(true) } finally { nsLoading.value = false }
+}
 function onRequestNamespace() {
-  if (databases.value.length === 0 && !orphan.value) void loadNamespace(true)
+  void ensureNamespace()
 }
 
 // --- session lifecycle ---
@@ -484,7 +506,7 @@ function onSend(text: string, mentions: string[] = []) {
       scrollToBottom()
       // The engine connected server-side to run the turn — if the namespace
       // was never loaded (lazy connect), catch up now for @completion.
-      if (session.value === s && databases.value.length === 0) void loadNamespace(true)
+      if (session.value === s && allDatabases.value.length === 0) void loadNamespace(true)
     })
 }
 function onStop() {
@@ -946,7 +968,17 @@ onBeforeUnmount(() => {
           </select>
         </div>
 
-        <AgentComposer ref="composerRef" :busy="busy" :disabled="!session || !!txPending || orphan" :tables="tableNames" :manual-height="inputH" @send="onSend" @stop="onStop" />
+        <AgentComposer
+          ref="composerRef"
+          :busy="busy"
+          :disabled="!session || !!txPending || orphan"
+          :tables="tableNames"
+          :tables-loading="nsLoading"
+          :manual-height="inputH"
+          @send="onSend"
+          @stop="onStop"
+          @need-tables="onRequestNamespace"
+        />
 
         <!-- Ask|Agent + model switch, under the input box. -->
         <div class="mode-row">

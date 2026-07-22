@@ -165,6 +165,30 @@ export const useQueryStore = defineStore('query', () => {
     schemaFilter.value = { ...schemaFilter.value, [connId]: schemas }
   }
 
+  // localStorage key of the object tree's persisted schema filter — owned
+  // here so every reader/writer shares one definition.
+  function schemaFilterKey(connId: string): string {
+    return `catdb.schemaFilter.v1.${connId}`
+  }
+
+  // schemaFilterFor returns the object tree's schema filter for a connection,
+  // falling back to the persisted selection when the tree hasn't been mounted
+  // for that connection this run (e.g. the agent panel's decoupled context).
+  // null = show all.
+  function schemaFilterFor(connId: string): string[] | null {
+    const live = schemaFilter.value[connId]
+    if (live !== undefined) return live
+    try {
+      const raw = localStorage.getItem(schemaFilterKey(connId))
+      if (!raw) return null
+      const v = JSON.parse(raw)
+      if (v?.followAll === true || !Array.isArray(v?.schemas)) return null
+      return v.schemas.filter((s: unknown): s is string => typeof s === 'string')
+    } catch {
+      return null
+    }
+  }
+
   function setSelectedDb(connId: string, db: string | null) {
     selectedDb.value = { ...selectedDb.value, [connId]: db }
   }
@@ -780,6 +804,8 @@ export const useQueryStore = defineStore('query', () => {
     setSelectedDb,
     schemaFilter,
     setSchemaFilter,
+    schemaFilterKey,
+    schemaFilterFor,
   }
 })
 

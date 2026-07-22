@@ -125,8 +125,7 @@ const isLive = computed(() => connStore.isLive(props.connection.id))
 // localStorage. `followAll` means "track every schema, including ones that
 // appear later"; it stays true whenever all schemas are checked, so a new
 // schema after a refresh is auto-included.
-const FILTER_VER = 'v1'
-const filterKey = (id: string) => `catdb.schemaFilter.${FILTER_VER}.${id}`
+const filterKey = (id: string) => queryStore.schemaFilterKey(id)
 
 const selectedSchemas = ref<Set<string>>(new Set())
 const followAll = ref(true)
