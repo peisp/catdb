@@ -1,19 +1,50 @@
+<script lang="ts">
+// Input height bounds, shared with the panel's resize grip (§10.1).
+export const INPUT_MIN_H = 44
+export const INPUT_MAX_H = 220
+</script>
+
 <script setup lang="ts">
 // AgentComposer — multiline input + send/stop toggle, with @table mentions
 // (§10.3). Typing "@" opens a table-name completion popover sourced from the
 // session's current namespace (passed in via `tables`, already cached in the
-// metadata store). Selecting a table turns it into a chip above the input and
-// strips the "@xxx" text from the body; chips ride along as the `mentions`
-// argument on send. Enter sends, Shift+Enter inserts a newline; while the menu
-// is open Enter/Arrows/Esc drive the completion instead.
-import { computed, nextTick, ref, watch } from 'vue'
+// metadata store). Selecting a table completes the token IN PLACE — "@订单表"
+// stays part of the sentence ("关联查询 @a 和 @b") — and on send the text is
+// scanned against the known table names to build the `mentions` argument.
+// Enter sends, Shift+Enter inserts a newline; while the menu is open
+// Enter/Arrows/Esc drive the completion instead.
+//
+// The circular send/stop button sits inside the input's bottom-right corner
+// (§10.1): up arrow = send, square = stop. The textarea auto-grows with
+// content up to INPUT_MAX_H then scrolls; `manualHeight` (owned by the panel,
+// driven by the grip between the messages area and the dock) overrides the
+// auto height when set.
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
-const props = defineProps<{ busy: boolean; disabled?: boolean; tables: string[] }>()
+const props = defineProps<{ busy: boolean; disabled?: boolean; tables: string[]; manualHeight?: number | null }>()
 const emit = defineEmits<{ (e: 'send', text: string, mentions: string[]): void; (e: 'stop'): void }>()
 
 const text = ref('')
-const mentions = ref<string[]>([])
 const taRef = ref<HTMLTextAreaElement | null>(null)
+
+// --- height management: auto-grow, overridden by the panel's manual height ---
+function applyHeight() {
+  const el = taRef.value
+  if (!el) return
+  if (props.manualHeight != null) {
+    el.style.height = props.manualHeight + 'px'
+    return
+  }
+  // Collapse first so scrollHeight reflects the content, not the old height.
+  el.style.height = 'auto'
+  el.style.height = Math.min(INPUT_MAX_H, Math.max(INPUT_MIN_H, el.scrollHeight)) + 'px'
+}
+watch(text, () => { void nextTick(applyHeight) })
+watch(() => props.manualHeight, applyHeight)
+onMounted(applyHeight)
+
+// The panel's grip needs the rendered height as its drag starting point.
+defineExpose({ currentHeight: () => taRef.value?.offsetHeight ?? INPUT_MIN_H })
 
 // --- @mention completion state ---
 const menuOpen = ref(false)
@@ -30,9 +61,8 @@ watch(query, (q) => {
 
 const filtered = computed(() => {
   const q = debouncedQuery.value.toLowerCase()
-  const chosen = new Set(mentions.value)
   return props.tables
-    .filter((t) => !chosen.has(t) && (!q || t.toLowerCase().includes(q)))
+    .filter((t) => !q || t.toLowerCase().includes(q))
     .slice(0, 50)
 })
 
@@ -54,22 +84,34 @@ function refreshMention() {
 }
 
 function chooseTable(name: string) {
-  if (!mentions.value.includes(name)) mentions.value.push(name)
+  // Complete the token in place: "@订" → "@订单表 ", staying in the sentence.
   const el = taRef.value
   const pos = el?.selectionStart ?? text.value.length
-  const before = atStart >= 0 ? text.value.slice(0, atStart) : text.value.slice(0, pos)
+  const start = atStart >= 0 ? atStart : pos
+  const before = text.value.slice(0, start)
   const after = text.value.slice(pos)
-  text.value = before + after
+  const inserted = '@' + name + ' '
+  text.value = before + inserted + after
   menuOpen.value = false
   query.value = ''
   void nextTick(() => {
     const e = taRef.value
-    if (e) { const c = before.length; e.focus(); e.setSelectionRange(c, c) }
+    if (e) { const c = (before + inserted).length; e.focus(); e.setSelectionRange(c, c) }
   })
 }
 
-function removeMention(name: string) {
-  mentions.value = mentions.value.filter((m) => m !== name)
+// Mentions are derived from the text at send time: every @token that names a
+// known table (case-insensitive, canonical casing returned, deduped). Editing
+// or deleting a mention in the text therefore just works.
+function extractMentions(v: string): string[] {
+  if (props.tables.length === 0) return []
+  const byLower = new Map(props.tables.map((t) => [t.toLowerCase(), t]))
+  const out: string[] = []
+  for (const m of v.matchAll(/@([\p{L}\p{N}_$]+)/gu)) {
+    const hit = byLower.get(m[1].toLowerCase())
+    if (hit && !out.includes(hit)) out.push(hit)
+  }
+  return out
 }
 
 function onKeydown(ev: KeyboardEvent) {
@@ -89,9 +131,8 @@ function onKeydown(ev: KeyboardEvent) {
 function submit() {
   const v = text.value.trim()
   if (!v || props.busy || props.disabled) return
-  emit('send', v, [...mentions.value])
+  emit('send', v, extractMentions(v))
   text.value = ''
-  mentions.value = []
   menuOpen.value = false
 }
 function onButton() {
@@ -105,13 +146,6 @@ watch(filtered, (f) => { if (activeIndex.value >= f.length) activeIndex.value = 
 
 <template>
   <div class="composer">
-    <div v-if="mentions.length" class="chips">
-      <span v-for="m in mentions" :key="m" class="chip">
-        @{{ m }}
-        <button type="button" class="chip-x" :title="$t('common.delete')" @click="removeMention(m)">×</button>
-      </span>
-    </div>
-
     <div class="input-wrap">
       <div v-if="menuOpen" class="mention-menu">
         <div v-if="filtered.length === 0" class="mention-empty">{{ $t('agent.mention.empty') }}</div>
@@ -138,17 +172,25 @@ watch(filtered, (f) => { if (activeIndex.value >= f.length) activeIndex.value = 
         @click="refreshMention"
         @blur="menuOpen = false"
       />
-    </div>
 
-    <button
-      type="button"
-      class="send-btn"
-      :class="{ stop: busy }"
-      :disabled="disabled || (!busy && !text.trim())"
-      @click="onButton"
-    >
-      {{ busy ? $t('agent.panel.stop') : $t('agent.panel.send') }}
-    </button>
+      <button
+        type="button"
+        class="round-btn"
+        :class="{ stop: busy }"
+        :disabled="disabled || (!busy && !text.trim())"
+        :title="busy ? $t('agent.panel.stop') : $t('agent.panel.send')"
+        @click="onButton"
+      >
+        <!-- up arrow = send -->
+        <svg v-if="!busy" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <path d="M8 12.5v-9M4.2 7.3 8 3.5l3.8 3.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+        </svg>
+        <!-- square = stop -->
+        <svg v-else viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <rect x="4.5" y="4.5" width="7" height="7" rx="1.5" fill="currentColor" />
+        </svg>
+      </button>
+    </div>
   </div>
 </template>
 
@@ -157,38 +199,7 @@ watch(filtered, (f) => { if (activeIndex.value >= f.length) activeIndex.value = 
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 8px;
-  border-top: 1px solid var(--catdb-separator);
-  background: var(--catdb-surface-chrome);
 }
-
-/* Mention chips above the input (accent-soft, DESIGN.md). */
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: var(--catdb-fs-mini);
-  color: var(--catdb-accent);
-  background: var(--catdb-accent-soft);
-  border-radius: var(--catdb-rounded-sm);
-  padding: 1px 4px 1px 6px;
-  white-space: nowrap;
-}
-.chip-x {
-  border: none;
-  background: transparent;
-  color: var(--catdb-accent);
-  font-size: 12px;
-  line-height: 1;
-  padding: 0 1px;
-  cursor: default;
-}
-.chip-x:hover { color: var(--catdb-error); }
 
 .input-wrap { position: relative; }
 
@@ -233,39 +244,45 @@ watch(filtered, (f) => { if (activeIndex.value >= f.length) activeIndex.value = 
 .mention-item.active { background: var(--catdb-accent); color: var(--catdb-text-on-accent); }
 
 .input {
+  display: block;
   width: 100%;
   resize: none;
   border: 1px solid var(--catdb-control-border);
-  border-radius: var(--catdb-rounded-sm);
+  border-radius: var(--catdb-rounded-md);
   background: var(--catdb-surface-content);
   color: var(--catdb-text-primary);
   font-family: inherit;
   font-size: var(--catdb-fs-body);
   line-height: 1.4;
-  padding: 6px 8px;
+  /* Right padding keeps text clear of the round send button. */
+  padding: 6px 36px 6px 8px;
   outline: none;
   min-height: 44px;
-  max-height: 160px;
+  overflow-y: auto;
   user-select: text;
   -webkit-user-select: text;
   cursor: text;
 }
 .input:focus { border-color: var(--catdb-accent); }
 .input:disabled { opacity: 0.5; }
-.send-btn {
-  align-self: flex-end;
-  height: 24px;
-  padding: 0 14px;
+
+/* Circular send (↑) / stop (■) button inside the bottom-right corner. */
+.round-btn {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
-  border-radius: var(--catdb-rounded-sm);
+  border-radius: 50%;
   background: var(--catdb-accent);
   color: var(--catdb-text-on-accent);
-  font: inherit;
-  font-size: var(--catdb-fs-small);
   cursor: default;
   transition: background 130ms ease-out;
 }
-.send-btn:hover { background: var(--catdb-accent-pressed); }
-.send-btn.stop { background: var(--catdb-error); }
-.send-btn:disabled { opacity: 0.4; }
+.round-btn:hover { background: var(--catdb-accent-pressed); }
+.round-btn:disabled { opacity: 0.4; }
 </style>

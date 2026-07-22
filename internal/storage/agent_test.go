@@ -53,6 +53,31 @@ func TestAgentSessionCRUD(t *testing.T) {
 		t.Fatalf("ListAgentSessions: got %d, err=%v", len(list), err)
 	}
 
+	// Empty connID = global list across connections (§10.2).
+	conn2, err := s.SaveConnection(ctx, ConnectionProfile{Name: "other", Driver: "mysql"})
+	if err != nil {
+		t.Fatalf("SaveConnection(other): %v", err)
+	}
+	if _, err := s.CreateAgentSession(ctx, AgentSession{ConnID: conn2.ID, Mode: "ask"}); err != nil {
+		t.Fatalf("CreateAgentSession(conn2): %v", err)
+	}
+	all, err := s.ListAgentSessions(ctx, "")
+	if err != nil || len(all) != 2 {
+		t.Fatalf("ListAgentSessions(all): got %d, err=%v", len(all), err)
+	}
+
+	if err := s.ClearAgentSessions(ctx); err != nil {
+		t.Fatalf("ClearAgentSessions: %v", err)
+	}
+	all, err = s.ListAgentSessions(ctx, "")
+	if err != nil || len(all) != 0 {
+		t.Fatalf("ListAgentSessions after clear: got %d, err=%v", len(all), err)
+	}
+	// Re-create one so the delete assertions below still have their subject.
+	if _, err := s.CreateAgentSession(ctx, AgentSession{ID: sess.ID, ConnID: conn.ID, Mode: "ask"}); err != nil {
+		t.Fatalf("CreateAgentSession(recreate): %v", err)
+	}
+
 	if err := s.DeleteAgentSession(ctx, sess.ID); err != nil {
 		t.Fatalf("DeleteAgentSession: %v", err)
 	}

@@ -5,9 +5,10 @@
 // trip: session header + streaming messages + tool cards + SQL exits + input.
 // Agent-mode grants / approvals / transaction bar are a later milestone; the
 // structure (mode toggle, tool cards) is left open for them.
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import AgentSessionHeader from './AgentSessionHeader.vue'
+import AgentHistoryView from './AgentHistoryView.vue'
 import AgentMessage from './AgentMessage.vue'
 import AgentToolCard from './AgentToolCard.vue'
 import AgentApprovalCard from './AgentApprovalCard.vue'
@@ -15,9 +16,11 @@ import AgentPlanCard from './AgentPlanCard.vue'
 import AgentResultTable from './AgentResultTable.vue'
 import AgentTxBar from './AgentTxBar.vue'
 import AgentGrants from './AgentGrants.vue'
-import AgentComposer from './AgentComposer.vue'
+import AgentComposer, { INPUT_MAX_H, INPUT_MIN_H } from './AgentComposer.vue'
 import AppIcon from '../shared/AppIcon.vue'
 import botIcon from '../../assets/icons/bot.svg?raw'
+import databaseIcon from '../../assets/icons/database.svg?raw'
+import lockIcon from '../../assets/icons/lock.svg?raw'
 import { AGENT_SQL_ACTIONS, type AgentSqlActions } from './sqlActions'
 import { entryId, type ApprovalEntry, type AssistantEntry, type Entry, type PlanEntry, type ToolEntry } from './types'
 import * as agentApi from '../../api/agent'
@@ -25,17 +28,20 @@ import type { AgentSession } from '../../api/agent'
 import { getAgentSettings, listProviders, type ModelPricing, type ProviderConfig } from '../../api/agentSettings'
 import { useQueryStore } from '../../stores/query'
 import { useMetadataStore } from '../../stores/metadata'
-import { openTextPrompt } from '../../api/prompts'
+import { useConnectionsStore } from '../../stores/connections'
 import { confirm } from '../../api/dialogs'
 import type { ConnectionProfile } from '../../api/connections'
 import { i18n, t } from '../../i18n'
 
+// props.connection is only a HINT (§10.2): the cold-start / new-session
+// default. The panel's real connection context follows the current session.
 const props = defineProps<{ connection: ConnectionProfile | null }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const message = useMessage()
 const queryStore = useQueryStore()
 const metaStore = useMetadataStore()
+const connStore = useConnectionsStore()
 
 // --- session / timeline state ---
 const session = ref<AgentSession | null>(null)
@@ -53,7 +59,10 @@ const pricing = ref<{ [k: string]: ModelPricing | undefined }>({})
 // Configured Provider instances — the session-header model selector's source (§10.1).
 const providers = ref<ProviderConfig[]>([])
 const errorBar = ref<{ slug: string; detail: string } | null>(null)
-const loading = ref(false)
+// Starts true so the pre-init render doesn't flash the empty state.
+const loading = ref(true)
+// 'history' swaps the whole panel body for the session-history page (§10.2).
+const view = ref<'chat' | 'history'>('chat')
 
 // namespace
 const databases = ref<string[]>([])
@@ -77,7 +86,75 @@ const cost = computed<string | null>(() => {
 })
 
 const mode = computed<'ask' | 'agent'>(() => (session.value?.mode === 'agent' ? 'agent' : 'ask'))
-const connectionName = computed(() => props.connection?.name ?? '')
+
+// Panel-local connection context (§10.2): resolved from the CURRENT session's
+// connId, decoupled from the main UI's active connection. Null while there is
+// no session, or when the bound connection was deleted (orphan).
+const panelConn = computed<ConnectionProfile | null>(() => {
+  const id = session.value?.connId
+  if (!id) return null
+  return connStore.connections.find((c) => c.id === id) ?? null
+})
+// Orphan session: bound connection deleted → read-only archive (§10.2).
+const orphan = computed(() => !!session.value && !panelConn.value)
+const connectionName = computed(() => panelConn.value?.name ?? '')
+// Connection name + environment per session, for the global session list's badges.
+const connsById = computed<Record<string, { name: string; environment: string }>>(() => {
+  const m: Record<string, { name: string; environment: string }> = {}
+  for (const c of connStore.connections) m[c.id] = { name: c.name, environment: c.environment ?? '' }
+  return m
+})
+
+// Environment badge of the panel connection (闸 1): prod = red + lock (hard
+// read-only), dev/test/staging = neutral tag, '' = gray "unmarked" nudge.
+// Tier names reuse the connection form's localized labels.
+const envKind = computed<'prod' | 'other' | 'unmarked'>(() => {
+  const e = panelConn.value?.environment ?? ''
+  if (e === 'prod') return 'prod'
+  if (e === 'dev' || e === 'test' || e === 'staging') return 'other'
+  return 'unmarked'
+})
+const envLabel = computed(() =>
+  envKind.value === 'unmarked'
+    ? t('agent.panel.env.unmarked')
+    : t(`connection.form.environments.${panelConn.value?.environment}`),
+)
+const envTooltip = computed(() => {
+  if (envKind.value === 'prod') return t('agent.panel.env.prodTooltip')
+  if (envKind.value === 'unmarked') return t('agent.panel.env.unmarkedTooltip')
+  return ''
+})
+
+// Model selector (§10.1), in the row under the composer. A <select> value has
+// to be a single string, so each option packs providerId + model around a
+// separator that neither id contains.
+const MODEL_SEP = '\u0000'
+const providerGroups = computed(() =>
+  providers.value
+    .filter((p) => (p.models?.length ?? 0) > 0)
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      models: (p.models ?? []).map((m) => ({ id: m.ID, value: p.id + MODEL_SEP + m.ID })),
+    })),
+)
+const modelValue = computed(() => {
+  const s = session.value
+  if (!s || !s.providerId || !s.model) return ''
+  return s.providerId + MODEL_SEP + s.model
+})
+// The session's model may reference a provider/model no longer in the list (e.g.
+// provider deleted) — surface it as a standalone option so the value still shows.
+const currentInList = computed(() => {
+  const s = session.value
+  if (!s || !s.providerId || !s.model) return true
+  return providers.value.some((p) => p.id === s.providerId && (p.models ?? []).some((m) => m.ID === s.model))
+})
+function onModelSelect(v: string) {
+  const i = v.indexOf(MODEL_SEP)
+  if (i < 0) return
+  void onChangeModel(v.slice(0, i), v.slice(i + 1))
+}
 
 // --- transaction / grants state (Agent mode) ---
 // txPending drives the AgentTxBar and disables the composer until the user
@@ -86,7 +163,7 @@ const connectionName = computed(() => props.connection?.name ?? '')
 const txPending = ref<agentApi.TxStmt[] | null>(null)
 const txBusy = ref(false)
 const grants = computed(() => session.value?.grants ?? [])
-const isProd = computed(() => props.connection?.environment === 'prod')
+const isProd = computed(() => panelConn.value?.environment === 'prod')
 
 let offEvents: (() => void) | null = null
 let currentSend: { done: Promise<void>; stop: () => void } | null = null
@@ -95,13 +172,13 @@ let currentSend: { done: Promise<void>; stop: () => void } | null = null
 const sqlActions: AgentSqlActions = {
   insert(sql) {
     const connId = session.value?.connId
-    if (!connId) return false
+    if (!connId || orphan.value) return false
     queryStore.appendSqlToActiveQuery(connId, sql)
     return true
   },
   openTab(sql) {
     const connId = session.value?.connId
-    if (!connId) return
+    if (!connId || orphan.value) return
     queryStore.addTab(connId, { kind: 'query', sql, title: t('agent.panel.sql.tabTitle') })
   },
 }
@@ -257,18 +334,40 @@ function historyToEntries(msgs: agentApi.AgentMessage[]): Entry[] {
 }
 
 // --- namespace loading ---
-async function loadNamespace() {
-  const conn = props.connection
-  if (!conn) return
+// Lazy connect (§10.2): reading history never opens a database connection.
+// The db list loads only when the connection is already live, or on demand
+// (force) — the user opened the db selector, or a turn just ran (the engine
+// connected server-side anyway).
+async function loadNamespace(force = false) {
+  const s = session.value
+  currentDb.value = s?.currentDb ?? ''
+  currentSchema.value = s?.currentSchema ?? ''
+  const conn = panelConn.value
+  if (!conn || (!force && !connStore.isLive(conn.id))) {
+    databases.value = []
+    schemas.value = []
+    tableNames.value = []
+    schemasSupported.value = false
+    return
+  }
   try {
     const caps = await queryStore.loadCapabilities(conn.driver)
     schemasSupported.value = !!caps.schemas
   } catch { schemasSupported.value = false }
+  let dbs: string[] = []
   try {
-    databases.value = await metaStore.ensureDatabases(conn.id)
-  } catch { databases.value = [] }
-  currentDb.value = session.value?.currentDb ?? ''
-  currentSchema.value = session.value?.currentSchema ?? ''
+    dbs = await metaStore.ensureDatabases(conn.id)
+    connStore.markLive(conn.id) // the fetch opened the connection server-side
+  } catch { dbs = [] }
+  if (session.value !== s) return // user switched sessions while loading
+  databases.value = dbs
+  // A fresh session has no db yet — once the list is here, default to the
+  // first one so the user can just type (§10.2 cold start).
+  if (s && !currentDb.value && dbs.length > 0) {
+    currentDb.value = dbs[0]
+    s.currentDb = dbs[0]
+    try { await agentApi.setNamespace(s.id, dbs[0], '') } catch { /* best-effort */ }
+  }
   if (schemasSupported.value && currentDb.value) {
     try { schemas.value = await metaStore.ensureSchemas(conn.id, currentDb.value) } catch { schemas.value = [] }
   }
@@ -278,12 +377,18 @@ async function loadNamespace() {
 // @mention completion source: table names of the current namespace (§10.3),
 // served from the metadata store's existing cache.
 async function loadTableNames() {
-  const conn = props.connection
+  const conn = panelConn.value
   if (!conn || !currentDb.value) { tableNames.value = []; return }
   try {
     const list = await metaStore.ensureTables(conn.id, currentDb.value, false, currentSchema.value)
     tableNames.value = (list ?? []).map((tbl) => tbl.name)
   } catch { tableNames.value = [] }
+}
+
+// The header's db selector was opened before the list was loaded — the user
+// gesture is the lazy-connect trigger.
+function onRequestNamespace() {
+  if (databases.value.length === 0 && !orphan.value) void loadNamespace(true)
 }
 
 // --- session lifecycle ---
@@ -314,24 +419,41 @@ async function loadSession(s: AgentSession) {
   scrollToBottom()
 }
 
+// Cold-start / new-session default connection (§10.2 fallback chain): the
+// panel's current connection → the main UI's active connection → an already
+// open connection → first in the list. Never eagerly connects.
+function defaultNewSessionConn(): ConnectionProfile | null {
+  if (panelConn.value) return panelConn.value
+  if (props.connection) return props.connection
+  const conns = connStore.connections
+  return conns.find((c) => connStore.isLive(c.id)) ?? conns[0] ?? null
+}
+
 async function init() {
-  const conn = props.connection
   session.value = null
   sessions.value = []
   entries.value = []
-  if (!conn) return
   loading.value = true
   try { pricing.value = (await getAgentSettings()).pricing ?? {} } catch { pricing.value = {} }
   try { providers.value = (await listProviders()) ?? [] } catch { providers.value = [] }
   try {
-    const list = await agentApi.listSessions(conn.id)
+    if (connStore.connections.length === 0) await connStore.refreshAll()
+  } catch { /* the session list still works without connection metadata */ }
+  try {
+    // Global list (§10.2): every connection's sessions, most recent first.
+    // Opening the panel restores the most recent one.
+    const list = await agentApi.listSessions()
     sessions.value = list ?? []
     if (sessions.value.length > 0) {
       await loadSession(sessions.value[0])
     } else {
-      const s = await agentApi.createSession(conn.id, 'ask')
-      sessions.value = [s]
-      await loadSession(s)
+      const conn = defaultNewSessionConn()
+      if (conn) {
+        const s = await agentApi.createSession(conn.id, 'ask')
+        sessions.value = [s]
+        await loadSession(s)
+      }
+      // No connections at all → the empty state renders.
     }
   } catch (e) {
     errorBar.value = { slug: '', detail: String(e) }
@@ -343,7 +465,7 @@ async function init() {
 // --- actions ---
 function onSend(text: string, mentions: string[] = []) {
   const s = session.value
-  if (!s || busy.value || txPending.value) return
+  if (!s || busy.value || txPending.value || orphan.value) return
   errorBar.value = null
   entries.value.push({ kind: 'user', id: entryId(), text, mentions: mentions.length ? mentions : undefined })
   busy.value = true
@@ -360,6 +482,9 @@ function onSend(text: string, mentions: string[] = []) {
       busy.value = false
       currentSend = null
       scrollToBottom()
+      // The engine connected server-side to run the turn — if the namespace
+      // was never loaded (lazy connect), catch up now for @completion.
+      if (session.value === s && databases.value.length === 0) void loadNamespace(true)
     })
 }
 function onStop() {
@@ -451,7 +576,9 @@ async function onChangeGrants(next: string[]) {
 }
 
 async function onNewSession() {
-  const conn = props.connection
+  // Inherits the panel's current connection (§10.2), falling back down the
+  // default chain; without any connection there is nothing to bind to.
+  const conn = defaultNewSessionConn()
   if (!conn) return
   try {
     const s = await agentApi.createSession(conn.id, 'ask')
@@ -462,23 +589,62 @@ async function onNewSession() {
   }
 }
 async function onSelectSession(id: string) {
+  view.value = 'chat'
   const s = sessions.value.find((x) => x.id === id)
-  if (s) await loadSession(s)
+  if (s && s.id !== session.value?.id) await loadSession(s)
+  else scrollToBottom() // remount of the scroller resets its position
 }
-async function onRenameSession(id: string) {
+
+function onHistoryBack() {
+  view.value = 'chat'
+  scrollToBottom()
+}
+
+// Open the full-page history view (§10.2), refreshing the list so ordering
+// and updated-at stamps are current.
+async function openHistory() {
+  view.value = 'history'
+  try {
+    const list = await agentApi.listSessions()
+    sessions.value = list ?? []
+  } catch { /* keep the locally known list */ }
+}
+
+// Clear-all from the history view: second-confirm, then wipe and start a
+// fresh default session (audit records are preserved server-side).
+async function onClearHistory() {
+  const choice = await confirm({
+    title: t('agent.panel.clearTitle'),
+    message: t('agent.panel.clearConfirm'),
+    buttons: [
+      { value: 'cancel', label: t('common.cancel'), isCancel: true },
+      { value: 'clear', label: t('agent.panel.clearAll') },
+    ],
+  })
+  if (choice !== 'clear') return
+  try {
+    await agentApi.clearSessions()
+    offEvents?.()
+    session.value = null
+    sessions.value = []
+    entries.value = []
+    view.value = 'chat'
+    await onNewSession()
+  } catch (e) {
+    message.error(String(e))
+  }
+}
+// Inline rename from the history view — the new title arrives already
+// trimmed and non-empty (AgentHistoryView commits only real changes).
+async function onRenameSession(id: string, title: string) {
   const s = sessions.value.find((x) => x.id === id)
   if (!s) return
-  const title = await openTextPrompt({
-    title: t('agent.panel.renameTitle'),
-    label: t('agent.panel.renameLabel'),
-    initial: s.title,
-    okText: t('common.rename'),
-    validate: (v) => (v.trim() ? null : t('common.nameEmpty')),
-  })
-  if (title === null) return
   try {
-    await agentApi.renameSession(id, title.trim())
-    s.title = title.trim()
+    await agentApi.renameSession(id, title)
+    s.title = title
+    // After a history refetch the list holds fresh objects — mirror onto the
+    // loaded session so the chat header title stays in sync.
+    if (session.value?.id === id) session.value.title = title
   } catch (e) {
     message.error(String(e))
   }
@@ -497,8 +663,16 @@ async function onDeleteSession(id: string) {
     await agentApi.deleteSession(id)
     sessions.value = sessions.value.filter((x) => x.id !== id)
     if (session.value?.id === id) {
-      if (sessions.value.length > 0) await loadSession(sessions.value[0])
-      else await onNewSession()
+      if (sessions.value.length > 0) {
+        await loadSession(sessions.value[0])
+      } else {
+        // No sessions left: clear first so a failed/impossible re-create
+        // (no connections) falls through to the empty state.
+        offEvents?.()
+        session.value = null
+        entries.value = []
+        await onNewSession()
+      }
     }
   } catch (e) {
     message.error(String(e))
@@ -510,8 +684,8 @@ async function onChangeDb(db: string) {
   if (!s || db === currentDb.value) return
   currentDb.value = db
   currentSchema.value = ''
-  if (schemasSupported.value && props.connection) {
-    try { schemas.value = await metaStore.ensureSchemas(props.connection.id, db) } catch { schemas.value = [] }
+  if (schemasSupported.value && panelConn.value) {
+    try { schemas.value = await metaStore.ensureSchemas(panelConn.value.id, db) } catch { schemas.value = [] }
   }
   try { await agentApi.setNamespace(s.id, db, '') } catch { /* best-effort */ }
   s.currentDb = db
@@ -567,6 +741,30 @@ const errorText = computed(() => {
   return eb.detail || t('agent.panel.genericError')
 })
 
+// --- input-height grip (between the messages area and the dock, §10.1) ---
+// null = the composer auto-grows with content; a number = user-set height.
+const composerRef = ref<InstanceType<typeof AgentComposer> | null>(null)
+const inputH = ref<number | null>(null)
+const inputResizing = ref(false)
+let inputStartY = 0
+let inputStartH = 0
+function onInputGripDown(ev: PointerEvent) {
+  if (ev.button !== 0) return
+  ev.preventDefault()
+  inputStartY = ev.clientY
+  inputStartH = composerRef.value?.currentHeight() ?? INPUT_MIN_H
+  inputResizing.value = true
+  ;(ev.currentTarget as HTMLElement).setPointerCapture?.(ev.pointerId)
+}
+function onInputGripMove(ev: PointerEvent) {
+  if (!inputResizing.value) return
+  // Dragging up (clientY smaller) makes the bottom-docked input taller.
+  inputH.value = Math.min(INPUT_MAX_H, Math.max(INPUT_MIN_H, inputStartH + (inputStartY - ev.clientY)))
+}
+function onInputGripUp() { inputResizing.value = false }
+// Double-click returns to content-driven auto height.
+function onInputGripReset() { inputH.value = null }
+
 // --- resize (handle on the panel's LEFT edge) ---
 const width = ref(380)
 const MIN_W = 300
@@ -608,8 +806,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', onWindowResize)
   offEvents?.()
 })
-// Re-anchor to a new connection while the panel stays open.
-watch(() => props.connection?.id, () => { void init() })
+// Note: the panel deliberately does NOT watch props.connection — its context
+// follows the current session (§10.2); the main UI switching connections
+// must not reset an open conversation.
 </script>
 
 <template>
@@ -624,38 +823,35 @@ watch(() => props.connection?.id, () => { void init() })
       @pointercancel="onResizeUp"
     />
 
-    <!-- Empty state: no connection to anchor a session on. -->
-    <div v-if="!connection" class="empty">
+    <!-- Empty state: no sessions and no connection to bind a new one to. -->
+    <div v-if="!loading && !session && sessions.length === 0" class="empty">
       <AppIcon :src="botIcon" :size="40" class="empty-icon" />
       <div class="empty-title">{{ $t('agent.panel.emptyTitle') }}</div>
       <div class="empty-desc">{{ $t('agent.panel.emptyDesc') }}</div>
     </div>
 
+    <!-- Full-page session history (§10.2). -->
+    <AgentHistoryView
+      v-else-if="view === 'history'"
+      :sessions="sessions"
+      :conns-by-id="connsById"
+      :active-id="session?.id ?? ''"
+      @back="onHistoryBack"
+      @select="onSelectSession"
+      @rename="onRenameSession"
+      @delete="onDeleteSession"
+      @clear="onClearHistory"
+    />
+
     <template v-else>
       <AgentSessionHeader
-        :connection-name="connectionName"
-        :environment="connection?.environment ?? ''"
         :session="session"
-        :sessions="sessions"
-        :databases="databases"
-        :schemas="schemas"
-        :schemas-supported="schemasSupported"
-        :current-db="currentDb"
-        :current-schema="currentSchema"
         :tokens="tokens"
         :watermark="watermark"
         :cost="cost"
         :compacting="compacting"
-        :mode="mode"
-        :providers="providers"
         @new-session="onNewSession"
-        @select-session="onSelectSession"
-        @rename-session="onRenameSession"
-        @delete-session="onDeleteSession"
-        @change-db="onChangeDb"
-        @change-schema="onChangeSchema"
-        @change-mode="onChangeMode"
-        @change-model="onChangeModel"
+        @open-history="openHistory"
         @compact="onCompact"
       />
 
@@ -694,14 +890,86 @@ watch(() => props.connection?.id, () => { void init() })
       />
       <div v-if="txPending" class="tx-hint">{{ $t('agent.tx.blockHint') }}</div>
 
-      <AgentGrants
-        v-if="mode === 'agent'"
-        :grants="grants"
-        :readonly="isProd"
-        @update="onChangeGrants"
-      />
+      <!-- Composer dock (§10.1): grants / context row / input / mode+model row. -->
+      <div class="dock">
+        <!-- Input-height grip on the dock's top edge (messages ↔ dock boundary). -->
+        <div
+          class="input-grip"
+          :class="{ active: inputResizing }"
+          :title="$t('agent.panel.inputResizeHint')"
+          @pointerdown="onInputGripDown"
+          @pointermove="onInputGripMove"
+          @pointerup="onInputGripUp"
+          @pointercancel="onInputGripUp"
+          @dblclick="onInputGripReset"
+        />
+        <AgentGrants
+          v-if="mode === 'agent'"
+          :grants="grants"
+          :readonly="isProd || orphan"
+          @update="onChangeGrants"
+        />
+        <div v-if="orphan" class="dock-hint">{{ $t('agent.panel.orphanHint') }}</div>
 
-      <AgentComposer :busy="busy" :disabled="!session || !!txPending" :tables="tableNames" @send="onSend" @stop="onStop" />
+        <!-- Connection + namespace context, above the input box. -->
+        <div class="ctx-row">
+          <span class="conn" :title="orphan ? $t('agent.panel.connDeleted') : connectionName">
+            <AppIcon :src="databaseIcon" :size="13" />
+            <span class="conn-name" :class="{ deleted: orphan }">{{ orphan ? $t('agent.panel.connDeleted') : connectionName }}</span>
+          </span>
+          <span v-if="!orphan" class="env-badge" :class="`env-${envKind}`" :title="envTooltip">
+            <AppIcon v-if="envKind === 'prod'" :src="lockIcon" :size="11" />
+            <span class="env-text">{{ envLabel }}</span>
+          </span>
+          <span class="spacer" />
+          <select
+            class="ns-select"
+            :value="currentDb"
+            :disabled="!session || orphan"
+            @pointerdown="onRequestNamespace"
+            @change="onChangeDb(($event.target as HTMLSelectElement).value)"
+          >
+            <option value="" disabled>{{ $t('agent.panel.selectDb') }}</option>
+            <!-- Lazy connect: before the list loads, the session's saved db still shows. -->
+            <option v-if="currentDb && !databases.includes(currentDb)" :value="currentDb">{{ currentDb }}</option>
+            <option v-for="d in databases" :key="d" :value="d">{{ d }}</option>
+          </select>
+          <select
+            v-if="schemasSupported"
+            class="ns-select"
+            :value="currentSchema"
+            :disabled="!session || orphan || schemas.length === 0"
+            @change="onChangeSchema(($event.target as HTMLSelectElement).value)"
+          >
+            <option value="" disabled>{{ $t('agent.panel.selectSchema') }}</option>
+            <option v-for="sc in schemas" :key="sc" :value="sc">{{ sc }}</option>
+          </select>
+        </div>
+
+        <AgentComposer ref="composerRef" :busy="busy" :disabled="!session || !!txPending || orphan" :tables="tableNames" :manual-height="inputH" @send="onSend" @stop="onStop" />
+
+        <!-- Ask|Agent + model switch, under the input box. -->
+        <div class="mode-row">
+          <div class="mode-seg">
+            <button type="button" :class="{ active: mode === 'ask' }" @click="onChangeMode('ask')">{{ $t('agent.panel.modeAsk') }}</button>
+            <button type="button" :class="{ active: mode === 'agent' }" @click="onChangeMode('agent')">{{ $t('agent.panel.modeAgent') }}</button>
+          </div>
+          <select
+            class="ns-select model-select"
+            :value="modelValue"
+            :disabled="!session || providerGroups.length === 0"
+            :title="$t('agent.panel.selectModel')"
+            @change="onModelSelect(($event.target as HTMLSelectElement).value)"
+          >
+            <option value="" disabled>{{ $t('agent.panel.selectModel') }}</option>
+            <option v-if="session && !currentInList && session.model" :value="modelValue">{{ session.model }}</option>
+            <optgroup v-for="g in providerGroups" :key="g.id" :label="g.name">
+              <option v-for="m in g.models" :key="m.value" :value="m.value">{{ m.id }}</option>
+            </optgroup>
+          </select>
+          <span class="spacer" />
+        </div>
+      </div>
     </template>
   </aside>
 </template>
@@ -785,6 +1053,125 @@ watch(() => props.connection?.id, () => { void init() })
   font-size: var(--catdb-fs-mini);
   color: var(--catdb-text-tertiary);
   text-align: center;
+}
+
+/* --- composer dock (§10.1): context row / input / mode+model row --- */
+.dock {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid var(--catdb-separator);
+  background: var(--catdb-surface-chrome);
+}
+/* Input-height grip straddling the messages ↔ dock boundary. */
+.input-grip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -4px;
+  height: 8px;
+  z-index: 10;
+  cursor: row-resize;
+}
+.input-grip:hover, .input-grip.active { background: var(--catdb-accent-soft); }
+.dock-hint {
+  font-size: var(--catdb-fs-mini);
+  color: var(--catdb-text-tertiary);
+  text-align: center;
+}
+.ctx-row, .mode-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.spacer { flex: 1 1 0; min-width: 0; }
+
+.conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 130px;
+}
+.conn-name {
+  font-size: var(--catdb-fs-small);
+  color: var(--catdb-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conn-name.deleted { color: var(--catdb-text-tertiary); font-style: italic; }
+
+/* Environment badge (闸 1). Small, semantic color, no shadow (DESIGN.md). */
+.env-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: var(--catdb-rounded-sm);
+  font-size: var(--catdb-fs-mini);
+  line-height: 1;
+  white-space: nowrap;
+}
+.env-badge .env-text { font-weight: 600; }
+.env-prod {
+  color: var(--catdb-error);
+  background: color-mix(in srgb, var(--catdb-error) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--catdb-error) 32%, transparent);
+}
+.env-other {
+  color: var(--catdb-text-secondary);
+  background: var(--catdb-hover-fill);
+}
+.env-unmarked {
+  color: var(--catdb-text-tertiary);
+  background: var(--catdb-hover-fill);
+}
+
+.ns-select {
+  height: 24px;
+  max-width: 110px;
+  font-size: var(--catdb-fs-small);
+  padding: 1px 6px;
+  border: 1px solid var(--catdb-control-border);
+  border-radius: var(--catdb-rounded-sm);
+  background: var(--catdb-surface-content);
+  color: var(--catdb-text-primary);
+  outline: none;
+  cursor: default;
+  font-family: inherit;
+}
+.ns-select:focus { border-color: var(--catdb-accent); }
+.ns-select:disabled { opacity: 0.5; }
+.model-select { max-width: 150px; }
+
+.mode-seg {
+  display: inline-flex;
+  background: var(--catdb-hover-fill);
+  border-radius: var(--catdb-rounded-sm);
+  padding: 1px;
+}
+.mode-seg button {
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: var(--catdb-fs-small);
+  color: var(--catdb-text-secondary);
+  height: 22px;
+  padding: 0 12px;
+  border-radius: var(--catdb-rounded-sm);
+  cursor: default;
+}
+.mode-seg button.active {
+  background: var(--catdb-surface-content);
+  color: var(--catdb-text-primary);
+  box-shadow: 0 0 0 0.5px var(--catdb-separator);
 }
 
 .empty {

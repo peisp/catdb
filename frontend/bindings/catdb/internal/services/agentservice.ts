@@ -32,6 +32,14 @@ export function Cancel(sessID: string): $CancellablePromise<void> {
 }
 
 /**
+ * ClearSessions deletes every session and its messages (audit is preserved),
+ * cancelling any running loops first.
+ */
+export function ClearSessions(): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.AgentService.ClearSessions");
+}
+
+/**
  * CommitTx commits the session's pending task transaction.
  */
 export function CommitTx(sessID: string): $CancellablePromise<void> {
@@ -73,7 +81,8 @@ export function GetMessages(sessID: string): $CancellablePromise<storage$0.Agent
 }
 
 /**
- * ListSessions returns the sessions of a connection, most recent first.
+ * ListSessions returns sessions most recent first — all of them when connID
+ * is empty (the panel's global list, §10.2), one connection's otherwise.
  */
 export function ListSessions(connID: string): $CancellablePromise<storage$0.AgentSession[]> {
     return $Call.ByName("catdb/internal/services.AgentService.ListSessions", connID).then(($result: any) => {

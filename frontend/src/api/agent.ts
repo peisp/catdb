@@ -145,8 +145,8 @@ export function createSession(connId: string, mode: 'ask' | 'agent'): Promise<Ag
   return Promise.resolve(AgentService.CreateSession(connId, mode))
 }
 
-/** Sessions of a connection, most recent first. */
-export function listSessions(connId: string): Promise<AgentSession[]> {
+/** Sessions most recent first — all of them when connId is omitted (§10.2 global list). */
+export function listSessions(connId = ''): Promise<AgentSession[]> {
   return Promise.resolve(AgentService.ListSessions(connId))
 }
 
@@ -161,6 +161,11 @@ export function renameSession(sessId: string, title: string): Promise<void> {
 
 export function deleteSession(sessId: string): Promise<void> {
   return Promise.resolve(AgentService.DeleteSession(sessId))
+}
+
+/** Delete every session and its messages (audit preserved); cancels running loops. */
+export function clearSessions(): Promise<void> {
+  return Promise.resolve(AgentService.ClearSessions())
 }
 
 export function setMode(sessId: string, mode: 'ask' | 'agent'): Promise<void> {
@@ -296,7 +301,6 @@ export function parseContent(raw: string): MessageContent {
     const c = JSON.parse(raw)
     return (c && typeof c === 'object') ? c as MessageContent : {}
   } catch {
-    // Legacy / non-JSON content — treat the whole blob as plain text.
-    return { text: raw }
+    return {}
   }
 }

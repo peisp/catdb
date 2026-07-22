@@ -27,16 +27,44 @@ const segments = computed(() =>
     : [],
 )
 const thinkingOpen = ref(false)
+
+// User bubble: @mentions stay inline in the sentence (§10.3) and get
+// highlighted by splitting the text around each "@name" occurrence.
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+const userSegs = computed<{ mention: boolean; text: string }[] | null>(() => {
+  if (props.entry.kind !== 'user') return null
+  const text = props.entry.text ?? ''
+  const mentions = props.entry.mentions ?? []
+  if (mentions.length === 0) return null
+  const names = [...mentions].sort((a, b) => b.length - a.length).map(escapeRegExp)
+  const re = new RegExp('@(?:' + names.join('|') + ')', 'gu')
+  const segs: { mention: boolean; text: string }[] = []
+  let last = 0
+  for (const m of text.matchAll(re)) {
+    const i = m.index ?? 0
+    if (i > last) segs.push({ mention: false, text: text.slice(last, i) })
+    segs.push({ mention: true, text: m[0] })
+    last = i + m[0].length
+  }
+  if (segs.length === 0) return null
+  if (last < text.length) segs.push({ mention: false, text: text.slice(last) })
+  return segs
+})
 </script>
 
 <template>
   <!-- User -->
   <div v-if="entry.kind === 'user'" class="row user">
-    <div class="user-col">
-      <div v-if="entry.mentions && entry.mentions.length" class="mention-chips">
-        <span v-for="m in entry.mentions" :key="m" class="mention-chip">@{{ m }}</span>
-      </div>
-      <div class="bubble user-bubble">{{ entry.text }}</div>
+    <div class="bubble user-bubble">
+      <template v-if="userSegs">
+        <template v-for="(sg, i) in userSegs" :key="i">
+          <span v-if="sg.mention" class="inline-mention">{{ sg.text }}</span>
+          <template v-else>{{ sg.text }}</template>
+        </template>
+      </template>
+      <template v-else>{{ entry.text }}</template>
     </div>
   </div>
 
@@ -104,32 +132,14 @@ const thinkingOpen = ref(false)
   -webkit-user-select: text;
   cursor: text;
 }
-.user-col {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  max-width: 85%;
-  min-width: 0;
-}
-.user-col .bubble { max-width: 100%; }
-.mention-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  justify-content: flex-end;
-}
-.mention-chip {
-  font-size: var(--catdb-fs-mini);
-  color: var(--catdb-accent);
-  background: var(--catdb-accent-soft);
-  border-radius: var(--catdb-rounded-sm);
-  padding: 1px 6px;
-  white-space: nowrap;
-}
 .user-bubble {
   background: var(--catdb-accent-soft);
   color: var(--catdb-text-primary);
+}
+/* Inline @table mention inside the user bubble (§10.3). */
+.inline-mention {
+  color: var(--catdb-accent);
+  font-weight: 600;
 }
 
 .system-line {

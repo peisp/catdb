@@ -120,6 +120,12 @@ export const useConnectionsStore = defineStore('connections', () => {
     return liveIds.value.has(id)
   }
 
+  // markLive records that a connection got opened as a side effect of another
+  // call (e.g. the agent panel's lazy metadata load) without re-fetching ids.
+  function markLive(id: string) {
+    if (!liveIds.value.has(id)) liveIds.value = new Set([...liveIds.value, id])
+  }
+
   return {
     drivers,
     connections,
@@ -139,5 +145,6 @@ export const useConnectionsStore = defineStore('connections', () => {
     connect,
     disconnect,
     isLive,
+    markLive,
   }
 })

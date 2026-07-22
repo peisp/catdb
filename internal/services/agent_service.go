@@ -42,7 +42,8 @@ func (s *AgentService) CreateSession(ctx context.Context, connID, mode string) (
 	})
 }
 
-// ListSessions returns the sessions of a connection, most recent first.
+// ListSessions returns sessions most recent first — all of them when connID
+// is empty (the panel's global list, §10.2), one connection's otherwise.
 func (s *AgentService) ListSessions(ctx context.Context, connID string) ([]storage.AgentSession, error) {
 	return s.store.ListAgentSessions(ctx, connID)
 }
@@ -62,6 +63,19 @@ func (s *AgentService) RenameSession(ctx context.Context, sessID, title string) 
 func (s *AgentService) DeleteSession(ctx context.Context, sessID string) error {
 	s.engine.Cancel(sessID)
 	return s.store.DeleteAgentSession(ctx, sessID)
+}
+
+// ClearSessions deletes every session and its messages (audit is preserved),
+// cancelling any running loops first.
+func (s *AgentService) ClearSessions(ctx context.Context) error {
+	sessions, err := s.store.ListAgentSessions(ctx, "")
+	if err != nil {
+		return err
+	}
+	for _, sess := range sessions {
+		s.engine.Cancel(sess.ID)
+	}
+	return s.store.ClearAgentSessions(ctx)
 }
 
 // SetMode switches a session between ask and agent mode.

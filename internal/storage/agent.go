@@ -141,11 +141,19 @@ func (s *Store) GetAgentSession(ctx context.Context, id string) (AgentSession, e
 	return sess, nil
 }
 
-// ListAgentSessions returns sessions bound to connID, most recently updated first.
+// ListAgentSessions returns sessions most recently updated first. An empty
+// connID returns all sessions (the panel's global list, §10.2); a non-empty
+// one filters to that connection.
 func (s *Store) ListAgentSessions(ctx context.Context, connID string) ([]AgentSession, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, conn_id, title, mode, provider_id, model, grants, current_db, current_schema, created_at, updated_at
-		FROM agent_sessions WHERE conn_id=? ORDER BY updated_at DESC`, connID)
+	q := `SELECT id, conn_id, title, mode, provider_id, model, grants, current_db, current_schema, created_at, updated_at
+		FROM agent_sessions`
+	var args []any
+	if connID != "" {
+		q += ` WHERE conn_id=?`
+		args = append(args, connID)
+	}
+	q += ` ORDER BY updated_at DESC`
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("storage: list agent sessions: %w", err)
 	}
@@ -198,6 +206,17 @@ func (s *Store) DeleteAgentSession(ctx context.Context, id string) error {
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
+	}
+	return nil
+}
+
+// ClearAgentSessions removes every session; messages cascade via FK. Audit
+// entries are intentionally preserved (no FK, see migrate()).
+func (s *Store) ClearAgentSessions(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM agent_sessions`); err != nil {
+		return fmt.Errorf("storage: clear agent sessions: %w", err)
 	}
 	return nil
 }
