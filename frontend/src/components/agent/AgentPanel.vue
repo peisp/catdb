@@ -283,8 +283,18 @@ function attachEvents(sessId: string) {
         const te = [...entries.value].reverse().find(
           (x) => x.kind === 'tool' && (x as ToolEntry).callId === e.callId,
         ) as ToolEntry | undefined
-        if (te) { te.phase = 'end'; te.summary = e.summary ?? '' }
-        else entries.value.push({ kind: 'tool', id: entryId(), callId: e.callId, name: e.name, phase: 'end', summary: e.summary ?? '', isError: false })
+        if (te) {
+          te.phase = 'end'
+          te.summary = e.summary ?? ''
+          te.args = e.args || undefined
+          te.result = e.result || undefined
+          te.isError = !!e.isError
+        } else {
+          entries.value.push({
+            kind: 'tool', id: entryId(), callId: e.callId, name: e.name, phase: 'end',
+            summary: e.summary ?? '', isError: !!e.isError, args: e.args || undefined, result: e.result || undefined,
+          })
+        }
       }
       scrollToBottom()
     },

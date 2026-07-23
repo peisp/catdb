@@ -29,6 +29,10 @@ export interface ToolEvent {
   name: string
   phase: 'start' | 'end'
   summary?: string
+  // 'end' only: full detail for the tool card's expand view / error tint.
+  args?: string
+  result?: string
+  isError?: boolean
 }
 export interface UsageEvent { sessId: string; seq?: number; tokensIn: number; tokensOut: number; watermark?: number }
 // deliveryWarning is set when the final answer was delivered despite failing the

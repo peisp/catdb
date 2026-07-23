@@ -442,9 +442,14 @@ func (e *Engine) execTools(ctx context.Context, em *emitter, sessID string, byNa
 		} else {
 			results[i] = storedResult{CallID: c.ID, Content: out}
 		}
+		// args/result/isError ride along so the live card can offer the same
+		// expand view and error tint as a history reload (§10.4).
 		em.send("agent:tool", map[string]any{
 			"sessId": sessID, "callId": c.ID, "name": c.Name, "phase": "end",
 			"summary": summarize(results[i]),
+			"args":    string(c.Args),
+			"result":  results[i].Content,
+			"isError": results[i].IsError,
 		})
 	}
 	for i, c := range calls {

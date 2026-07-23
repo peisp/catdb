@@ -36,9 +36,9 @@ export interface ToolEntry {
   phase: 'start' | 'end'
   summary: string
   isError: boolean
-  /** JSON args string, when known (history). */
+  /** JSON args string, when known (tool-end event or history). */
   args?: string
-  /** Full tool result content, when known (history). */
+  /** Full tool result content, when known (tool-end event or history). */
   result?: string
 }
 
