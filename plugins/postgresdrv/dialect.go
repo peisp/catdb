@@ -192,3 +192,16 @@ func (dialect) NormalizeType(nativeType string) string {
 	}
 	return out + arr
 }
+
+func (dialect) TruncateTableSQL(qualified string) string {
+	return "TRUNCATE TABLE " + qualified
+}
+
+// ReplaceViewSQL: Postgres' CREATE OR REPLACE VIEW rejects redefinitions that
+// change the output column set, so a plain redefinition needs DROP + CREATE.
+func (dialect) ReplaceViewSQL(qualified, definition string) []string {
+	return []string{
+		"DROP VIEW IF EXISTS " + qualified + ";",
+		"CREATE VIEW " + qualified + " AS " + definition + ";",
+	}
+}

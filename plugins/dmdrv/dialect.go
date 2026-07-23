@@ -149,3 +149,11 @@ func (dialect) NormalizeType(nativeType string) string {
 	}
 	return out
 }
+
+func (dialect) TruncateTableSQL(qualified string) string {
+	return "TRUNCATE TABLE " + qualified
+}
+
+func (dialect) ReplaceViewSQL(qualified, definition string) []string {
+	return []string{"CREATE OR REPLACE VIEW " + qualified + " AS " + definition + ";"}
+}

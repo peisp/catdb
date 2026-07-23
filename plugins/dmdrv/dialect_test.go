@@ -172,6 +172,22 @@ func TestNormalizeTypeEmpty(t *testing.T) {
 	}
 }
 
+func TestTruncateTableSQL(t *testing.T) {
+	d := dialect{}
+	if got := d.TruncateTableSQL(`"t"`); got != `TRUNCATE TABLE "t"` {
+		t.Errorf("TruncateTableSQL = %q", got)
+	}
+}
+
+func TestReplaceViewSQL(t *testing.T) {
+	d := dialect{}
+	got := d.ReplaceViewSQL(`"v"`, "SELECT 1")
+	want := []string{`CREATE OR REPLACE VIEW "v" AS SELECT 1;`}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Errorf("ReplaceViewSQL = %v, want %v", got, want)
+	}
+}
+
 func TestMapTypeStripsParams(t *testing.T) {
 	// The resultset feeds DatabaseTypeName values that may carry params.
 	if got := (dialect{}).MapType("NUMBER(10,2)"); got != dbdriver.TypeDecimal {

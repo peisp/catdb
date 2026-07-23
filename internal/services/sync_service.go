@@ -484,7 +484,7 @@ func compareViews(ctx context.Context, srcConn, tgtConn dbdriver.Connection, dia
 				diff.Error = "fetch-view-definition: " + srcErr.Error()
 				break
 			}
-			diff.Statements = []string{createViewStatement(fq, srcDefs[name], req, dia)}
+			diff.Statements = createViewStatements(fq, srcDefs[name], req, dia)
 		case !inSrc && inTgt:
 			diff.Status = "drop"
 			diff.Destructive = true
@@ -499,7 +499,7 @@ func compareViews(ctx context.Context, srcConn, tgtConn dbdriver.Connection, dia
 				break
 			}
 			diff.Status = "alter"
-			diff.Statements = []string{createViewStatement(fq, srcDefs[name], req, dia)}
+			diff.Statements = createViewStatements(fq, srcDefs[name], req, dia)
 		}
 		out = append(out, diff)
 		emitSchemaCompareProgress(syncID, "object-done", name, "view", &diff)
@@ -527,8 +527,8 @@ func retargetViewDef(def string, req SchemaCompareRequest, dia dbdriver.Dialect)
 	return strings.ReplaceAll(def, dia.QuoteIdentifier(srcDB)+".", dia.QuoteIdentifier(tgtDB)+".")
 }
 
-func createViewStatement(fq, def string, req SchemaCompareRequest, dia dbdriver.Dialect) string {
-	return "CREATE OR REPLACE VIEW " + fq + " AS " + retargetViewDef(def, req, dia) + ";"
+func createViewStatements(fq, def string, req SchemaCompareRequest, dia dbdriver.Dialect) []string {
+	return dia.ReplaceViewSQL(fq, retargetViewDef(def, req, dia))
 }
 
 // ---- Execute ------------------------------------------------------------------

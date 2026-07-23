@@ -37,6 +37,10 @@ func (fakeDialect) GenerateCreateTable(dbdriver.TableSchema) (string, error) {
 func (fakeDialect) GenerateAlterTable(_, _, _ string, _ dbdriver.ChangeSet) ([]string, error) {
 	return nil, nil
 }
+func (fakeDialect) TruncateTableSQL(qualified string) string { return "TRUNCATE TABLE " + qualified }
+func (fakeDialect) ReplaceViewSQL(qualified, definition string) []string {
+	return []string{"CREATE OR REPLACE VIEW " + qualified + " AS " + definition + ";"}
+}
 
 func TestBuildBatchInsert(t *testing.T) {
 	rows := [][]any{{1, "a"}, {2, "b"}}

@@ -140,6 +140,10 @@ type Metadata interface {
 	// GetCreateTable returns the database's native CREATE TABLE text — e.g.
 	// the result of MySQL's `SHOW CREATE TABLE`. Used by the structure
 	// viewer; cheaper and more accurate than reconstructing from columns.
+	// The returned text MUST start with "CREATE TABLE <QuoteIdentifier(table)>"
+	// (the unqualified, dialect-quoted table name) — generic layers (sync,
+	// transfer) rely on that exact prefix to retarget the DDL at a qualified
+	// destination via string replacement.
 	GetCreateTable(ctx context.Context, db, schema, table string) (string, error)
 }
 
@@ -198,6 +202,18 @@ type Dialect interface {
 	// for the (db, schema, table) target, in safe execution order. An empty
 	// ChangeSet yields an empty slice.
 	GenerateAlterTable(db, schema, table string, cs ChangeSet) ([]string, error)
+
+	// TruncateTableSQL returns the statement that removes all rows of the
+	// (already-qualified) table as fast as the database allows — TRUNCATE
+	// TABLE where supported, DELETE FROM otherwise (SQLite). Callers may still
+	// fall back to DELETE at runtime when TRUNCATE fails (e.g. FK references).
+	TruncateTableSQL(qualified string) string
+
+	// ReplaceViewSQL returns the statement sequence that makes the
+	// (already-qualified) view exist with exactly the given definition body
+	// (the SELECT after AS) — a single CREATE OR REPLACE where the database
+	// supports arbitrary redefinition, else DROP VIEW IF EXISTS + CREATE VIEW.
+	ReplaceViewSQL(qualified, definition string) []string
 }
 
 // Editor builds parameterized write statements for the row-edit feature.

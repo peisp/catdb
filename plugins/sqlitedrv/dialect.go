@@ -116,3 +116,16 @@ func (dialect) MapType(nativeType string) dbdriver.LogicalType {
 		return dbdriver.TypeBytes
 	}
 }
+
+// TruncateTableSQL: SQLite has no TRUNCATE statement.
+func (dialect) TruncateTableSQL(qualified string) string {
+	return "DELETE FROM " + qualified
+}
+
+// ReplaceViewSQL: SQLite has no CREATE OR REPLACE VIEW.
+func (dialect) ReplaceViewSQL(qualified, definition string) []string {
+	return []string{
+		"DROP VIEW IF EXISTS " + qualified + ";",
+		"CREATE VIEW " + qualified + " AS " + definition + ";",
+	}
+}
