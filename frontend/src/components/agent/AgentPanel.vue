@@ -26,7 +26,7 @@ import { AGENT_SQL_ACTIONS, type AgentSqlActions } from './sqlActions'
 import { entryId, type ApprovalEntry, type AssistantEntry, type Entry, type PlanEntry, type ToolEntry } from './types'
 import * as agentApi from '../../api/agent'
 import type { AgentSession } from '../../api/agent'
-import { getAgentSettings, listProviders, onProvidersChanged, type ModelPricing, type ProviderConfig } from '../../api/agentSettings'
+import { getAgentSettings, getDefaults, listProviders, onProvidersChanged, type ModelPricing, type ProviderConfig } from '../../api/agentSettings'
 import { useQueryStore } from '../../stores/query'
 import { useMetadataStore } from '../../stores/metadata'
 import { useConnectionsStore } from '../../stores/connections'
@@ -412,7 +412,9 @@ async function loadNamespace(force = false) {
   if (s && !currentDb.value && visible.length > 0) {
     currentDb.value = visible[0]
     s.currentDb = visible[0]
-    try { await agentApi.setNamespace(s.id, visible[0], '') } catch { /* best-effort */ }
+    if (s.id) {
+      try { await agentApi.setNamespace(s.id, visible[0], '') } catch { /* best-effort */ }
+    }
   }
   if (schemasSupported.value && currentDb.value) {
     try { schemas.value = await metaStore.ensureSchemas(conn.id, currentDb.value) } catch { schemas.value = [] }
@@ -448,6 +450,13 @@ function onRequestNamespace() {
 }
 
 // --- session lifecycle ---
+// A DRAFT session (id === '') lives only in this panel: creating a new
+// conversation writes nothing server-side — the session is persisted on the
+// first actual send (onSend). Closing the panel / app simply drops it.
+function isDraft(s: AgentSession | null): boolean {
+  return !!s && s.id === ''
+}
+
 async function loadSession(s: AgentSession) {
   offEvents?.()
   session.value = s
@@ -461,18 +470,40 @@ async function loadSession(s: AgentSession) {
   busy.value = false
   txPending.value = null
   txBusy.value = false
-  try {
-    const msgs = await agentApi.getMessages(s.id)
-    entries.value = historyToEntries(msgs)
-    tokensIn.value = msgs.reduce((sum, m) => sum + (m.tokensIn ?? 0), 0)
-    tokensOut.value = msgs.reduce((sum, m) => sum + (m.tokensOut ?? 0), 0)
-    tokens.value = tokensIn.value + tokensOut.value
-  } catch (e) {
-    errorBar.value = { slug: '', detail: String(e) }
+  if (s.id) {
+    try {
+      const msgs = await agentApi.getMessages(s.id)
+      entries.value = historyToEntries(msgs)
+      tokensIn.value = msgs.reduce((sum, m) => sum + (m.tokensIn ?? 0), 0)
+      tokensOut.value = msgs.reduce((sum, m) => sum + (m.tokensOut ?? 0), 0)
+      tokens.value = tokensIn.value + tokensOut.value
+    } catch (e) {
+      errorBar.value = { slug: '', detail: String(e) }
+    }
+    attachEvents(s.id)
   }
-  attachEvents(s.id)
   await loadNamespace()
   scrollToBottom()
+}
+
+// Build a local draft bound to conn, seeded with the configured default
+// provider/model so the model selector shows the right value from the start.
+async function startDraft(): Promise<boolean> {
+  const conn = defaultNewSessionConn()
+  if (!conn) return false
+  let providerId = ''
+  let model = ''
+  try {
+    const d = await getDefaults()
+    providerId = d.providerId
+    model = d.model
+  } catch { /* selector just starts empty */ }
+  const draft = {
+    id: '', connId: conn.id, mode: 'ask', title: '',
+    providerId, model, grants: [], currentDb: '', currentSchema: '',
+  } as unknown as AgentSession
+  await loadSession(draft)
+  return true
 }
 
 // Cold-start / new-session default connection (§10.2 fallback chain): the
@@ -503,13 +534,9 @@ async function init() {
     if (sessions.value.length > 0) {
       await loadSession(sessions.value[0])
     } else {
-      const conn = defaultNewSessionConn()
-      if (conn) {
-        const s = await agentApi.createSession(conn.id, 'ask')
-        sessions.value = [s]
-        await loadSession(s)
-      }
-      // No connections at all → the empty state renders.
+      // Cold start: a local draft only — nothing is persisted until the
+      // first message is sent. No connections at all → the empty state.
+      await startDraft()
     }
   } catch (e) {
     errorBar.value = { slug: '', detail: String(e) }
@@ -519,6 +546,35 @@ async function init() {
 }
 
 // --- actions ---
+// Persist a draft session on first send: CreateSession with the draft's
+// connection + mode, then carry over the choices made while drafting
+// (model / grants / namespace) before the message goes out. On failure the
+// panel stays on the draft so nothing empty ever lands in history.
+async function persistDraft(s: AgentSession): Promise<AgentSession> {
+  const live = await agentApi.createSession(s.connId, s.mode === 'agent' ? 'agent' : 'ask')
+  if (s.providerId && s.model && (live.providerId !== s.providerId || live.model !== s.model)) {
+    try {
+      await agentApi.setSessionModel(live.id, s.providerId, s.model)
+      live.providerId = s.providerId
+      live.model = s.model
+    } catch { /* keep the server default */ }
+  }
+  if (s.grants?.length) {
+    try {
+      await agentApi.setGrants(live.id, s.grants)
+      live.grants = s.grants
+    } catch { /* keep default grants */ }
+  }
+  if (currentDb.value) {
+    try {
+      await agentApi.setNamespace(live.id, currentDb.value, currentSchema.value)
+      live.currentDb = currentDb.value
+      live.currentSchema = currentSchema.value
+    } catch { /* engine falls back to no default db */ }
+  }
+  return live
+}
+
 function onSend(text: string, mentions: string[] = []) {
   const s = session.value
   if (!s || busy.value || txPending.value || orphan.value) return
@@ -526,22 +582,37 @@ function onSend(text: string, mentions: string[] = []) {
   entries.value.push({ kind: 'user', id: entryId(), text, mentions: mentions.length ? mentions : undefined })
   busy.value = true
   scrollToBottom()
-  const h = agentApi.sendMessage(s.id, text, mentions)
-  currentSend = h
-  h.done
-    .catch((err: unknown) => {
-      const msg = String(err)
-      if (!/cancel/i.test(msg) && !errorBar.value) errorBar.value = { slug: '', detail: msg }
-    })
-    .finally(() => {
-      finalizeStreaming()
-      busy.value = false
-      currentSend = null
-      scrollToBottom()
-      // The engine connected server-side to run the turn — if the namespace
-      // was never loaded (lazy connect), catch up now for @completion.
-      if (session.value === s && allDatabases.value.length === 0) void loadNamespace(true)
-    })
+  void (async () => {
+    let live = s
+    if (isDraft(s)) {
+      try {
+        live = await persistDraft(s)
+        sessions.value = [live, ...sessions.value]
+        session.value = live
+        attachEvents(live.id)
+      } catch (err) {
+        busy.value = false
+        errorBar.value = { slug: '', detail: String(err) }
+        return
+      }
+    }
+    const h = agentApi.sendMessage(live.id, text, mentions)
+    currentSend = h
+    h.done
+      .catch((err: unknown) => {
+        const msg = String(err)
+        if (!/cancel/i.test(msg) && !errorBar.value) errorBar.value = { slug: '', detail: msg }
+      })
+      .finally(() => {
+        finalizeStreaming()
+        busy.value = false
+        currentSend = null
+        scrollToBottom()
+        // The engine connected server-side to run the turn — if the namespace
+        // was never loaded (lazy connect), catch up now for @completion.
+        if (session.value === live && allDatabases.value.length === 0) void loadNamespace(true)
+      })
+  })()
 }
 function onStop() {
   currentSend?.stop()
@@ -551,7 +622,7 @@ function onStop() {
 // --- manual context compaction (§9) ---
 async function onCompact() {
   const s = session.value
-  if (!s || compacting.value) return
+  if (!s || isDraft(s) || compacting.value) return
   compacting.value = true
   try {
     // The compacted line + watermark update arrive via the agent:compacted event.
@@ -623,6 +694,7 @@ async function onChangeGrants(next: string[]) {
   if (!s) return
   const prev = s.grants
   s.grants = next
+  if (isDraft(s)) return // applied server-side when the draft persists
   try {
     await agentApi.setGrants(s.id, next)
   } catch (e) {
@@ -632,17 +704,10 @@ async function onChangeGrants(next: string[]) {
 }
 
 async function onNewSession() {
-  // Inherits the panel's current connection (§10.2), falling back down the
-  // default chain; without any connection there is nothing to bind to.
-  const conn = defaultNewSessionConn()
-  if (!conn) return
-  try {
-    const s = await agentApi.createSession(conn.id, 'ask')
-    sessions.value = [s, ...sessions.value]
-    await loadSession(s)
-  } catch (e) {
-    message.error(t('agent.panel.createFailed', { error: String(e) }))
-  }
+  // A new conversation is a local draft (inherits the panel's current
+  // connection via the §10.2 fallback chain); it is persisted only when the
+  // first message is sent. Without any connection there is nothing to bind to.
+  await startDraft()
 }
 async function onSelectSession(id: string) {
   view.value = 'chat'
@@ -741,11 +806,13 @@ async function onDeleteSession(id: string) {
 async function onChangeConn(connId: string) {
   const s = session.value
   if (!s || connId === s.connId) return
-  try {
-    await agentApi.setConnection(s.id, connId)
-  } catch (e) {
-    message.error(String(e))
-    return
+  if (!isDraft(s)) {
+    try {
+      await agentApi.setConnection(s.id, connId)
+    } catch (e) {
+      message.error(String(e))
+      return
+    }
   }
   s.connId = connId
   s.currentDb = ''
@@ -765,7 +832,9 @@ async function onChangeDb(db: string) {
   if (schemasSupported.value && panelConn.value) {
     try { schemas.value = await metaStore.ensureSchemas(panelConn.value.id, db) } catch { schemas.value = [] }
   }
-  try { await agentApi.setNamespace(s.id, db, '') } catch { /* best-effort */ }
+  if (!isDraft(s)) {
+    try { await agentApi.setNamespace(s.id, db, '') } catch { /* best-effort */ }
+  }
   s.currentDb = db
   await loadTableNames()
   entries.value.push({ kind: 'system', id: entryId(), text: t('agent.panel.nsSwitched', { ns: db }) })
@@ -775,7 +844,9 @@ async function onChangeSchema(schema: string) {
   const s = session.value
   if (!s || schema === currentSchema.value) return
   currentSchema.value = schema
-  try { await agentApi.setNamespace(s.id, currentDb.value, schema) } catch { /* best-effort */ }
+  if (!isDraft(s)) {
+    try { await agentApi.setNamespace(s.id, currentDb.value, schema) } catch { /* best-effort */ }
+  }
   s.currentSchema = schema
   await loadTableNames()
   const ns = [currentDb.value, schema].filter(Boolean).join('.')
@@ -787,6 +858,11 @@ async function onChangeSchema(schema: string) {
 async function onChangeModel(providerId: string, model: string) {
   const s = session.value
   if (!s || (s.providerId === providerId && s.model === model)) return
+  if (isDraft(s)) {
+    s.providerId = providerId
+    s.model = model
+    return // applied server-side when the draft persists
+  }
   try {
     await agentApi.setSessionModel(s.id, providerId, model)
     s.providerId = providerId
@@ -800,6 +876,10 @@ async function onChangeModel(providerId: string, model: string) {
 async function onChangeMode(m: 'ask' | 'agent') {
   const s = session.value
   if (!s || s.mode === m) return
+  if (isDraft(s)) {
+    s.mode = m
+    return // CreateSession gets the final mode when the draft persists
+  }
   try {
     await agentApi.setMode(s.id, m)
     s.mode = m
