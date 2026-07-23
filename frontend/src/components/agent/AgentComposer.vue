@@ -85,14 +85,15 @@ function refreshMention() {
   if (!el) { menuOpen.value = false; return }
   const pos = el.selectionStart ?? text.value.length
   const before = text.value.slice(0, pos)
-  // '@' at start or after whitespace, followed by identifier chars up to caret.
-  const m = /(^|\s)@([\p{L}\p{N}_$]*)$/u.exec(before)
+  // '@' anywhere, followed by identifier chars up to the caret — mid-word
+  // triggers too ("查@订"), matching extractMentions' send-time scan.
+  const m = /@([\p{L}\p{N}_$]*)$/u.exec(before)
   if (m) {
-    atStart = pos - m[2].length - 1
-    query.value = m[2]
+    atStart = pos - m[1].length - 1
+    query.value = m[1]
     if (!menuOpen.value) {
       activeIndex.value = 0
-      debouncedQuery.value = m[2]
+      debouncedQuery.value = m[1]
       if (props.tables.length === 0) emit('need-tables')
     }
     menuOpen.value = true
@@ -132,15 +133,35 @@ function extractMentions(v: string): string[] {
   return out
 }
 
+// --- IME composition guard ---
+// `ev.isComposing` alone is not enough: WebKit fires the committing Enter's
+// keydown AFTER compositionend, with isComposing already false — so the
+// Enter that puts a Chinese candidate on screen would fall through and send
+// the message. Track the composition lifecycle ourselves and swallow Enter
+// inside a short post-commit window.
+let composing = false
+let composedAt = 0
+function onCompositionStart() { composing = true }
+function onCompositionEnd() { composing = false; composedAt = performance.now() }
+function enterCommitsIme(ev: KeyboardEvent): boolean {
+  return ev.isComposing || composing || performance.now() - composedAt < 100
+}
+
 function onKeydown(ev: KeyboardEvent) {
+  if (ev.key === 'Enter' && enterCommitsIme(ev)) {
+    // Commit-only: no send, no table pick, and (post-compositionend case) no
+    // newline. Mid-composition the IME owns the default — leave it alone.
+    if (!ev.isComposing) ev.preventDefault()
+    return
+  }
   if (menuOpen.value && filtered.value.length > 0) {
     if (ev.key === 'ArrowDown') { ev.preventDefault(); activeIndex.value = (activeIndex.value + 1) % filtered.value.length; return }
     if (ev.key === 'ArrowUp') { ev.preventDefault(); activeIndex.value = (activeIndex.value - 1 + filtered.value.length) % filtered.value.length; return }
-    if (ev.key === 'Enter' && !ev.isComposing) { ev.preventDefault(); const t = filtered.value[activeIndex.value]; if (t) chooseTable(t); return }
+    if (ev.key === 'Enter') { ev.preventDefault(); const t = filtered.value[activeIndex.value]; if (t) chooseTable(t); return }
     if (ev.key === 'Tab') { ev.preventDefault(); const t = filtered.value[activeIndex.value]; if (t) chooseTable(t); return }
   }
   if (menuOpen.value && ev.key === 'Escape') { ev.preventDefault(); menuOpen.value = false; return }
-  if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) {
+  if (ev.key === 'Enter' && !ev.shiftKey) {
     ev.preventDefault()
     submit()
   }
@@ -190,6 +211,8 @@ watch(filtered, (f) => { if (activeIndex.value >= f.length) activeIndex.value = 
         @input="refreshMention"
         @click="refreshMention"
         @blur="menuOpen = false"
+        @compositionstart="onCompositionStart"
+        @compositionend="onCompositionEnd"
       />
 
       <button
