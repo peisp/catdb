@@ -37,6 +37,35 @@ type taskTx struct {
 	stmts  []txStmt
 	audit  []storage.AgentAuditEntry // buffered; written with final status on finish
 	timer  *time.Timer
+	curNS  string // last namespace pinned via pinNamespace on this tx's session
+}
+
+// pinNamespace makes name (dbdriver.NamespaceName — db or schema, per driver
+// capabilities) the tx session's default namespace via the dialect's
+// USE-equivalent, so unqualified identifiers resolve — the dedicated
+// connection starts without one. No-op when the dialect has no such
+// statement, name is empty, or name is already pinned.
+func (t *taskTx) pinNamespace(ctx context.Context, dialect dbdriver.Dialect, name string) error {
+	if name == "" {
+		return nil
+	}
+	stmt := dialect.DefaultNamespaceSQL(name)
+	if stmt == "" {
+		return nil
+	}
+	t.mu.Lock()
+	cur := t.curNS
+	t.mu.Unlock()
+	if cur == name {
+		return nil
+	}
+	if _, err := t.tx.Exec(ctx, stmt); err != nil {
+		return fmt.Errorf("set default namespace %s: %w", name, err)
+	}
+	t.mu.Lock()
+	t.curNS = name
+	t.mu.Unlock()
+	return nil
 }
 
 // txManager tracks at most one open task transaction per session.
@@ -70,8 +99,9 @@ func (m *txManager) take(sessID string) *taskTx {
 }
 
 // openTaskTx starts a task transaction on a dedicated connection and arms the
-// idle timer. onTimeout runs when the timer fires (engine rolls back + notifies).
-func (e *Engine) openTaskTx(ctx context.Context, sessID, connID string) (*taskTx, error) {
+// idle timer. db routes the tx on drivers whose databases are isolation
+// boundaries (dbdriver.RouteBegin); "" = the connection default.
+func (e *Engine) openTaskTx(ctx context.Context, sessID, connID, db string) (*taskTx, error) {
 	if e.txm.get(sessID) != nil {
 		return nil, fmt.Errorf("agent: session %s already has an open transaction", sessID)
 	}
@@ -84,7 +114,7 @@ func (e *Engine) openTaskTx(ctx context.Context, sessID, connID string) (*taskTx
 	// ctx is canceled, and ctx here is the turn's (canceled when the stream
 	// ends). Detach it: the tx's lifetime is owned by finishTx / the idle
 	// timer, matching the manual-tx pattern in QueryService.
-	tx, err := conn.Begin(context.WithoutCancel(ctx), nil)
+	tx, err := dbdriver.RouteBegin(context.WithoutCancel(ctx), conn, db, nil)
 	if err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("agent: begin task tx: %w", err)

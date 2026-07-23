@@ -49,6 +49,7 @@ func (fakeDialect) Paginate(baseSQL string, limit, offset int) string {
 	return baseSQL + " LIMIT 50"
 }
 func (fakeDialect) ScriptRules() dbdriver.ScriptRules { return dbdriver.ScriptRules{} }
+func (fakeDialect) DefaultNamespaceSQL(string) string { return "" }
 
 type fakeDriver struct{ dbdriver.Driver }
 

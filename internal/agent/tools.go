@@ -199,11 +199,11 @@ func buildTools(env toolEnv) []Tool {
 			Def: llm.ToolDef{
 				Name:        "explain",
 				Description: "Get the execution plan of a read-only query (SELECT/WITH only) without running it.",
-				InputSchema: schema(dbParam + `,"sql":{"type":"string","description":"The SELECT statement to explain."}`),
+				InputSchema: schema(dbParam + `,` + schemaParam + `,"sql":{"type":"string","description":"The SELECT statement to explain."}`),
 			},
 			ParallelOK: true,
 			Run: func(ctx context.Context, args json.RawMessage) (string, error) {
-				var a struct{ DB, SQL string }
+				var a struct{ DB, Schema, SQL string }
 				if err := unmarshalArgs(args, &a); err != nil {
 					return "", err
 				}
@@ -214,10 +214,11 @@ func buildTools(env toolEnv) []Tool {
 				if !readOnlyPrefix(a.SQL) {
 					return "", fmt.Errorf("only SELECT/WITH statements can be explained")
 				}
-				q, err := dbdriver.RouteQuerier(ctx, env.conn, a.DB)
+				q, release, err := dbdriver.NamespacedQuerier(ctx, env.conn, env.dialect, env.caps, a.DB, a.Schema)
 				if err != nil {
 					return "", err
 				}
+				defer release()
 				rs, err := q.Explain(ctx, a.SQL)
 				if err != nil {
 					return "", err

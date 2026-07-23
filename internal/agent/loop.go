@@ -145,6 +145,7 @@ func (e *Engine) run(ctx context.Context, sessID, text string, mentions []string
 		override, _ := drv.Dialect().(dbdriver.StatementClassifier)
 		rs := &runState{
 			sessID: sessID, connID: sess.ConnID, mode: sess.Mode,
+			defaultDB: sess.CurrentDB, defaultSchema: sess.CurrentSchema,
 			conn: conn, dialect: drv.Dialect(), caps: drv.Capabilities(),
 			rules: drv.Dialect().ScriptRules(), override: override,
 			em: em, e: e,

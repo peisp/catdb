@@ -3,6 +3,7 @@ package dbdriver
 import (
 	"context"
 	"errors"
+	"fmt"
 )
 
 // Driver is the entry point for one database type (e.g. "mysql", "postgres").
@@ -92,6 +93,46 @@ func RouteBegin(ctx context.Context, conn Connection, db string, opts *TxOptions
 		return r.BeginFor(ctx, db, opts)
 	}
 	return conn.Begin(ctx, opts)
+}
+
+// NamespaceName returns the name Dialect.DefaultNamespaceSQL applies to for a
+// driver with capabilities caps: the schema on schema-exposing drivers
+// (Postgres — the database itself is routed physically via DatabaseRouter),
+// else the database (MySQL).
+func NamespaceName(caps Capabilities, db, schema string) string {
+	if caps.Schemas {
+		return schema
+	}
+	return db
+}
+
+// NamespacedQuerier resolves a Querier positioned at (db, schema) plus a
+// release func — never nil, callers must always call it. The database is
+// routed physically when the driver implements DatabaseRouter; the session
+// default namespace (NamespaceName) is applied via the dialect's
+// DefaultNamespaceSQL, and because pooled sessions have no stable default a
+// short transaction pins one physical connection — release commits it back
+// to the pool. Drivers with neither mechanism get the plain (routed) Querier
+// and callers must qualify identifiers.
+func NamespacedQuerier(ctx context.Context, conn Connection, dialect Dialect, caps Capabilities, db, schema string) (Querier, func(), error) {
+	release := func() {}
+	stmt := ""
+	if name := NamespaceName(caps, db, schema); name != "" {
+		stmt = dialect.DefaultNamespaceSQL(name)
+	}
+	if stmt == "" {
+		q, err := RouteQuerier(ctx, conn, db)
+		return q, release, err
+	}
+	tx, err := RouteBegin(ctx, conn, db, nil)
+	if err != nil {
+		return nil, release, err
+	}
+	if _, err := tx.Exec(ctx, stmt); err != nil {
+		_ = tx.Rollback()
+		return nil, release, fmt.Errorf("dbdriver: set default namespace: %w", err)
+	}
+	return tx, func() { _ = tx.Commit() }, nil
 }
 
 // StatementClassifier is an OPTIONAL extension a driver's Dialect may

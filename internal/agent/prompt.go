@@ -34,7 +34,9 @@ func buildSystemPrompt(env promptEnv) string {
 	fmt.Fprintf(&b, "## Connection context\n- Database engine: %s %s\n- Identifier quoting style: %s\n",
 		env.driverName, env.driverVersion, env.quoteSample)
 	if env.currentDB != "" {
-		fmt.Fprintf(&b, "- Current database: %s\n", env.currentDB)
+		fmt.Fprintf(&b, "- Current database: %s (tool calls without an explicit db run against it)\n", env.currentDB)
+	} else {
+		b.WriteString("- No database is currently selected — always pass the db parameter in tool calls, or qualify tables as db.table.\n")
 	}
 	if env.currentSchema != "" {
 		fmt.Fprintf(&b, "- Current schema: %s\n", env.currentSchema)

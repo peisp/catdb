@@ -24,6 +24,11 @@ type runState struct {
 	sessID string
 	connID string
 	mode   string
+	// defaultDB/defaultSchema are the session's current namespace at turn
+	// start — the db fallback when the model omits run_sql's db parameter,
+	// and the schema applied on schema-exposing drivers.
+	defaultDB     string
+	defaultSchema string
 
 	conn    dbdriver.Connection
 	dialect dbdriver.Dialect
@@ -75,7 +80,8 @@ func buildRunSQL(rs *runState, granted []string) Tool {
 		desc += "this session is read-only — any write statement will be rejected; "
 	}
 	desc += "ADMIN statements (GRANT/SET/USE/CALL/transaction control) are always rejected. " +
-		"Pass the target database explicitly; write multiple statements as separate calls when order matters."
+		"Pass the target database explicitly (when omitted, the session's current database is used); " +
+		"write multiple statements as separate calls when order matters."
 	return Tool{
 		Def: llm.ToolDef{
 			Name:        "run_sql",
@@ -98,6 +104,9 @@ func buildRunSQL(rs *runState, granted []string) Tool {
 
 // execScript splits, classifies, gates, approves and executes a run_sql call.
 func (rs *runState) execScript(ctx context.Context, db, sqlText string) (string, error) {
+	if strings.TrimSpace(db) == "" {
+		db = rs.defaultDB
+	}
 	stmts, _ := sqlclass.ClassifyScript(sqlText, rs.rules, rs.override)
 	if len(stmts) == 0 {
 		return "", fmt.Errorf("no executable statement")
@@ -192,10 +201,11 @@ func (rs *runState) explainEstimate(ctx context.Context, db, sql string) string 
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	q, err := dbdriver.RouteQuerier(ctx, rs.conn, db)
+	q, release, err := rs.querierFor(ctx, db)
 	if err != nil {
 		return ""
 	}
+	defer release()
 	set, err := q.Explain(ctx, sql)
 	if err != nil {
 		return ""
@@ -208,6 +218,13 @@ func (rs *runState) explainEstimate(ctx context.Context, db, sql string) string 
 	return truncate(out, 600)
 }
 
+// querierFor resolves the (namespace-positioned) Querier for db via the
+// generic dbdriver layer — driver differences (database routing vs a
+// USE-style session default) are entirely the driver contract's business.
+func (rs *runState) querierFor(ctx context.Context, db string) (dbdriver.Querier, func(), error) {
+	return dbdriver.NamespacedQuerier(ctx, rs.conn, rs.dialect, rs.caps, db, rs.defaultSchema)
+}
+
 // execRead runs a read statement — through the open task tx when one exists
 // (read-your-writes, §5 gate 5), else the pooled querier — and feeds a
 // truncated view to the model while emitting the full (capped) result to the
@@ -218,13 +235,19 @@ func (rs *runState) execRead(ctx context.Context, db string, st sqlclass.Classif
 
 	var q dbdriver.Querier
 	if t := rs.e.txm.get(rs.sessID); t != nil {
+		if err := t.pinNamespace(ctx, rs.dialect, dbdriver.NamespaceName(rs.caps, db, rs.defaultSchema)); err != nil {
+			rs.audit(ctx, st, "n/a", -1, nil, "error", err.Error())
+			return "", err
+		}
 		q = t.tx
 		t.touch(rs.e.txIdleTimeout(ctx))
 	} else {
 		var err error
-		if q, err = dbdriver.RouteQuerier(ctx, rs.conn, db); err != nil {
+		var release func()
+		if q, release, err = rs.querierFor(ctx, db); err != nil {
 			return "", err
 		}
+		defer release()
 	}
 	// Pre-flight EXPLAIN (§8): catches syntax errors without executing; the
 	// error feeds straight back to the model for self-repair.
@@ -276,13 +299,17 @@ func (rs *runState) execInTx(ctx context.Context, db string, st sqlclass.Classif
 	t := rs.e.txm.get(rs.sessID)
 	if t == nil {
 		var err error
-		if t, err = rs.e.openTaskTx(ctx, rs.sessID, rs.connID); err != nil {
+		if t, err = rs.e.openTaskTx(ctx, rs.sessID, rs.connID, db); err != nil {
 			return "", err
 		}
 	}
 	ctx, cancel := rs.stmtCtx(ctx)
 	defer cancel()
 
+	if err := t.pinNamespace(ctx, rs.dialect, dbdriver.NamespaceName(rs.caps, db, rs.defaultSchema)); err != nil {
+		rs.audit(ctx, st, approvalMode, -1, nil, "error", err.Error())
+		return "", err
+	}
 	started := time.Now()
 	res, err := t.tx.Exec(ctx, st.SQL)
 	t.touch(rs.e.txIdleTimeout(ctx))
@@ -298,10 +325,11 @@ func (rs *runState) execInTx(ctx context.Context, db string, st sqlclass.Classif
 func (rs *runState) execDirect(ctx context.Context, db string, st sqlclass.Classified, approvalMode string) (string, error) {
 	ctx, cancel := rs.stmtCtx(ctx)
 	defer cancel()
-	q, err := dbdriver.RouteQuerier(ctx, rs.conn, db)
+	q, release, err := rs.querierFor(ctx, db)
 	if err != nil {
 		return "", err
 	}
+	defer release()
 	started := time.Now()
 	res, err := q.Exec(ctx, st.SQL)
 	if err != nil {

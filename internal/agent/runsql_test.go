@@ -342,6 +342,52 @@ func TestPlanApproveExecuteCommit(t *testing.T) {
 	}
 }
 
+// nsDialect simulates MySQL-style drivers: a USE-style session-default
+// statement exists (fakeDialect returns none).
+type nsDialect struct{ fakeDialect }
+
+func (nsDialect) DefaultNamespaceSQL(name string) string { return "USE `" + name + "`" }
+
+type nsDriver struct{ agentDriver }
+
+func (nsDriver) Dialect() dbdriver.Dialect { return nsDialect{} }
+
+// TestRunSQLDefaultsToSessionDB: run_sql without a db falls back to the
+// session's current database, and the task tx pins it with the dialect's
+// USE-equivalent before the first statement — no "no database selected".
+func TestRunSQLDefaultsToSessionDB(t *testing.T) {
+	p := llmtest.New("fake",
+		toolRound("submit_plan", `{"goal":"g","statements":["INSERT INTO t (a) VALUES (1)"],"impact":"1"}`),
+		toolRound("run_sql", `{"sql":"INSERT INTO t (a) VALUES (1)"}`),
+		endRound("done"),
+	)
+	e, store, sessID, probe, _ := newAgentEngine(t, p, "dev", []string{"select", "insert"},
+		[]decision{{approve: true, scope: scopeOnce}, {approve: true, scope: scopeOnce}})
+	e.connect = func(ctx context.Context, id string) (dbdriver.Connection, dbdriver.Driver, error) {
+		return agentConn{probe: probe}, nsDriver{}, nil
+	}
+	base, err := store.GetAgentSession(context.Background(), sessID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.CreateAgentSession(context.Background(), storage.AgentSession{
+		ConnID: base.ConnID, Mode: "agent", ProviderID: "p1", Model: "m1",
+		Grants: []string{"select", "insert"}, CurrentDB: "shop",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Send(context.Background(), sess.ID, "插入一行", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(probe.txExecs) != 2 || probe.txExecs[0] != "USE `shop`" || probe.txExecs[1] != "INSERT INTO t (a) VALUES (1)" {
+		t.Fatalf("txExecs = %v", probe.txExecs)
+	}
+	if err := e.RollbackTx(context.Background(), sess.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRejectionFedBackToModel(t *testing.T) {
 	p := llmtest.New("fake",
 		toolRound("submit_plan", `{"goal":"g","statements":["DELETE FROM t"]}`),
