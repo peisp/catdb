@@ -108,17 +108,17 @@ const (
 // ColumnMeta is the column descriptor returned by a ResultSet — sent to the
 // front-end once per query (NOT per row) to keep IPC payloads small.
 type ColumnMeta struct {
-	Name           string      `json:"name"`
-	NativeType     string      `json:"nativeType"` // e.g. "VARCHAR", "BIGINT", "DATETIME(6)"
-	LogicalType    LogicalType `json:"logicalType"`
-	Nullable       bool        `json:"nullable"`
-	Length         int64       `json:"length,omitempty"`
-	Precision      int64       `json:"precision,omitempty"`
-	Scale          int64       `json:"scale,omitempty"`
-	Default        *string     `json:"default,omitempty"`
-	IsPrimaryKey   bool        `json:"isPrimaryKey,omitempty"`
-	IsAutoIncrement bool       `json:"isAutoIncrement,omitempty"`
-	Comment        string      `json:"comment,omitempty"`
+	Name            string      `json:"name"`
+	NativeType      string      `json:"nativeType"` // e.g. "VARCHAR", "BIGINT", "DATETIME(6)"
+	LogicalType     LogicalType `json:"logicalType"`
+	Nullable        bool        `json:"nullable"`
+	Length          int64       `json:"length,omitempty"`
+	Precision       int64       `json:"precision,omitempty"`
+	Scale           int64       `json:"scale,omitempty"`
+	Default         *string     `json:"default,omitempty"`
+	IsPrimaryKey    bool        `json:"isPrimaryKey,omitempty"`
+	IsAutoIncrement bool        `json:"isAutoIncrement,omitempty"`
+	Comment         string      `json:"comment,omitempty"`
 }
 
 // StatementClass is the risk class of one SQL statement, used by the AI

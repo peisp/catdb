@@ -15,13 +15,13 @@ import (
 //
 //  1. Locate the currently-running .app bundle (walk up from os.Executable).
 //  2. Write a self-contained bash script that:
-//       a. waits for our process to die
-//       b. hdiutil attach the freshly-downloaded DMG
-//       c. rm -rf the old .app, cp -R the new one over
-//       d. strip the quarantine xattr (unsigned build → Gatekeeper would
-//          otherwise refuse to launch the freshly-copied bundle)
-//       e. hdiutil detach
-//       f. open the new bundle
+//     a. waits for our process to die
+//     b. hdiutil attach the freshly-downloaded DMG
+//     c. rm -rf the old .app, cp -R the new one over
+//     d. strip the quarantine xattr (unsigned build → Gatekeeper would
+//     otherwise refuse to launch the freshly-copied bundle)
+//     e. hdiutil detach
+//     f. open the new bundle
 //  3. Spawn the script detached and return — the caller MUST then call
 //     app.Quit() so the script can finish its job.
 //

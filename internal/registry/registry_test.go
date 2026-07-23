@@ -9,8 +9,8 @@ import (
 
 type fakeDriver struct{ name string }
 
-func (f fakeDriver) Name() string                               { return f.name }
-func (f fakeDriver) Version() string                            { return "test" }
+func (f fakeDriver) Name() string                                { return f.name }
+func (f fakeDriver) Version() string                             { return "test" }
 func (f fakeDriver) ConnectionSchema() []dbdriver.ConnParamField { return nil }
 func (f fakeDriver) Capabilities() dbdriver.Capabilities         { return dbdriver.Capabilities{} }
 func (f fakeDriver) UIDialect() dbdriver.UIDialect               { return dbdriver.UIDialect{} }
