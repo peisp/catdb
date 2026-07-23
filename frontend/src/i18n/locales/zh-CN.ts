@@ -31,6 +31,8 @@ export default {
     renameFailed: '重命名失败: {error}',
     connectFailed: '连接失败: {error}',
     copyFailed: '复制失败: {error}',
+    sameDriverOnly: '仅可选择同类型数据库的连接。',
+    noSameDriverConn: '没有其他同类型数据库连接。',
   },
   // 对象树右键模块（api/treeContextMenu.ts）。
   tree: {

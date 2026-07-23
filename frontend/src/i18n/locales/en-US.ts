@@ -35,6 +35,8 @@ export default {
     renameFailed: 'Rename failed: {error}',
     connectFailed: 'Connection failed: {error}',
     copyFailed: 'Copy failed: {error}',
+    sameDriverOnly: 'Only connections of the same database type can be selected.',
+    noSameDriverConn: 'No other connection of the same database type.',
   },
   // Object-tree right-click module (api/treeContextMenu.ts).
   tree: {

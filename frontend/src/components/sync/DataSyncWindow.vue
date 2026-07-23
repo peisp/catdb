@@ -10,7 +10,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Window } from '@wailsio/runtime'
 import { NButton, NCheckbox, NInputNumber, NSpin, useMessage } from 'naive-ui'
 import { useConnectionsStore } from '../../stores/connections'
-import { sync as syncApi, metadata as metadataApi, dialogs } from '../../api'
+import { sync as syncApi, metadata as metadataApi, dialogs, connections as connectionsApi } from '../../api'
 import type { DataTableDiff } from '../../api/sync'
 import { t } from '../../i18n'
 
@@ -52,14 +52,25 @@ const connOptions = computed(() => connections.value.map((c) => ({ label: c.name
 const srcConnId = ref('')
 const srcDb = ref('')
 const srcDatabases = ref<string[]>([])
+const srcServerInfo = ref('')
 const tgtConnId = ref('')
 const tgtDb = ref('')
 const tgtDatabases = ref<string[]>([])
+const tgtServerInfo = ref('')
 
 const srcTables = ref<string[]>([])
 const selectedTables = ref<Set<string>>(new Set())
 const tableSearch = ref('')
 const loadingTables = ref(false)
+
+// Target can only connect to the same database type as the source — cross-
+// driver data sync isn't meaningful. Source stays unrestricted.
+const srcDriver = computed(() => connections.value.find((c) => c.id === srcConnId.value)?.driver ?? '')
+const tgtConnOptions = computed(() =>
+  srcDriver.value
+    ? connections.value.filter((c) => c.driver === srcDriver.value).map((c) => ({ label: c.name, value: c.id }))
+    : connOptions.value,
+)
 
 async function loadDatabases(connId: string): Promise<string[]> {
   if (!connId) return []
@@ -70,11 +81,33 @@ async function loadDatabases(connId: string): Promise<string[]> {
   }
 }
 
+async function fetchServerInfo(connId: string, driver: string): Promise<string> {
+  try {
+    const info = await connectionsApi.getServerInfo(connId)
+    return info.version ? `${driver} ${info.version}` : driver
+  } catch {
+    return driver
+  }
+}
+
 watch(srcConnId, async () => {
   clearResult()
   srcDb.value = ''
-  srcDatabases.value = await loadDatabases(srcConnId.value)
+  srcServerInfo.value = ''
+  const id = srcConnId.value
+  srcDatabases.value = await loadDatabases(id)
   if (srcDatabases.value.length === 1) srcDb.value = srcDatabases.value[0]
+  if (id) {
+    const driver = connections.value.find((c) => c.id === id)?.driver ?? ''
+    // Source driver changed under an already-picked target — drop the
+    // target so a mismatched connection can't linger selected.
+    if (tgtConnId.value) {
+      const tgtDriver = connections.value.find((c) => c.id === tgtConnId.value)?.driver ?? ''
+      if (tgtDriver !== driver) tgtConnId.value = ''
+    }
+    const info = await fetchServerInfo(id, driver)
+    if (srcConnId.value === id) srcServerInfo.value = info
+  }
 })
 watch(srcDb, async () => {
   clearResult()
@@ -94,8 +127,15 @@ watch(srcDb, async () => {
 watch(tgtConnId, async () => {
   clearResult()
   tgtDb.value = ''
-  tgtDatabases.value = await loadDatabases(tgtConnId.value)
+  tgtServerInfo.value = ''
+  const id = tgtConnId.value
+  tgtDatabases.value = await loadDatabases(id)
   if (tgtDatabases.value.length === 1) tgtDb.value = tgtDatabases.value[0]
+  if (id) {
+    const driver = connections.value.find((c) => c.id === id)?.driver ?? ''
+    const info = await fetchServerInfo(id, driver)
+    if (tgtConnId.value === id) tgtServerInfo.value = info
+  }
 })
 watch(tgtDb, clearResult)
 
@@ -417,6 +457,7 @@ function sampleText(d: DataTableDiff): string {
                     <option value="" disabled>{{ $t('dataSync.selectConnection') }}</option>
                     <option v-for="c in connOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
                   </select>
+                  <div v-if="srcServerInfo" class="conn-hint">{{ srcServerInfo }}</div>
                 </div>
                 <div class="field">
                   <label class="field-label">{{ $t('dataSync.database') }}</label>
@@ -435,10 +476,16 @@ function sampleText(d: DataTableDiff): string {
                 <h3 class="section-label target-label">{{ $t('dataSync.target') }}</h3>
                 <div class="field">
                   <label class="field-label">{{ $t('dataSync.connection') }}</label>
-                  <select v-model="tgtConnId" class="native-select" :disabled="isComparing || isExecuting">
+                  <select
+                    v-model="tgtConnId" class="native-select"
+                    :disabled="isComparing || isExecuting"
+                    :title="$t('common.sameDriverOnly')"
+                  >
                     <option value="" disabled>{{ $t('dataSync.selectConnection') }}</option>
-                    <option v-for="c in connOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
+                    <option v-for="c in tgtConnOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
                   </select>
+                  <div v-if="tgtServerInfo" class="conn-hint">{{ tgtServerInfo }}</div>
+                  <div v-else-if="srcConnId && tgtConnOptions.length === 0" class="conn-hint">{{ $t('common.noSameDriverConn') }}</div>
                 </div>
                 <div class="field">
                   <label class="field-label">{{ $t('dataSync.database') }}</label>
@@ -649,7 +696,7 @@ function sampleText(d: DataTableDiff): string {
   display: flex; align-items: center; gap: 8px;
   padding: 20px; font-size: var(--catdb-fs-body); opacity: 0.8;
 }
-.error { color: var(--catdb-error); }
+.error { color: var(--catdb-error); user-select: text; -webkit-user-select: text; cursor: text; }
 .wrapper {
   min-width: 0; min-height: 0; overflow: hidden;
   display: grid; grid-template-rows: 1fr auto;
@@ -691,6 +738,7 @@ function sampleText(d: DataTableDiff): string {
 .field { margin-bottom: 8px; }
 .field:last-child { margin-bottom: 0; }
 .field-label { display: block; font-size: var(--catdb-fs-small); margin-bottom: 3px; opacity: 0.72; }
+.conn-hint { font-size: var(--catdb-fs-small); opacity: 0.6; margin-top: 3px; }
 .native-select {
   width: 100%; height: 28px; padding: 0 8px;
   font: inherit; font-size: var(--catdb-fs-body); color: inherit;
@@ -792,7 +840,7 @@ function sampleText(d: DataTableDiff): string {
 .tag.skipped { background: var(--catdb-hover-fill); opacity: 0.8; }
 .tag.running { background: var(--catdb-accent-soft); color: var(--catdb-accent); }
 .diff-row.pending { opacity: 0.45; }
-.diff-error { color: var(--catdb-error); font-size: var(--catdb-fs-mini); }
+.diff-error { color: var(--catdb-error); font-size: var(--catdb-fs-mini); user-select: text; -webkit-user-select: text; cursor: text; }
 .stmt-count {
   margin-left: auto;
   font-size: var(--catdb-fs-mini); opacity: 0.6;

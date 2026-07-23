@@ -9,7 +9,7 @@ import {
   NSpin, useMessage,
 } from 'naive-ui'
 import { useConnectionsStore } from '../../stores/connections'
-import { transfer as transferApi, metadata as metadataApi } from '../../api'
+import { transfer as transferApi, metadata as metadataApi, connections as connectionsApi } from '../../api'
 import type { DataTransferRequest, DataTransferResult } from '../../api/transfer'
 
 const store = useConnectionsStore()
@@ -56,6 +56,7 @@ const connOptions = computed(() =>
 const srcConnId = ref('')
 const srcDb = ref('')
 const srcDatabases = ref<string[]>([])
+const srcServerInfo = ref('')
 const srcDbOptions = computed(() =>
   srcDatabases.value.map((d) => ({ label: d, value: d }))
 )
@@ -69,9 +70,28 @@ const loadingTables = ref(false)
 const tgtConnId = ref('')
 const tgtDb = ref('')
 const tgtDatabases = ref<string[]>([])
+const tgtServerInfo = ref('')
 const tgtDbOptions = computed(() =>
   tgtDatabases.value.map((d) => ({ label: d, value: d }))
 )
+
+// Target can only connect to the same database type as the source — cross-
+// driver transfer isn't meaningful. Source stays unrestricted.
+const srcDriver = computed(() => connections.value.find((c) => c.id === srcConnId.value)?.driver ?? '')
+const tgtConnOptions = computed(() =>
+  srcDriver.value
+    ? connections.value.filter((c) => c.driver === srcDriver.value).map((c) => ({ label: c.name, value: c.id }))
+    : connOptions.value,
+)
+
+async function fetchServerInfo(connId: string, driver: string): Promise<string> {
+  try {
+    const info = await connectionsApi.getServerInfo(connId)
+    return info.version ? `${driver} ${info.version}` : driver
+  } catch {
+    return driver
+  }
+}
 
 // --- options ----------------------------------------------------------------
 
@@ -130,14 +150,25 @@ async function onSrcConnChange() {
   srcDatabases.value = []
   srcTables.value = []
   selectedTables.value = new Set()
-  if (!srcConnId.value) return
+  srcServerInfo.value = ''
+  const id = srcConnId.value
+  if (!id) return
   try {
-    const names = await metadataApi.listDatabases(srcConnId.value)
+    const names = await metadataApi.listDatabases(id)
     srcDatabases.value = names
     if (names.length === 1) srcDb.value = names[0]
   } catch {
     srcDatabases.value = []
   }
+  const driver = connections.value.find((c) => c.id === id)?.driver ?? ''
+  // Source driver changed under an already-picked target — drop the
+  // target so a mismatched connection can't linger selected.
+  if (tgtConnId.value) {
+    const tgtDriver = connections.value.find((c) => c.id === tgtConnId.value)?.driver ?? ''
+    if (tgtDriver !== driver) tgtConnId.value = ''
+  }
+  const info = await fetchServerInfo(id, driver)
+  if (srcConnId.value === id) srcServerInfo.value = info
 }
 
 async function onSrcDbChange() {
@@ -160,14 +191,19 @@ async function onTgtConnChange() {
   clearResult()
   tgtDb.value = ''
   tgtDatabases.value = []
-  if (!tgtConnId.value) return
+  tgtServerInfo.value = ''
+  const id = tgtConnId.value
+  if (!id) return
   try {
-    const names = await metadataApi.listDatabases(tgtConnId.value)
+    const names = await metadataApi.listDatabases(id)
     tgtDatabases.value = names
     if (names.length === 1) tgtDb.value = names[0]
   } catch {
     tgtDatabases.value = []
   }
+  const driver = connections.value.find((c) => c.id === id)?.driver ?? ''
+  const info = await fetchServerInfo(id, driver)
+  if (tgtConnId.value === id) tgtServerInfo.value = info
 }
 
 watch(srcConnId, onSrcConnChange)
@@ -307,6 +343,7 @@ function onClose() {
                     <option value="" disabled>{{ $t('transfer.selectConnection') }}</option>
                     <option v-for="c in connOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
                   </select>
+                  <div v-if="srcServerInfo" class="conn-hint">{{ srcServerInfo }}</div>
                 </div>
                 <div class="field">
                   <label class="field-label">{{ $t('transfer.sourceDatabase') }}</label>
@@ -330,10 +367,16 @@ function onClose() {
                 <h3 class="section-label target-label">{{ $t('transfer.target') }}</h3>
                 <div class="field">
                   <label class="field-label">{{ $t('transfer.targetConnection') }}</label>
-                  <select v-model="tgtConnId" class="native-select" :disabled="isRunning">
+                  <select
+                    v-model="tgtConnId" class="native-select"
+                    :disabled="isRunning"
+                    :title="$t('common.sameDriverOnly')"
+                  >
                     <option value="" disabled>{{ $t('transfer.selectConnection') }}</option>
-                    <option v-for="c in connOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
+                    <option v-for="c in tgtConnOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
                   </select>
+                  <div v-if="tgtServerInfo" class="conn-hint">{{ tgtServerInfo }}</div>
+                  <div v-else-if="srcConnId && tgtConnOptions.length === 0" class="conn-hint">{{ $t('common.noSameDriverConn') }}</div>
                 </div>
                 <div class="field">
                   <label class="field-label">{{ $t('transfer.targetDatabase') }}</label>
@@ -549,7 +592,7 @@ function onClose() {
   font-size: var(--catdb-fs-body);
   opacity: 0.8;
 }
-.error { color: var(--catdb-error); }
+.error { color: var(--catdb-error); user-select: text; -webkit-user-select: text; cursor: text; }
 
 .wrapper {
   min-width: 0;
@@ -615,6 +658,7 @@ function onClose() {
   margin-bottom: 3px;
   opacity: 0.72;
 }
+.conn-hint { font-size: var(--catdb-fs-small); opacity: 0.6; margin-top: 3px; }
 
 /* Native <select> — expose the OS-drawn dropdown chrome instead of a Web
    overlay (DESIGN.md "向原生靠拢"). Keep the system caret. */
@@ -749,12 +793,15 @@ function onClose() {
   border-bottom: 1px solid var(--catdb-separator);
 }
 .result-name { font-weight: 600; }
-.result-error { color: var(--catdb-error); }
+.result-error { color: var(--catdb-error); user-select: text; -webkit-user-select: text; cursor: text; }
 .result-ok { opacity: 0.7; }
 .result-error-block {
   color: var(--catdb-error);
   font-size: var(--catdb-fs-small);
   white-space: pre-wrap;
   margin-top: 6px;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 </style>
