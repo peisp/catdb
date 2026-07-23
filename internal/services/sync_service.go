@@ -494,7 +494,7 @@ func compareViews(ctx context.Context, srcConn, tgtConn dbdriver.Connection, dia
 				diff.Error = "fetch-view-definition"
 				break
 			}
-			if normalizeViewDef(srcDefs[name], req.SourceDB) == normalizeViewDef(tgtDefs[name], req.TargetDB) {
+			if normalizeViewDef(srcDefs[name], req.SourceDB, dia) == normalizeViewDef(tgtDefs[name], req.TargetDB, dia) {
 				diff.Status = "same"
 				break
 			}
@@ -508,10 +508,11 @@ func compareViews(ctx context.Context, srcConn, tgtConn dbdriver.Connection, dia
 }
 
 // normalizeViewDef canonicalizes a VIEW_DEFINITION for equality comparison:
-// strip the schema qualifier of its own database and collapse whitespace, so
-// the "same" view living in two differently-named databases compares equal.
-func normalizeViewDef(def, ownDB string) string {
-	d := strings.ReplaceAll(def, "`"+ownDB+"`.", "")
+// strip the schema qualifier of its own database (quoted per the driver's
+// dialect) and collapse whitespace, so the "same" view living in two
+// differently-named databases compares equal.
+func normalizeViewDef(def, ownDB string, dia dbdriver.Dialect) string {
+	d := strings.ReplaceAll(def, dia.QuoteIdentifier(ownDB)+".", "")
 	return strings.Join(strings.Fields(d), " ")
 }
 

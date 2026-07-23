@@ -546,7 +546,9 @@ func (s *QueryService) CountQuery(ctx context.Context, connID, sqlText string, o
 		return 0, err
 	}
 
-	rs, err := q.Query(tctx, "SELECT COUNT(*) FROM (\n"+final+"\n) AS `__catdb_count`")
+	// Unquoted alias on purpose: plain lowercase identifier, valid in every
+	// dialect — no driver-specific quoting in this generic layer (铁律 12).
+	rs, err := q.Query(tctx, "SELECT COUNT(*) FROM (\n"+final+"\n) AS __catdb_count")
 	if err != nil {
 		releaseTx(tx, err)
 		return 0, classifyErr(err, tctx)
