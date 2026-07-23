@@ -222,9 +222,27 @@ func (s *AgentSettingsService) GetAgentSettings(ctx context.Context) (llmconfig.
 }
 
 // SetAgentSettings persists all Agent runtime settings at once (privacy switch,
-// limits, compaction, per-model pricing table).
+// limits, compaction, audit retention, per-model pricing table). A shortened
+// audit retention takes effect immediately.
 func (s *AgentSettingsService) SetAgentSettings(ctx context.Context, settings llmconfig.AgentSettings) error {
-	return llmconfig.SaveSettings(ctx, s.store, settings)
+	if err := llmconfig.SaveSettings(ctx, s.store, settings); err != nil {
+		return err
+	}
+	s.AutoCleanAudit(ctx)
+	return nil
+}
+
+// AutoCleanAudit deletes audit entries older than the configured retention
+// (agent.audit.retentionDays, default 15, clamped 1–30). Runs at app startup
+// (main.go) and after every settings save; failures are silent — retention is
+// housekeeping, never a reason to fail the caller.
+func (s *AgentSettingsService) AutoCleanAudit(ctx context.Context) {
+	set, err := llmconfig.LoadSettings(ctx, s.store)
+	if err != nil {
+		return
+	}
+	before := time.Now().AddDate(0, 0, -set.AuditRetentionDays).Unix()
+	_ = s.store.ClearAgentAudit(ctx, before)
 }
 
 // --- Audit (settings page "审计" section) ---

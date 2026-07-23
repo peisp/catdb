@@ -25,6 +25,16 @@ import * as llmconfig$0 from "../llmconfig/models.js";
 import * as $models from "./models.js";
 
 /**
+ * AutoCleanAudit deletes audit entries older than the configured retention
+ * (agent.audit.retentionDays, default 15, clamped 1–30). Runs at app startup
+ * (main.go) and after every settings save; failures are silent — retention is
+ * housekeeping, never a reason to fail the caller.
+ */
+export function AutoCleanAudit(): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.AgentSettingsService.AutoCleanAudit");
+}
+
+/**
  * ClearAudit deletes audit entries created strictly before beforeUnixSec.
  */
 export function ClearAudit(beforeUnixSec: number): $CancellablePromise<void> {
@@ -121,7 +131,8 @@ export function SaveProvider(p: llmconfig$0.ProviderConfig): $CancellablePromise
 
 /**
  * SetAgentSettings persists all Agent runtime settings at once (privacy switch,
- * limits, compaction, per-model pricing table).
+ * limits, compaction, audit retention, per-model pricing table). A shortened
+ * audit retention takes effect immediately.
  */
 export function SetAgentSettings(settings: llmconfig$0.AgentSettings): $CancellablePromise<void> {
     return $Call.ByName("catdb/internal/services.AgentSettingsService.SetAgentSettings", settings);

@@ -22,6 +22,7 @@ export class AgentSettings {
     "sessionTokenBudget": number;
     "compactAuto": boolean;
     "compactThreshold": number;
+    "auditRetentionDays": number;
     "pricing": { [_ in string]?: ModelPricing };
 
     /** Creates a new AgentSettings instance. */
@@ -50,6 +51,9 @@ export class AgentSettings {
         if (!("compactThreshold" in $$source)) {
             this["compactThreshold"] = 0;
         }
+        if (!("auditRetentionDays" in $$source)) {
+            this["auditRetentionDays"] = 0;
+        }
         if (!("pricing" in $$source)) {
             this["pricing"] = {};
         }
@@ -61,10 +65,10 @@ export class AgentSettings {
      * Creates a new AgentSettings instance from a string or object.
      */
     static createFrom($$source: any = {}): AgentSettings {
-        const $$createField8_0 = $$createType1;
+        const $$createField9_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("pricing" in $$parsedSource) {
-            $$parsedSource["pricing"] = $$createField8_0($$parsedSource["pricing"]);
+            $$parsedSource["pricing"] = $$createField9_0($$parsedSource["pricing"]);
         }
         return new AgentSettings($$parsedSource as Partial<AgentSettings>);
     }

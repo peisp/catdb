@@ -262,6 +262,7 @@ const settings = reactive<AgentSettings>({
   sessionTokenBudget: 0,
   compactAuto: true,
   compactThreshold: 0.7,
+  auditRetentionDays: 15,
   pricing: {},
 } as AgentSettings)
 
@@ -337,7 +338,6 @@ const auditEntries = ref<AuditEntry[]>([])
 const auditPage = ref(0)
 const auditHasMore = ref(false)
 const auditLoading = ref(false)
-const clearDays = ref(30)
 const AUDIT_PAGE_SIZE = 50
 
 const auditConnOptions = computed(() => [
@@ -406,8 +406,10 @@ async function exportAudit(format: 'json' | 'csv') {
   }
 }
 
+// Saves the retention setting (1–30 days; auto-clean runs at app startup and
+// on every settings save) and applies it immediately.
 async function clearAudit() {
-  const days = clearDays.value
+  const days = settings.auditRetentionDays
   const choice = await dialogs.confirm({
     title: tr('agent.settings.audit.clearConfirmTitle'),
     message: tr('agent.settings.audit.clearConfirm', { days }),
@@ -418,8 +420,7 @@ async function clearAudit() {
   })
   if (choice !== 'clear') return
   try {
-    const before = Math.floor(Date.now() / 1000) - days * 86400
-    await agentSettings.clearAudit(before)
+    await persistSettings() // SetAgentSettings auto-cleans server-side
     message.success(tr('agent.settings.audit.cleared'))
     await loadAudit(0)
   } catch (e) {
@@ -427,9 +428,17 @@ async function clearAudit() {
   }
 }
 
+// Audit rows carry the raw connId — show the connection's display name and
+// fall back to the id for connections deleted since.
+function connLabel(id: string): string {
+  return auditConns.value.find((o) => o.value === id)?.label ?? id
+}
+
 function fmtTime(v: unknown): string {
   const d = new Date(v as string)
-  return isNaN(d.getTime()) ? String(v) : d.toLocaleString()
+  if (isNaN(d.getTime())) return String(v)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 function truncSql(s: string): string {
   return s.length > 80 ? s.slice(0, 80) + '…' : s
@@ -715,7 +724,7 @@ onMounted(() => {
           <tbody>
             <tr v-for="e in auditEntries" :key="e.id">
               <td>{{ fmtTime(e.createdAt) }}</td>
-              <td>{{ e.connId }}</td>
+              <td>{{ connLabel(e.connId) }}</td>
               <td>{{ e.class }}</td>
               <td class="sql-cell" :title="e.sql">{{ truncSql(e.sql) }}</td>
               <td>{{ e.status }}</td>
@@ -739,7 +748,7 @@ onMounted(() => {
         </div>
         <div class="audit-clear">
           <label class="form-label">{{ $t('agent.settings.audit.clearDaysLabel') }}</label>
-          <n-input-number v-model:value="clearDays" size="small" class="limit-input" :min="0" />
+          <n-input-number v-model:value="settings.auditRetentionDays" size="small" class="limit-input" :min="1" :max="30" />
           <n-button size="small" @click="clearAudit">{{ $t('agent.settings.audit.clear') }}</n-button>
         </div>
       </div>
@@ -990,6 +999,9 @@ onMounted(() => {
 }
 .audit-table-wrap {
   overflow-x: auto;
+  /* The list scrolls inside itself instead of growing the settings page. */
+  max-height: 320px;
+  overflow-y: auto;
   border: 1px solid var(--catdb-separator);
   border-radius: var(--catdb-rounded-sm);
 }
@@ -1008,6 +1020,10 @@ onMounted(() => {
 .audit-table th {
   font-weight: 600;
   opacity: 0.7;
+  /* Header stays pinned while the wrap scrolls. */
+  position: sticky;
+  top: 0;
+  background: var(--catdb-surface-content);
 }
 .audit-table tbody tr:last-child td {
   border-bottom: none;

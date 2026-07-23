@@ -64,6 +64,11 @@ func main() {
 		return llmconfig.Resolve(ctx, store, secrets, providerID)
 	})
 
+	agentSettingsSvc := services.NewAgentSettingsService(store, secrets)
+	// Audit housekeeping: drop entries older than the retention setting
+	// (default 15 days) once per launch, off the startup path.
+	go agentSettingsSvc.AutoCleanAudit(context.Background())
+
 	app := application.New(application.Options{
 		Name:        "catdb",
 		Description: "Cross-platform database management tool",
@@ -78,7 +83,7 @@ func main() {
 			application.NewService(services.NewSavedQueryService(store)),
 			application.NewService(services.NewUpdateService(store, "")),
 			application.NewService(settingsSvc),
-			application.NewService(services.NewAgentSettingsService(store, secrets)),
+			application.NewService(agentSettingsSvc),
 			application.NewService(services.NewAgentService(store, agentEngine)),
 		},
 		Assets: application.AssetOptions{

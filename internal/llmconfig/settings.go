@@ -23,7 +23,26 @@ const (
 	keyCompactAuto        = "agent.compact.auto"
 	keyCompactThreshold   = "agent.compact.threshold"
 	keyPricing            = "agent.pricing"
+	keyAuditRetention     = "agent.audit.retentionDays"
 )
+
+// Audit retention bounds: entries older than AuditRetentionDays are removed
+// automatically (app startup + settings save). Clamped on both load and save.
+const (
+	AuditRetentionMin     = 1
+	AuditRetentionMax     = 30
+	AuditRetentionDefault = 15
+)
+
+func clampAuditRetention(n int) int {
+	if n < AuditRetentionMin {
+		return AuditRetentionMin
+	}
+	if n > AuditRetentionMax {
+		return AuditRetentionMax
+	}
+	return n
+}
 
 // ModelPricing 是单个模型的百万 token 单价（用于费用估算，§9）。空表 = 只显示
 // token 不算费用。CacheReadPer1M 对齐 Anthropic prompt caching 的命中价。
@@ -44,6 +63,7 @@ type AgentSettings struct {
 	SessionTokenBudget int                     `json:"sessionTokenBudget"`
 	CompactAuto        bool                    `json:"compactAuto"`
 	CompactThreshold   float64                 `json:"compactThreshold"`
+	AuditRetentionDays int                     `json:"auditRetentionDays"`
 	Pricing            map[string]ModelPricing `json:"pricing"`
 }
 
@@ -58,6 +78,7 @@ func DefaultSettings() AgentSettings {
 		SessionTokenBudget: 0,
 		CompactAuto:        true,
 		CompactThreshold:   0.7,
+		AuditRetentionDays: AuditRetentionDefault,
 		Pricing:            map[string]ModelPricing{},
 	}
 }
@@ -81,6 +102,7 @@ func LoadSettings(ctx context.Context, store *storage.Store) (AgentSettings, err
 		{keyTxIdleTimeoutSec, &s.TxIdleTimeoutSec},
 		{keyLLMResultRows, &s.LLMResultRows},
 		{keySessionTokenBudget, &s.SessionTokenBudget},
+		{keyAuditRetention, &s.AuditRetentionDays},
 	} {
 		v, err := get(f.key)
 		if err != nil {
@@ -112,6 +134,7 @@ func LoadSettings(ctx context.Context, store *storage.Store) (AgentSettings, err
 			s.Pricing = p
 		}
 	}
+	s.AuditRetentionDays = clampAuditRetention(s.AuditRetentionDays)
 	return s, nil
 }
 
@@ -135,6 +158,7 @@ func SaveSettings(ctx context.Context, store *storage.Store, s AgentSettings) er
 		{keySessionTokenBudget, strconv.Itoa(s.SessionTokenBudget)},
 		{keyCompactAuto, strconv.FormatBool(s.CompactAuto)},
 		{keyCompactThreshold, strconv.FormatFloat(s.CompactThreshold, 'g', -1, 64)},
+		{keyAuditRetention, strconv.Itoa(clampAuditRetention(s.AuditRetentionDays))},
 		{keyPricing, string(pricingJSON)},
 	}
 	for _, p := range pairs {
