@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -142,6 +143,16 @@ func (s *SystemService) OpenDataSyncDialog(_ context.Context) {
 // keyed by name "settings".
 func (s *SystemService) OpenSettingsWindow(_ context.Context) {
 	wailsbridge.OpenSettingsWindow()
+}
+
+// CopyToClipboard writes text to the native system clipboard. The WebView's
+// own navigator.clipboard is permission-gated (WKWebView denies it), so the
+// front-end's copy actions call this instead (api/system.copyText).
+func (s *SystemService) CopyToClipboard(_ context.Context, text string) error {
+	if !wailsbridge.SetClipboardText(text) {
+		return fmt.Errorf("clipboard write failed")
+	}
+	return nil
 }
 
 // OpenExternalURL opens the given URL in the user's default browser.

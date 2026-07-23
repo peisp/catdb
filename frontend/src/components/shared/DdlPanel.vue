@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { NSpin, useMessage } from 'naive-ui'
+import { copyText } from '../../api/system'
 import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { sql } from '@codemirror/lang-sql'
@@ -100,7 +101,7 @@ onBeforeUnmount(() => ddlView.value?.destroy())
 async function copyDdl() {
   if (!props.ddl) return
   try {
-    await navigator.clipboard.writeText(props.ddl)
+    await copyText(props.ddl)
     message.success(t('tablesOverview.ddlCopied'))
   } catch (e) {
     message.error(t('common.copyFailed', { error: String(e) }))

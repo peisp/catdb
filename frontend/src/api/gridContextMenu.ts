@@ -22,6 +22,7 @@ import { t } from '../i18n'
 import { useTableSelection, type SelectionRange } from '../composables/useTableSelection'
 import { genericUIDialect, uiDialectForConnection, type UIDialect } from './dialect'
 import { on, emit } from './events'
+import { copyText } from './system'
 
 const ctxSel = useTableSelection()
 let ctxState = {
@@ -61,7 +62,7 @@ export function setActiveGridContext(p: ActiveGridContext): void {
 
 async function copy(text: string): Promise<void> {
   if (!text) return
-  try { await navigator.clipboard.writeText(text) } catch { /* clipboard denied */ }
+  try { await copyText(text) } catch { /* clipboard write failed */ }
 }
 
 async function ctxDialect(): Promise<UIDialect> {

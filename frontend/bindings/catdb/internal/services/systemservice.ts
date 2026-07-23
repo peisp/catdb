@@ -44,6 +44,15 @@ export function BroadcastDatabaseSaved(connID: string, dbName: string): $Cancell
 }
 
 /**
+ * CopyToClipboard writes text to the native system clipboard. The WebView's
+ * own navigator.clipboard is permission-gated (WKWebView denies it), so the
+ * front-end's copy actions call this instead (api/system.copyText).
+ */
+export function CopyToClipboard(text: string): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.SystemService.CopyToClipboard", text);
+}
+
+/**
  * OpenConnectionEditor pops the connection editor as its own native window.
  * `driver` is the driver name (e.g. "mysql") and `connID` is the profile id
  * to edit (empty string for a new-connection flow).

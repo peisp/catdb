@@ -10,6 +10,7 @@ import ResultFooter from './ResultFooter.vue'
 import { useTableSelection, type SelectionRange } from '../../composables/useTableSelection'
 import { setActiveGridContext } from '../../api/gridContextMenu'
 import { on as onEvent } from '../../api/events'
+import { copyText } from '../../api/system'
 import * as editApi from '../../api/edit'
 import type { QueryColumn } from '../../stores/query'
 import { t } from '../../i18n'
@@ -120,7 +121,7 @@ function onCellContextMenu(p: { row: number; col: number }) {
 
 async function copyToClipboard(text: string) {
   if (!text) return
-  try { await navigator.clipboard.writeText(text) } catch { /* ignore */ }
+  try { await copyText(text) } catch { /* ignore */ }
 }
 
 function onDocKeyDown(e: KeyboardEvent) {
