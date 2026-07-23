@@ -79,7 +79,12 @@ func (e *Engine) openTaskTx(ctx context.Context, sessID, connID string) (*taskTx
 	if err != nil {
 		return nil, fmt.Errorf("agent: open dedicated connection: %w", err)
 	}
-	tx, err := conn.Begin(ctx, nil)
+	// The task tx outlives this turn — the user commits/rolls back after the
+	// summary — but database/sql auto-rolls a tx back the moment its BeginTx
+	// ctx is canceled, and ctx here is the turn's (canceled when the stream
+	// ends). Detach it: the tx's lifetime is owned by finishTx / the idle
+	// timer, matching the manual-tx pattern in QueryService.
+	tx, err := conn.Begin(context.WithoutCancel(ctx), nil)
 	if err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("agent: begin task tx: %w", err)
