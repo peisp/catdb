@@ -4,6 +4,7 @@
 import { computed, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { t } from '../../i18n'
+import { copyText } from '../../api/system'
 
 const props = withDefaults(defineProps<{
   page: number
@@ -66,7 +67,7 @@ function displaySql(): string {
 async function copySql() {
   const sql = displaySql()
   if (!sql) return
-  try { await navigator.clipboard.writeText(sql); message.success(t('resultFooter.sqlCopied')) }
+  try { await copyText(sql); message.success(t('resultFooter.sqlCopied')) }
   catch (e) { message.error(t('common.copyFailed', { error: String(e) })) }
 }
 

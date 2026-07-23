@@ -32,6 +32,11 @@ export default {
     renameFailed: '重命名失败: {error}',
     connectFailed: '连接失败: {error}',
     copyFailed: '复制失败: {error}',
+    exportDone: '已导出 {n} 行 → {path}',
+    exportFailed: '导出失败: {error}',
+    exportError: '导出出错: {error}',
+    sameDriverOnly: '仅可选择同类型数据库的连接。',
+    noSameDriverConn: '没有其他同类型数据库连接。',
   },
   // 对象树右键模块（api/treeContextMenu.ts）。
   tree: {
@@ -368,6 +373,8 @@ export default {
   },
   // 对象树（components/layout/ObjectTree.vue）。
   objectTree: {
+    loadDatabasesFailed: '加载数据库列表失败：{error}',
+    loadFailed: '加载失败：{error}',
     tables: '表',
     views: '视图',
     queries: '查询',
@@ -676,6 +683,10 @@ export default {
   transfer: {
     title: '数据传输',
     dataTransfer: '数据传输',
+    completedWithErrors: '传输完成，{n} 张表出错',
+    cancelled: '传输已取消',
+    cancelledShort: '已取消',
+    failedWithError: '传输失败：{error}',
     source: '来源',
     target: '目标',
     sourceConnection: '源连接',

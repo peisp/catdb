@@ -19,7 +19,7 @@ import (
 func testDialect(t *testing.T, ctx context.Context, d dbdriver.Driver, c dbdriver.Connection, fx Fixtures) {
 	dia := d.Dialect()
 	tn := "ct_dialect"
-	db, schema, _ := makeContractTable(t, ctx, d, c, fx, tn)
+	db, schema, qualified := makeContractTable(t, ctx, d, c, fx, tn)
 
 	// ListColumns must return the precise native type — the table browser
 	// merges it over the scanner's bare DatabaseTypeName. The fixture's name
@@ -64,6 +64,25 @@ func testDialect(t *testing.T, ctx context.Context, d dbdriver.Driver, c dbdrive
 	}
 	if stmt := dia.DefaultNamespaceSQL("  "); stmt != "" {
 		t.Fatalf("DefaultNamespaceSQL(blank) must be empty, got %q", stmt)
+	}
+
+	// TruncateTableSQL is used by data-transfer overwrite mode — it must
+	// address the given qualified table verbatim.
+	if stmt := dia.TruncateTableSQL(qualified); stmt == "" || !strings.Contains(stmt, qualified) {
+		t.Fatalf("TruncateTableSQL(%q) = %q, must be non-empty and reference the qualified table", qualified, stmt)
+	}
+
+	// ReplaceViewSQL is used by structure sync to (re)create a view — it must
+	// return at least one statement, and the final one must define the view
+	// with the given body (statements run in order, so a preceding DROP is
+	// fine as long as the view exists with this definition afterwards).
+	def := "SELECT 1"
+	stmts := dia.ReplaceViewSQL(qualified, def)
+	if len(stmts) == 0 {
+		t.Fatalf("ReplaceViewSQL(%q, %q) returned no statements", qualified, def)
+	}
+	if last := stmts[len(stmts)-1]; !strings.Contains(last, qualified) || !strings.Contains(last, def) {
+		t.Fatalf("ReplaceViewSQL(%q, %q) last statement = %q, must define the view with the given qualified name and body", qualified, def, last)
 	}
 }
 

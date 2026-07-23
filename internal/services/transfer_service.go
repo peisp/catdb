@@ -605,6 +605,24 @@ func (s *TransferService) StartTransfer(ctx context.Context, req DataTransferReq
 	}
 	sameDriver := srcName == tgtName
 
+	// --- pre-check which target tables already exist ----------------------
+	// Avoids "IF NOT EXISTS" string surgery on the DDL text — support for
+	// that clause is not portable across dialects (DM). A nil map (probe
+	// failed, e.g. no Metadata adapter) makes every lookup below false, so
+	// CREATE runs unconditionally with the DDL as-is and any failure is
+	// recorded per-table instead of blocking the whole transfer.
+	var existingTables map[string]bool
+	if req.CreateTable {
+		if tgtMeta := tgtConn.Metadata(); tgtMeta != nil {
+			if tbls, err := tgtMeta.ListTables(ctx, req.TargetDB, req.TargetSchema); err == nil {
+				existingTables = make(map[string]bool, len(tbls))
+				for _, t := range tbls {
+					existingTables[t.Name] = true
+				}
+			}
+		}
+	}
+
 	for _, tableName := range req.Tables {
 		if err := ctx.Err(); err != nil {
 			emitProgress(transferID, 0, true, err.Error())
@@ -615,7 +633,7 @@ func (s *TransferService) StartTransfer(ctx context.Context, req DataTransferReq
 		result.TableResults[tableName] = tr
 
 		// --- create target table if needed ----------------------------------
-		if req.CreateTable {
+		if req.CreateTable && !existingTables[tableName] {
 			// Same driver → source-native DDL (full fidelity); cross-driver →
 			// re-rendered through the target dialect. Cross-driver column types
 			// are carried over verbatim for now (see docs/异构数据库同步与传输方案.md).
@@ -625,8 +643,7 @@ func (s *TransferService) StartTransfer(ctx context.Context, req DataTransferReq
 				tr.Error = fmt.Sprintf("get DDL: %v", err)
 				continue
 			}
-			createSQL := strings.Replace(ddl, "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
-			if _, err := tgtQ.Exec(ctx, createSQL); err != nil {
+			if _, err := tgtQ.Exec(ctx, ddl); err != nil {
 				tr.Error = fmt.Sprintf("create table: %v", err)
 				continue
 			}
@@ -635,8 +652,9 @@ func (s *TransferService) StartTransfer(ctx context.Context, req DataTransferReq
 		// --- overwrite mode: truncate target table --------------------------
 		if req.TransferMode == "overwrite" {
 			tgtQual := dbdriver.QualifyTable(tgtD, req.TargetDB, req.TargetSchema, tableName)
-			if _, err := tgtQ.Exec(ctx, "TRUNCATE TABLE "+tgtQual); err != nil {
-				// TRUNCATE may fail with FK refs; fall back to DELETE.
+			if _, err := tgtQ.Exec(ctx, tgtD.TruncateTableSQL(tgtQual)); err != nil {
+				// May fail with FK refs (or the dialect already emitted DELETE
+				// above); fall back to DELETE.
 				if _, err := tgtQ.Exec(ctx, "DELETE FROM "+tgtQual); err != nil {
 					tr.Error = fmt.Sprintf("truncate: %v", err)
 					continue

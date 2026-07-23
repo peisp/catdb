@@ -287,3 +287,19 @@ func TestPlaceholder(t *testing.T) {
 		t.Errorf("Placeholder(37) = %q, want $37", got)
 	}
 }
+
+func TestTruncateTableSQL(t *testing.T) {
+	d := dialect{}
+	if got := d.TruncateTableSQL(`"t"`); got != `TRUNCATE TABLE "t"` {
+		t.Errorf("TruncateTableSQL = %q", got)
+	}
+}
+
+func TestReplaceViewSQL(t *testing.T) {
+	d := dialect{}
+	got := d.ReplaceViewSQL(`"v"`, "SELECT 1")
+	want := []string{`DROP VIEW IF EXISTS "v";`, `CREATE VIEW "v" AS SELECT 1;`}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("ReplaceViewSQL = %v, want %v", got, want)
+	}
+}

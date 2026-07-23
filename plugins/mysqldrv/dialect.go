@@ -154,3 +154,11 @@ func (dialect) MapType(nativeType string) dbdriver.LogicalType {
 		return dbdriver.TypeUnknown
 	}
 }
+
+func (dialect) TruncateTableSQL(qualified string) string {
+	return "TRUNCATE TABLE " + qualified
+}
+
+func (dialect) ReplaceViewSQL(qualified, definition string) []string {
+	return []string{"CREATE OR REPLACE VIEW " + qualified + " AS " + definition + ";"}
+}

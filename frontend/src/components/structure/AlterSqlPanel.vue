@@ -8,6 +8,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NButton, NEmpty, NFlex, NText, useMessage } from 'naive-ui'
 import { dialogs } from '../../api'
+import { copyText } from '../../api/system'
 import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { sql } from '@codemirror/lang-sql'
@@ -143,7 +144,7 @@ onBeforeUnmount(() => view.value?.destroy())
 async function onCopy() {
   if (isEmpty.value) return
   try {
-    await navigator.clipboard.writeText(joined.value)
+    await copyText(joined.value)
     message.success(t('common.copied'))
   } catch (e) {
     message.error(t('common.copyFailed', { error: String(e) }))

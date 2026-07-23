@@ -103,3 +103,7 @@ func (sqliteDialect) GenerateCreateTable(dbdriver.TableSchema) (string, error) {
 func (sqliteDialect) GenerateAlterTable(db, schema, table string, cs dbdriver.ChangeSet) ([]string, error) {
 	return nil, nil
 }
+func (sqliteDialect) TruncateTableSQL(qualified string) string { return "DELETE FROM " + qualified }
+func (sqliteDialect) ReplaceViewSQL(qualified, definition string) []string {
+	return []string{"CREATE VIEW " + qualified + " AS " + definition + ";"}
+}

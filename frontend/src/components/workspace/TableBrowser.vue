@@ -13,6 +13,7 @@ import { NAlert, NButton, NInput, NSpin, NTag, useMessage } from 'naive-ui'
 import { edit as editApi, metadata as metaApi } from '../../api'
 import { genericUIDialect, quoteIdentWith, uiDialectForConnection, type UIDialect } from '../../api/dialect'
 import { on } from '../../api/events'
+import { copyText } from '../../api/system'
 import { setActiveGridContext } from '../../api/gridContextMenu'
 import { useTableSelection, type SelectionRange } from '../../composables/useTableSelection'
 import type { BrowseResult, ColumnMeta } from '../../api/metadata'
@@ -166,7 +167,7 @@ function onCellContextMenu(p: { row: number; col: number }) {
 
 async function copyToClipboard(text: string) {
   if (!text) return
-  try { await navigator.clipboard.writeText(text) } catch { /* ignore */ }
+  try { await copyText(text) } catch { /* ignore */ }
 }
 
 function onDocKeyDown(e: KeyboardEvent) {

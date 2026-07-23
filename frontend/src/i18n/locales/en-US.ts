@@ -36,6 +36,11 @@ export default {
     renameFailed: 'Rename failed: {error}',
     connectFailed: 'Connection failed: {error}',
     copyFailed: 'Copy failed: {error}',
+    exportDone: 'Exported {n} rows → {path}',
+    exportFailed: 'Export failed: {error}',
+    exportError: 'Export error: {error}',
+    sameDriverOnly: 'Only connections of the same database type can be selected.',
+    noSameDriverConn: 'No other connection of the same database type.',
   },
   // Object-tree right-click module (api/treeContextMenu.ts).
   tree: {
@@ -376,6 +381,8 @@ export default {
   },
   // Object tree (components/layout/ObjectTree.vue).
   objectTree: {
+    loadDatabasesFailed: 'Load databases failed: {error}',
+    loadFailed: 'Load failed: {error}',
     tables: 'Tables',
     views: 'Views',
     queries: 'Queries',
@@ -685,6 +692,10 @@ export default {
   transfer: {
     title: 'Data Transfer',
     dataTransfer: 'Data Transfer',
+    completedWithErrors: 'Transfer completed with {n} table error(s)',
+    cancelled: 'Transfer cancelled',
+    cancelledShort: 'Cancelled',
+    failedWithError: 'Transfer failed: {error}',
     source: 'Source',
     target: 'Target',
     sourceConnection: 'Source Connection',

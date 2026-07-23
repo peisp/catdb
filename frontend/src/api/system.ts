@@ -47,6 +47,14 @@ export function broadcastDatabaseSaved(connId: string, dbName: string): Promise<
 export function openExternalURL(url: string): Promise<void> {
   return SystemService.OpenExternalURL(url) as unknown as Promise<void>
 }
+/**
+ * Copy text to the system clipboard via the native (Go) side. The WebView's
+ * navigator.clipboard is permission-gated — WKWebView rejects it with
+ * NotAllowedError — so every copy action in the app goes through here.
+ */
+export function copyText(text: string): Promise<void> {
+  return SystemService.CopyToClipboard(text) as unknown as Promise<void>
+}
 export function openSettingsWindow(section = ''): Promise<void> {
   return SystemService.OpenSettingsWindow(section) as unknown as Promise<void>
 }
