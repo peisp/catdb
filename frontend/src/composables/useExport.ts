@@ -2,6 +2,7 @@
 // export via TransferService. No Naive UI NModal or format dialog needed.
 import { createDiscreteApi } from 'naive-ui'
 import { Dialogs } from '@wailsio/runtime'
+import { t } from '../i18n'
 import { TransferFormat } from '../api/transfer'
 import { exportQuery, exportTable, onProgress } from '../api/transfer'
 import type { ExportOptions } from '../api/transfer'
@@ -56,7 +57,7 @@ export async function startExport(source: ExportSource, format: TransferFormat):
   let done = false
   const unsub = onProgress((p) => {
     if (p.done) done = true
-    if (p.error) message.error(`Export error: ${p.error}`)
+    if (p.error) message.error(t('common.exportError', { error: p.error }))
   })
 
   try {
@@ -66,9 +67,9 @@ export async function startExport(source: ExportSource, format: TransferFormat):
         : await exportQuery(source.connId, source.sql, opts)
 
     await new Promise((r) => setTimeout(r, 100))
-    message.success(`Exported ${result.rowsTotal} rows → ${path}`)
+    message.success(t('common.exportDone', { n: result.rowsTotal, path }))
   } catch (e) {
-    if (!done) message.error(`Export failed: ${String(e)}`)
+    if (!done) message.error(t('common.exportFailed', { error: String(e) }))
   } finally {
     unsub()
   }

@@ -9,6 +9,8 @@ import {
   NSpin, useMessage,
 } from 'naive-ui'
 import { useConnectionsStore } from '../../stores/connections'
+// Aliased: several arrow params in this file already bind the name `t`.
+import { t as tr } from '../../i18n'
 import { transfer as transferApi, metadata as metadataApi, connections as connectionsApi } from '../../api'
 import type { DataTransferRequest, DataTransferResult } from '../../api/transfer'
 
@@ -266,21 +268,21 @@ async function startTransfer() {
     const r = await transferApi.startTransfer(req, ac.signal)
     result.value = r
     const tableErrors = Object.entries(r.tableResults)
-      .filter(([, tr]) => tr?.error)
-      .map(([t, tr]) => `${t}: ${tr!.error}`)
+      .filter(([, res]) => res?.error)
+      .map(([name, res]) => `${name}: ${res!.error}`)
     if (tableErrors.length > 0) {
       transferError.value = tableErrors.join('\n')
-      message.warning(`Transfer completed with ${tableErrors.length} table error(s)`)
+      message.warning(tr('transfer.completedWithErrors', { n: tableErrors.length }))
     } else {
-      message.success('Transfer completed')
+      message.success(tr('transfer.completed'))
     }
   } catch (err: any) {
     if (err?.name === 'AbortError' || err?.message?.includes('aborted') || err?.message?.includes('canceled')) {
-      transferError.value = 'Cancelled'
-      message.info('Transfer cancelled')
+      transferError.value = tr('transfer.cancelledShort')
+      message.info(tr('transfer.cancelled'))
     } else {
       transferError.value = err?.message || String(err)
-      message.error(`Transfer failed: ${transferError.value}`)
+      message.error(tr('transfer.failedWithError', { error: transferError.value }))
     }
   } finally {
     endTime.value = new Date().toLocaleString()

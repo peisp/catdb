@@ -285,7 +285,7 @@ async function loadRoot() {
     allRootNodes.value = dbs.map((db) => mkNode(db, { kind: 'database', db }))
     reconcileSelection(dbs)
   } catch (e) {
-    message.error(`load databases failed: ${String(e)}`)
+    message.error(t('objectTree.loadDatabasesFailed', { error: String(e) }))
   } finally {
     loading.value = false
   }
@@ -396,7 +396,7 @@ async function onLoad(node: TreeOption): Promise<boolean> {
     }
     return true
   } catch (e) {
-    message.error(`load failed: ${String(e)}`)
+    message.error(t('objectTree.loadFailed', { error: String(e) }))
     // 失败时必须把 children 写成空数组 + 返回 false，否则会陷入无限重试：
     //   1) children 留空 → treemate 认为 shallowLoaded=false → n-tree
     //      内部 watchEffect 每次 expandedKeys 变动都会再次 triggerLoading
