@@ -191,7 +191,20 @@ func (rs *runState) requestApproval(ctx context.Context, db string, st sqlclass.
 		"warning": v.Warning, "autoOffered": v.AutoApprovable,
 		"explain": rs.explainEstimate(ctx, db, st.SQL),
 	})
-	return rs.e.broker.waitOn(ctx, id, ch)
+	start := time.Now()
+	d, err := rs.e.broker.waitOn(ctx, id, ch)
+	rec := map[string]any{
+		"sql": st.SQL, "class": string(st.C.Class), "verb": string(st.C.Verb),
+		"warning": v.Warning, "autoOffered": v.AutoApprovable,
+		"waitMs": time.Since(start).Milliseconds(),
+	}
+	if err != nil {
+		rec["error"] = err.Error()
+	} else {
+		rec["approved"], rec["scope"], rec["reason"] = d.Approved, d.Scope, d.Reason
+	}
+	rs.e.trace.Rec(rs.sessID, "approval", rec)
+	return d, err
 }
 
 // explainEstimate renders a short plan preview for the approval card.
@@ -427,7 +440,18 @@ func buildSubmitPlan(rs *runState) Tool {
 				"sessId": rs.sessID, "planID": id,
 				"goal": a.Goal, "statements": a.Statements, "impact": a.Impact,
 			})
+			start := time.Now()
 			d, err := rs.e.broker.waitOn(ctx, id, ch)
+			rec := map[string]any{
+				"goal": a.Goal, "statements": a.Statements, "impact": a.Impact,
+				"waitMs": time.Since(start).Milliseconds(),
+			}
+			if err != nil {
+				rec["error"] = err.Error()
+			} else {
+				rec["approved"], rec["reason"] = d.Approved, d.Reason
+			}
+			rs.e.trace.Rec(rs.sessID, "plan", rec)
 			if err != nil {
 				return "", err
 			}

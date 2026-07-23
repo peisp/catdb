@@ -33,6 +33,7 @@ import { useConnectionsStore } from '../../stores/connections'
 import { confirm } from '../../api/dialogs'
 import type { ConnectionProfile } from '../../api/connections'
 import { openSettingsWindow } from '../../api/system'
+import { traceEnabled as fetchTraceEnabled, openTraceWindow } from '../../api/agentTrace'
 import { i18n, t } from '../../i18n'
 
 // props.connection is only a HINT (§10.2): the cold-start / new-session
@@ -41,6 +42,8 @@ const props = defineProps<{ connection: ConnectionProfile | null }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const message = useMessage()
+// Dev builds only: whether the trace subsystem records (shows the Trace button).
+const traceOn = ref(false)
 const queryStore = useQueryStore()
 const metaStore = useMetadataStore()
 const connStore = useConnectionsStore()
@@ -962,6 +965,7 @@ onMounted(() => {
   offProviders = onProvidersChanged(() => {
     void listProviders().then((list) => { providers.value = list ?? [] }).catch(() => {})
   })
+  void fetchTraceEnabled().then((on) => { traceOn.value = on }).catch(() => {})
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onWindowResize)
@@ -1012,9 +1016,11 @@ onBeforeUnmount(() => {
         :watermark="watermark"
         :cost="cost"
         :compacting="compacting"
+        :trace-enabled="traceOn"
         @new-session="onNewSession"
         @open-history="openHistory"
         @compact="onCompact"
+        @open-trace="openTraceWindow(session?.id ?? '')"
       />
 
       <div ref="scrollerRef" class="messages">

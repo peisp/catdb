@@ -92,3 +92,13 @@ func OpenSettingsWindow(section string) {
 	}
 	OpenChildWindow("settings", tr("window.settings"), url, 680, 500)
 }
+
+// OpenAgentTraceWindow opens (or focuses) the dev-only agent Trace window,
+// optionally pre-selecting a session.
+func OpenAgentTraceWindow(sessID string) {
+	url := "/#/agent-trace"
+	if sessID != "" {
+		url += "?sess=" + sessID
+	}
+	OpenChildWindow("agent-trace", tr("window.agentTrace"), url, 1150, 720)
+}

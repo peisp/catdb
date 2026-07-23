@@ -16,6 +16,7 @@ import TransferEditorWindow from './components/transfer/TransferEditorWindow.vue
 import StructureSyncWindow from './components/sync/StructureSyncWindow.vue'
 import DataSyncWindow from './components/sync/DataSyncWindow.vue'
 import SettingsWindow from './components/settings/SettingsWindow.vue'
+import AgentTraceWindow from './components/agent/AgentTraceWindow.vue'
 import ConfirmOverlay from './components/common/ConfirmOverlay.vue'
 
 const theme = useThemeStore()
@@ -37,6 +38,7 @@ function currentRoute(): string {
   if (h.startsWith('#/structure-sync')) return 'structure-sync'
   if (h.startsWith('#/data-sync')) return 'data-sync'
   if (h.startsWith('#/settings')) return 'settings'
+  if (h.startsWith('#/agent-trace')) return 'agent-trace'
   return 'shell'
 }
 
@@ -75,6 +77,7 @@ onMounted(() => {
       <StructureSyncWindow v-else-if="route === 'structure-sync'" />
       <DataSyncWindow v-else-if="route === 'data-sync'" />
       <SettingsWindow v-else-if="route === 'settings'" />
+      <AgentTraceWindow v-else-if="route === 'agent-trace'" />
       <AppShell v-else />
       <!-- Windows-only in-app confirm modal; mounted at root so it covers every window. -->
       <ConfirmOverlay />

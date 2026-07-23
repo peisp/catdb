@@ -274,7 +274,7 @@ func (e *Engine) compactSession(ctx context.Context, sessID string, provider llm
 		}
 	}
 
-	summary := e.summarize(ctx, provider, model, folded)
+	summary := e.summarize(ctx, sessID, provider, model, folded)
 	if _, err := e.store.AppendAgentMessage(ctx, storage.AgentMessage{
 		SessionID: sessID, Role: "summary", Content: mustContent(msgContent{Text: summary}),
 	}); err != nil {
@@ -295,13 +295,16 @@ func (e *Engine) compactSession(ctx context.Context, sessID string, provider llm
 	emitFn("agent:compacted", map[string]any{
 		"sessId": sessID, "foldedCount": len(folded), "before": before, "after": after,
 	})
+	e.trace.Rec(sessID, "compact", map[string]any{
+		"foldedCount": len(folded), "before": before, "after": after, "summary": summary,
+	})
 	return len(folded), nil
 }
 
 // summarize asks the session's model for a compact summary of the folded
 // rounds; any failure or degenerate output degrades to a statistical summary
 // — compaction must never abort because summarization did (§9).
-func (e *Engine) summarize(ctx context.Context, provider llm.Provider, model string, folded []loadedMsg) string {
+func (e *Engine) summarize(ctx context.Context, sessID string, provider llm.Provider, model string, folded []loadedMsg) string {
 	transcript := renderTranscript(folded)
 	req := llm.ChatRequest{
 		Model: model,
@@ -311,6 +314,7 @@ func (e *Engine) summarize(ctx context.Context, provider llm.Provider, model str
 		Messages:  []llm.Message{{Role: llm.RoleUser, Text: transcript}},
 		MaxTokens: 1024,
 	}
+	e.trace.Rec(sessID, "request", map[string]any{"purpose": "compact-summary", "req": req})
 	stream, err := provider.ChatStream(ctx, req)
 	if err != nil {
 		return statSummary(folded)

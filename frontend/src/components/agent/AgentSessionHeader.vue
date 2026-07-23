@@ -9,6 +9,7 @@ import AppIcon from '../shared/AppIcon.vue'
 import plusIcon from '../../assets/icons/plus.svg?raw'
 import historyIcon from '../../assets/icons/history.svg?raw'
 import compressIcon from '../../assets/icons/compress.svg?raw'
+import scanEyeIcon from '../../assets/icons/scan-eye.svg?raw'
 import { t } from '../../i18n'
 import type { AgentSession } from '../../api/agent'
 
@@ -22,12 +23,15 @@ const props = defineProps<{
   // model has no pricing configured → only tokens show.
   cost?: string | null
   compacting: boolean
+  // Dev builds only: shows the Trace-window button (internal/agenttrace).
+  traceEnabled?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'new-session'): void
   (e: 'open-history'): void
   (e: 'compact'): void
+  (e: 'open-trace'): void
 }>()
 
 // Watermark bar: hidden without a window size; >0.7 flips to the warning color
@@ -57,6 +61,16 @@ const watermarkTip = computed(() => t('agent.panel.watermarkTooltip', { pct: Mat
 
     <span v-if="tokens > 0" class="tokens mono">{{ $t('agent.panel.tokens', { n: tokens }) }}</span>
     <span v-if="tokens > 0 && cost" class="cost mono">{{ cost }}</span>
+
+    <button
+      v-if="traceEnabled"
+      type="button"
+      class="icon-btn"
+      :title="$t('agentTrace.openButton')"
+      @click="emit('open-trace')"
+    >
+      <AppIcon :src="scanEyeIcon" :size="14" />
+    </button>
 
     <button
       type="button"

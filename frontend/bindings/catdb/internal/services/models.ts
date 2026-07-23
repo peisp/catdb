@@ -17,6 +17,9 @@ import * as dbdriver$0 from "../dbdriver/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as storage$0 from "../storage/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as time$0 from "../../../time/models.js";
 
 /**
  * AgentDefaults is the persisted default Provider instance + model.
@@ -1818,6 +1821,44 @@ export class TableTransferResult {
     static createFrom($$source: any = {}): TableTransferResult {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new TableTransferResult($$parsedSource as Partial<TableTransferResult>);
+    }
+}
+
+/**
+ * TraceSession is one traced session for the list pane, joined with the
+ * stored session's title (the trace outlives a deleted session — Title falls
+ * back to empty and the front-end shows the raw id).
+ */
+export class TraceSession {
+    "sessionId": string;
+    "title": string;
+    "size": number;
+    "updatedAt": time$0.Time;
+
+    /** Creates a new TraceSession instance. */
+    constructor($$source: Partial<TraceSession> = {}) {
+        if (!("sessionId" in $$source)) {
+            this["sessionId"] = "";
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("size" in $$source)) {
+            this["size"] = 0;
+        }
+        if (!("updatedAt" in $$source)) {
+            this["updatedAt"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TraceSession instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TraceSession {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new TraceSession($$parsedSource as Partial<TraceSession>);
     }
 }
 

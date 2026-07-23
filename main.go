@@ -85,6 +85,7 @@ func main() {
 			application.NewService(settingsSvc),
 			application.NewService(agentSettingsSvc),
 			application.NewService(services.NewAgentService(store, agentEngine)),
+			application.NewService(services.NewAgentTraceService(store)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

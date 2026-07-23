@@ -3,6 +3,7 @@
 
 import * as AgentService from "./agentservice.js";
 import * as AgentSettingsService from "./agentsettingsservice.js";
+import * as AgentTraceService from "./agenttraceservice.js";
 import * as ConnectionService from "./connectionservice.js";
 import * as EditService from "./editservice.js";
 import * as MetadataService from "./metadataservice.js";
@@ -16,6 +17,7 @@ import * as UpdateService from "./updateservice.js";
 export {
     AgentService,
     AgentSettingsService,
+    AgentTraceService,
     ConnectionService,
     EditService,
     MetadataService,
@@ -70,6 +72,7 @@ export {
     TableRef,
     TableSummary,
     TableTransferResult,
+    TraceSession,
     TransferFormat,
     UpdateCheckResult
 } from "./models.js";

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sync"
 
+	"catdb/internal/agenttrace"
 	"catdb/internal/core/session"
 	"catdb/internal/dbdriver"
 	"catdb/internal/llm"
@@ -42,6 +43,7 @@ type Engine struct {
 
 	broker *approvalBroker
 	txm    *txManager
+	trace  *agenttrace.Recorder // dev-only full interaction trace (no-op in production)
 
 	maxIterations int
 
@@ -59,6 +61,7 @@ func NewEngine(store *storage.Store, mgr *session.Manager, resolve ProviderResol
 		emit:          wailsbridge.Emit,
 		broker:        newApprovalBroker(),
 		txm:           newTxManager(),
+		trace:         agenttrace.NewRecorder(),
 		maxIterations: 25,
 	}
 }

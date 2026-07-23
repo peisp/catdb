@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"catdb/internal/dbdriver"
 	"catdb/internal/llm"
@@ -94,6 +95,7 @@ func (e *Engine) Send(ctx context.Context, sessID, text string, mentions []strin
 	err := e.run(ctx, sessID, text, mentions)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		e.emit("agent:error", map[string]any{"sessId": sessID, "slug": "agent.loop-failed", "detail": err.Error()})
+		e.trace.Rec(sessID, "error", map[string]any{"error": err.Error()})
 	}
 	return err
 }
@@ -190,6 +192,11 @@ func (e *Engine) run(ctx context.Context, sessID, text string, mentions []string
 	}); err != nil {
 		return fmt.Errorf("agent: persist user message: %w", err)
 	}
+	e.trace.Rec(sessID, "user", map[string]any{
+		"text": text, "mentions": mentions, "connId": sess.ConnID, "mode": sess.Mode,
+		"providerId": sess.ProviderID, "model": sess.Model,
+		"db": sess.CurrentDB, "schema": sess.CurrentSchema, "grants": sess.Grants,
+	})
 
 	messages, err := e.loadHistory(ctx, sessID)
 	if err != nil {
@@ -220,6 +227,7 @@ func (e *Engine) run(ctx context.Context, sessID, text string, mentions []string
 		if tokenBudget > 0 && sessionTokens >= tokenBudget {
 			e.emitTxPending(em, sessID)
 			em.send("agent:done", map[string]any{"sessId": sessID, "stopReason": "token_budget"})
+			e.trace.Rec(sessID, "done", map[string]any{"stopReason": "token_budget"})
 			return nil
 		}
 		// Level-1 eviction (build-time, lossless): trim old tool results from
@@ -289,15 +297,18 @@ func (e *Engine) run(ctx context.Context, sessID, text string, mentions []string
 			// final answer, capped; then deliver with a warning, never discard.
 			if v := validateDelivery(sess.Mode, turn.text, ranSQL); !v.OK && repairs < maxDeliveryRepairs {
 				repairs++
+				e.trace.Rec(sessID, "repair", map[string]any{"missing": v.Missing, "attempt": repairs})
 				messages = append(messages, llm.Message{Role: llm.RoleUser, Text: repairMessage(v.Missing)})
 				continue
 			} else if !v.OK {
 				e.emitTxPending(em, sessID)
 				em.send("agent:done", map[string]any{"sessId": sessID, "stopReason": string(turn.stop), "deliveryWarning": true})
+				e.trace.Rec(sessID, "done", map[string]any{"stopReason": string(turn.stop), "deliveryWarning": true})
 				return nil
 			}
 			e.emitTxPending(em, sessID)
 			em.send("agent:done", map[string]any{"sessId": sessID, "stopReason": string(turn.stop)})
+			e.trace.Rec(sessID, "done", map[string]any{"stopReason": string(turn.stop)})
 			return nil
 		}
 
@@ -323,6 +334,7 @@ func (e *Engine) run(ctx context.Context, sessID, text string, mentions []string
 	// renders the "reply 继续 to keep going" hint off this stop reason (§4.1).
 	e.emitTxPending(em, sessID)
 	em.send("agent:done", map[string]any{"sessId": sessID, "stopReason": "max_iterations"})
+	e.trace.Rec(sessID, "done", map[string]any{"stopReason": "max_iterations"})
 	return nil
 }
 
@@ -380,8 +392,17 @@ type turnData struct {
 // after Stop — never stop reading at the Stop event), emitting deltas as they
 // arrive and assembling tool calls from fragments.
 func (e *Engine) streamTurn(ctx context.Context, em *emitter, p llm.Provider, req llm.ChatRequest, sessID string) (turnData, error) {
+	// Trace the request verbatim — this IS what the model sees; the Trace
+	// window renders it for prompt debugging.
+	start := time.Now()
+	e.trace.Rec(sessID, "request", map[string]any{
+		"purpose": "chat", "estTokens": estimateTokens(req.Messages), "req": req,
+	})
 	stream, err := p.ChatStream(ctx, req)
 	if err != nil {
+		e.trace.Rec(sessID, "response", map[string]any{
+			"error": err.Error(), "durationMs": time.Since(start).Milliseconds(),
+		})
 		return turnData{}, err
 	}
 	defer stream.Close()
@@ -394,6 +415,10 @@ func (e *Engine) streamTurn(ctx context.Context, em *emitter, p llm.Provider, re
 			break
 		}
 		if err != nil {
+			e.trace.Rec(sessID, "response", map[string]any{
+				"error": err.Error(), "partialText": t.text,
+				"durationMs": time.Since(start).Milliseconds(),
+			})
 			return turnData{}, err
 		}
 		switch v := ev.(type) {
@@ -423,6 +448,10 @@ func (e *Engine) streamTurn(ctx context.Context, em *emitter, p llm.Provider, re
 			t.toolCalls[i].Args = json.RawMessage(*buf)
 		}
 	}
+	e.trace.Rec(sessID, "response", map[string]any{
+		"text": t.text, "thinking": t.thinking, "toolCalls": t.toolCalls,
+		"stop": t.stop, "usage": t.usage, "durationMs": time.Since(start).Milliseconds(),
+	})
 	return t, nil
 }
 
@@ -437,12 +466,18 @@ func (e *Engine) execTools(ctx context.Context, em *emitter, sessID string, byNa
 			results[i] = storedResult{CallID: c.ID, Content: fmt.Sprintf("unknown tool %q", c.Name), IsError: true}
 			return
 		}
+		start := time.Now()
 		out, err := tool.Run(ctx, c.Args)
 		if err != nil {
 			results[i] = storedResult{CallID: c.ID, Content: err.Error(), IsError: true}
 		} else {
 			results[i] = storedResult{CallID: c.ID, Content: out}
 		}
+		e.trace.Rec(sessID, "tool", map[string]any{
+			"callId": c.ID, "name": c.Name, "args": string(c.Args),
+			"result": results[i].Content, "isError": results[i].IsError,
+			"durationMs": time.Since(start).Milliseconds(),
+		})
 		// args/result/isError ride along so the live card can offer the same
 		// expand view and error tint as a history reload (§10.4).
 		em.send("agent:tool", map[string]any{
