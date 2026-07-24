@@ -295,7 +295,7 @@ func (rs *runState) execRead(ctx context.Context, db string, st sqlclass.Classif
 		// exclusively to the user path emitted above.
 		b, jerr := json.Marshal(map[string]any{
 			"columns": cols, "rowCount": rows,
-			"note": "row data withheld by the user's privacy setting — it is shown to the user directly; answer from the row count and columns, or ask the user to read the values",
+			"note": "QUERY SUCCEEDED. The full result rows ARE displayed to the user in the app right now — only YOU cannot see them (the user's privacy setting withholds row data from the model). Never claim the query returned nothing or that you could not fetch the data. Continue from rowCount and columns, or ask the user to read the specific values you need.",
 		})
 		if jerr != nil {
 			return "", jerr

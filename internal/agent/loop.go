@@ -167,6 +167,7 @@ func (e *Engine) run(ctx context.Context, sessID, text string, mentions []string
 	// tools and asks for a different model.
 	mi := e.modelInfoOf(ctx, provider, sess.Model)
 	toolless := mi.ID != "" && !mi.SupportsTools
+	privacy := e.settingBool(ctx, "agent.privacy.sendRowData", true)
 	schemaOverview := ""
 	var tools []Tool
 	if toolless {
@@ -179,7 +180,7 @@ func (e *Engine) run(ctx context.Context, sessID, text string, mentions []string
 			conn:    conn,
 			dialect: drv.Dialect(),
 			caps:    drv.Capabilities(),
-			privacy: e.settingBool(ctx, "agent.privacy.sendRowData", true),
+			privacy: privacy,
 		})
 	}
 	if !toolless && sess.Mode == "agent" {
@@ -214,6 +215,7 @@ func (e *Engine) run(ctx context.Context, sessID, text string, mentions []string
 		environment:    environment,
 		locale:         e.setting(ctx, "ui.locale"),
 		hasTools:       len(tools) > 0,
+		privacyNoRows:  !privacy,
 		schemaOverview: schemaOverview,
 	})
 
