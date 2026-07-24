@@ -14,18 +14,32 @@ import AppIcon from '../shared/AppIcon.vue'
 import chevronDownIcon from '../../assets/icons/chevron-down.svg?raw'
 import pencilIcon from '../../assets/icons/pencil.svg?raw'
 import AgentSqlBlock from './AgentSqlBlock.vue'
+import MentionMenu from './MentionMenu.vue'
+import { extractMentions, useMentionCompletion } from './mention'
 import { segmentMarkdown } from './markdown'
 import type { AssistantEntry, Entry } from './types'
 
 // editable: user entries only — shows the hover edit affordance; resending
 // deletes everything after this message (edit-and-resend, handled by the panel).
-const props = defineProps<{ entry: Entry; editable?: boolean }>()
-const emit = defineEmits<{ (e: 'resend', text: string): void }>()
+// tables/tablesLoading feed the edit box's @ completion (§10.3).
+const props = defineProps<{
+  entry: Entry
+  editable?: boolean
+  tables?: string[]
+  tablesLoading?: boolean
+}>()
+const emit = defineEmits<{
+  (e: 'resend', text: string, mentions: string[]): void
+  (e: 'need-tables'): void
+}>()
 
 // --- edit-and-resend (user entries) ---
 const editing = ref(false)
 const draft = ref('')
 const editRef = ref<HTMLTextAreaElement | null>(null)
+const { menuOpen, filtered, activeIndex, refreshMention, chooseTable, closeMenu, onMenuKeydown } =
+  useMentionCompletion(draft, editRef, () => props.tables ?? [], () => emit('need-tables'))
+
 function startEdit() {
   if (props.entry.kind !== 'user') return
   draft.value = props.entry.text
@@ -40,12 +54,20 @@ function startEdit() {
 }
 function cancelEdit() {
   editing.value = false
+  closeMenu()
 }
 function submitEdit() {
   const text = draft.value.trim()
   if (!text) return
   editing.value = false
-  emit('resend', text)
+  closeMenu()
+  emit('resend', text, extractMentions(text, props.tables ?? []))
+}
+function onEditKeydown(ev: KeyboardEvent) {
+  if (ev.isComposing) return // IME owns the key
+  if (onMenuKeydown(ev)) return
+  if (ev.key === 'Escape') { ev.preventDefault(); cancelEdit(); return }
+  if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); submitEdit() }
 }
 
 const asAssistant = computed(() =>
@@ -108,16 +130,7 @@ const userSegs = computed<{ mention: boolean; text: string }[] | null>(() => {
 <template>
   <!-- User -->
   <div v-if="entry.kind === 'user'" class="row user">
-    <template v-if="!editing">
-      <button
-        v-if="editable"
-        type="button"
-        class="edit-btn"
-        :title="$t('agent.panel.edit.button')"
-        @click="startEdit"
-      >
-        <AppIcon :src="pencilIcon" :size="12" />
-      </button>
+    <div v-if="!editing" class="user-col">
       <div class="bubble user-bubble">
         <template v-if="userSegs">
           <template v-for="(sg, i) in userSegs" :key="i">
@@ -127,17 +140,37 @@ const userSegs = computed<{ mention: boolean; text: string }[] | null>(() => {
         </template>
         <template v-else>{{ entry.text }}</template>
       </div>
-    </template>
+      <button
+        v-if="editable"
+        type="button"
+        class="edit-btn"
+        :title="$t('agent.panel.edit.button')"
+        @click="startEdit"
+      >
+        <AppIcon :src="pencilIcon" :size="12" />
+      </button>
+    </div>
     <div v-else class="edit-box">
-      <textarea
-        ref="editRef"
-        v-model="draft"
-        class="edit-input"
-        rows="3"
-        @keydown.esc.prevent="cancelEdit"
-        @keydown.meta.enter.prevent="submitEdit"
-        @keydown.ctrl.enter.prevent="submitEdit"
-      />
+      <div class="edit-input-wrap">
+        <MentionMenu
+          v-if="menuOpen"
+          :items="filtered"
+          :active-index="activeIndex"
+          :loading="tablesLoading"
+          @choose="chooseTable"
+          @hover="(i) => (activeIndex = i)"
+        />
+        <textarea
+          ref="editRef"
+          v-model="draft"
+          class="edit-input"
+          rows="3"
+          @keydown="onEditKeydown"
+          @input="refreshMention"
+          @click="refreshMention"
+          @blur="closeMenu"
+        />
+      </div>
       <div class="edit-foot">
         <span class="edit-hint">{{ $t('agent.panel.edit.hint') }}</span>
         <button type="button" class="edit-action" @click="cancelEdit">{{ $t('common.cancel') }}</button>
@@ -222,13 +255,22 @@ const userSegs = computed<{ mention: boolean; text: string }[] | null>(() => {
   font-weight: 600;
 }
 
-/* Edit-and-resend: pencil appears on row hover, left of the bubble. */
+/* Bubble + edit affordance stack, right-aligned under the bubble. */
+.user-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  max-width: 85%;
+  min-width: 0;
+}
+.user-col .bubble { max-width: 100%; }
+
+/* Edit-and-resend: pencil appears on row hover, below the bubble. */
 .edit-btn {
   flex: 0 0 auto;
-  align-self: center;
   width: 22px;
   height: 22px;
-  margin-right: 4px;
+  margin-top: 2px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -251,8 +293,9 @@ const userSegs = computed<{ mention: boolean; text: string }[] | null>(() => {
   border: 1px solid var(--catdb-accent);
   border-radius: var(--catdb-rounded-md);
   background: var(--catdb-surface-content);
-  overflow: hidden;
+  /* No overflow:hidden — the @ mention popover extends above the box. */
 }
+.edit-input-wrap { position: relative; }
 .edit-input {
   display: block;
   width: 100%;
@@ -273,6 +316,8 @@ const userSegs = computed<{ mention: boolean; text: string }[] | null>(() => {
   padding: 4px 6px;
   border-top: 1px solid var(--catdb-separator);
   background: var(--catdb-surface-chrome);
+  /* .edit-box no longer clips (mention popover) — round our own corners. */
+  border-radius: 0 0 var(--catdb-rounded-md) var(--catdb-rounded-md);
 }
 .edit-hint {
   flex: 1 1 auto;

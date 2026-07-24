@@ -196,6 +196,17 @@ func (e *Engine) finishTx(ctx context.Context, sessID string, commit bool) error
 	if txErr != nil && commit {
 		return fmt.Errorf("agent: commit task tx: %w", txErr)
 	}
+	// Conversation-trail notice (survives reload; never enters model context —
+	// loadLogical skips role=notice). Best-effort: the tx outcome above is the
+	// source of truth, a failed append must not fail the commit.
+	kind := "tx-rolledback"
+	if commit {
+		kind = "tx-committed"
+	}
+	_, _ = e.store.AppendAgentMessage(ctx, storage.AgentMessage{
+		SessionID: sessID, Role: "notice",
+		Content: mustContent(msgContent{Notice: kind, Count: len(t.statements())}),
+	})
 	return nil
 }
 

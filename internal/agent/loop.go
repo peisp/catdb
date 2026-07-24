@@ -43,6 +43,11 @@ type msgContent struct {
 	ToolCalls []storedCall    `json:"toolCalls,omitempty"`
 	Result    *storedResult   `json:"result,omitempty"`
 	Extra     json.RawMessage `json:"extra,omitempty"` // room for later milestones (plans, approvals)
+	// role=notice only: stable slug (tx-committed / tx-rolledback) + statement
+	// count. Notices are conversation-trail entries — persisted and rendered,
+	// but never sent to the model (loadLogical skips the role).
+	Notice string `json:"notice,omitempty"`
+	Count  int    `json:"count,omitempty"`
 }
 
 type storedCall struct {

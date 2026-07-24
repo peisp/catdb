@@ -319,6 +319,10 @@ export interface MessageContent {
   // @table mentions the user attached to this turn (§10.3), rendered as chips
   // above the user bubble on history restore.
   extra?: { tables?: { name: string }[] }
+  // role=notice only: conversation-trail slug (tx-committed / tx-rolledback)
+  // + statement count. Rendered as a system line; never sent to the model.
+  notice?: string
+  count?: number
 }
 
 export function parseContent(raw: string): MessageContent {

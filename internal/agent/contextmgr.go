@@ -65,6 +65,11 @@ func (e *Engine) loadLogical(ctx context.Context, sessID string) ([]loadedMsg, e
 		if m.Compacted {
 			continue
 		}
+		if m.Role == "notice" {
+			// Conversation-trail lines (tx committed/rolled back) — shown in the
+			// chat, never part of the model context or fold ranges.
+			continue
+		}
 		var c msgContent
 		if err := json.Unmarshal([]byte(m.Content), &c); err != nil {
 			return nil, fmt.Errorf("agent: decode message %s: %w", m.ID, err)

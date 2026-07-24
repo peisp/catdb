@@ -368,6 +368,15 @@ function historyToEntries(msgs: agentApi.AgentMessage[]): Entry[] {
       continue
     }
     const c = agentApi.parseContent(m.content)
+    // Trail notices (tx committed/rolled back) render as the same centered
+    // system line the live path pushes; unknown slugs are dropped.
+    if (m.role === 'notice') {
+      const text = c.notice === 'tx-committed'
+        ? t('agent.tx.committed', { n: c.count ?? 0 })
+        : c.notice === 'tx-rolledback' ? t('agent.tx.rolledBack') : ''
+      if (text) out.push({ kind: 'system', id: entryId(), text })
+      continue
+    }
     if (m.role === 'user') {
       const mentions = (c.extra?.tables ?? []).map((tbl) => tbl.name).filter(Boolean)
       out.push({ kind: 'user', id: entryId(), text: c.text ?? '', mentions: mentions.length ? mentions : undefined, msgId: m.id })
@@ -693,16 +702,18 @@ async function syncUserIds() {
 
 // Edit-and-resend (edit a sent user message): truncates the timeline locally,
 // then the backend deletes the message and everything after it and runs a
-// fresh turn with the new text. The original @mentions are carried over.
+// fresh turn with the new text. Mentions are re-extracted from the edited
+// text; if the table list never loaded (extraction impossible) the original
+// mentions carry over instead.
 const canEditMsgs = computed(() =>
   !busy.value && !txPending.value && !orphan.value && !isDraft(session.value))
-function onEditResend(entry: UserEntry, text: string) {
+function onEditResend(entry: UserEntry, text: string, extracted: string[]) {
   const s = session.value
   if (!s || !canEditMsgs.value || !entry.msgId || !text) return
   const idx = entries.value.indexOf(entry)
   if (idx < 0) return
   errorBar.value = null
-  const mentions = entry.mentions ?? []
+  const mentions = tableNames.value.length > 0 ? extracted : (entry.mentions ?? [])
   const msgId = entry.msgId
   entries.value = entries.value.slice(0, idx)
   entries.value.push({ kind: 'user', id: entryId(), text, mentions: mentions.length ? mentions : undefined })
@@ -1141,7 +1152,10 @@ onBeforeUnmount(() => {
             v-else
             :entry="e"
             :editable="e.kind === 'user' && canEditMsgs && !!e.msgId"
-            @resend="(text: string) => { if (e.kind === 'user') onEditResend(e, text) }"
+            :tables="tableNames"
+            :tables-loading="nsLoading"
+            @need-tables="onRequestNamespace"
+            @resend="(text: string, mentions: string[]) => { if (e.kind === 'user') onEditResend(e, text, mentions) }"
           />
         </template>
       </div>

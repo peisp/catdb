@@ -19,7 +19,9 @@ export const INPUT_MAX_H = 220
 // content up to INPUT_MAX_H then scrolls; `manualHeight` (owned by the panel,
 // driven by the grip between the messages area and the dock) overrides the
 // auto height when set.
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
+import MentionMenu from './MentionMenu.vue'
+import { extractMentions, useMentionCompletion } from './mention'
 
 const props = defineProps<{
   busy: boolean
@@ -60,78 +62,9 @@ onMounted(applyHeight)
 // The panel's grip needs the rendered height as its drag starting point.
 defineExpose({ currentHeight: () => taRef.value?.offsetHeight ?? INPUT_MIN_H })
 
-// --- @mention completion state ---
-const menuOpen = ref(false)
-const query = ref('') // live token after '@' (drives caret tracking)
-const debouncedQuery = ref('') // filter input, updated 150ms after query
-const activeIndex = ref(0)
-let atStart = -1 // index of the '@' in text.value that opened the menu
-let debounceTimer: ReturnType<typeof setTimeout> | null = null
-
-watch(query, (q) => {
-  if (debounceTimer) clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(() => { debouncedQuery.value = q }, 150)
-})
-
-const filtered = computed(() => {
-  const q = debouncedQuery.value.toLowerCase()
-  return props.tables
-    .filter((t) => !q || t.toLowerCase().includes(q))
-    .slice(0, 50)
-})
-
-function refreshMention() {
-  const el = taRef.value
-  if (!el) { menuOpen.value = false; return }
-  const pos = el.selectionStart ?? text.value.length
-  const before = text.value.slice(0, pos)
-  // '@' anywhere, followed by identifier chars up to the caret — mid-word
-  // triggers too ("查@订"), matching extractMentions' send-time scan.
-  const m = /@([\p{L}\p{N}_$]*)$/u.exec(before)
-  if (m) {
-    atStart = pos - m[1].length - 1
-    query.value = m[1]
-    if (!menuOpen.value) {
-      activeIndex.value = 0
-      debouncedQuery.value = m[1]
-      if (props.tables.length === 0) emit('need-tables')
-    }
-    menuOpen.value = true
-  } else {
-    menuOpen.value = false
-  }
-}
-
-function chooseTable(name: string) {
-  // Complete the token in place: "@订" → "@订单表 ", staying in the sentence.
-  const el = taRef.value
-  const pos = el?.selectionStart ?? text.value.length
-  const start = atStart >= 0 ? atStart : pos
-  const before = text.value.slice(0, start)
-  const after = text.value.slice(pos)
-  const inserted = '@' + name + ' '
-  text.value = before + inserted + after
-  menuOpen.value = false
-  query.value = ''
-  void nextTick(() => {
-    const e = taRef.value
-    if (e) { const c = (before + inserted).length; e.focus(); e.setSelectionRange(c, c) }
-  })
-}
-
-// Mentions are derived from the text at send time: every @token that names a
-// known table (case-insensitive, canonical casing returned, deduped). Editing
-// or deleting a mention in the text therefore just works.
-function extractMentions(v: string): string[] {
-  if (props.tables.length === 0) return []
-  const byLower = new Map(props.tables.map((t) => [t.toLowerCase(), t]))
-  const out: string[] = []
-  for (const m of v.matchAll(/@([\p{L}\p{N}_$]+)/gu)) {
-    const hit = byLower.get(m[1].toLowerCase())
-    if (hit && !out.includes(hit)) out.push(hit)
-  }
-  return out
-}
+// --- @mention completion (shared logic, ./mention.ts) ---
+const { menuOpen, filtered, activeIndex, refreshMention, chooseTable, closeMenu, onMenuKeydown } =
+  useMentionCompletion(text, taRef, () => props.tables, () => emit('need-tables'))
 
 // --- IME composition guard ---
 // `ev.isComposing` alone is not enough: WebKit fires the committing Enter's
@@ -154,13 +87,7 @@ function onKeydown(ev: KeyboardEvent) {
     if (!ev.isComposing) ev.preventDefault()
     return
   }
-  if (menuOpen.value && filtered.value.length > 0) {
-    if (ev.key === 'ArrowDown') { ev.preventDefault(); activeIndex.value = (activeIndex.value + 1) % filtered.value.length; return }
-    if (ev.key === 'ArrowUp') { ev.preventDefault(); activeIndex.value = (activeIndex.value - 1 + filtered.value.length) % filtered.value.length; return }
-    if (ev.key === 'Enter') { ev.preventDefault(); const t = filtered.value[activeIndex.value]; if (t) chooseTable(t); return }
-    if (ev.key === 'Tab') { ev.preventDefault(); const t = filtered.value[activeIndex.value]; if (t) chooseTable(t); return }
-  }
-  if (menuOpen.value && ev.key === 'Escape') { ev.preventDefault(); menuOpen.value = false; return }
+  if (onMenuKeydown(ev)) return
   if (ev.key === 'Enter' && !ev.shiftKey) {
     ev.preventDefault()
     submit()
@@ -170,35 +97,27 @@ function onKeydown(ev: KeyboardEvent) {
 function submit() {
   const v = text.value.trim()
   if (!v || props.busy || props.disabled) return
-  emit('send', v, extractMentions(v))
+  emit('send', v, extractMentions(v, props.tables))
   text.value = ''
-  menuOpen.value = false
+  closeMenu()
 }
 function onButton() {
   if (props.busy) emit('stop')
   else submit()
 }
-
-// Clamp the active row when the filter list shrinks.
-watch(filtered, (f) => { if (activeIndex.value >= f.length) activeIndex.value = 0 })
 </script>
 
 <template>
   <div class="composer">
     <div class="input-wrap">
-      <div v-if="menuOpen" class="mention-menu">
-        <div v-if="filtered.length === 0 && tablesLoading" class="mention-empty">{{ $t('agent.mention.loading') }}</div>
-        <div v-else-if="filtered.length === 0" class="mention-empty">{{ $t('agent.mention.empty') }}</div>
-        <button
-          v-for="(t, i) in filtered"
-          :key="t"
-          type="button"
-          class="mention-item"
-          :class="{ active: i === activeIndex }"
-          @mousedown.prevent="chooseTable(t)"
-          @mousemove="activeIndex = i"
-        >{{ t }}</button>
-      </div>
+      <MentionMenu
+        v-if="menuOpen"
+        :items="filtered"
+        :active-index="activeIndex"
+        :loading="tablesLoading"
+        @choose="chooseTable"
+        @hover="(i) => (activeIndex = i)"
+      />
 
       <textarea
         ref="taRef"
@@ -210,7 +129,7 @@ watch(filtered, (f) => { if (activeIndex.value >= f.length) activeIndex.value = 
         @keydown="onKeydown"
         @input="refreshMention"
         @click="refreshMention"
-        @blur="menuOpen = false"
+        @blur="closeMenu"
         @compositionstart="onCompositionStart"
         @compositionend="onCompositionEnd"
       />
@@ -244,46 +163,6 @@ watch(filtered, (f) => { if (activeIndex.value >= f.length) activeIndex.value = 
 }
 
 .input-wrap { position: relative; }
-
-/* Completion popover (menu panel style, DESIGN.md). */
-.mention-menu {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(100% + 4px);
-  z-index: 20;
-  max-height: 200px;
-  overflow-y: auto;
-  background: var(--catdb-surface-raised);
-  border: 1px solid var(--catdb-separator);
-  border-radius: var(--catdb-rounded-md);
-  box-shadow: var(--catdb-shadow-menu);
-  padding: 4px;
-}
-.mention-empty {
-  padding: 6px 8px;
-  font-size: var(--catdb-fs-small);
-  color: var(--catdb-text-tertiary);
-  text-align: center;
-}
-.mention-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  border: none;
-  background: transparent;
-  font: inherit;
-  font-size: var(--catdb-fs-small);
-  color: var(--catdb-text-primary);
-  height: 24px;
-  padding: 0 8px;
-  border-radius: var(--catdb-rounded-sm);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: default;
-}
-.mention-item.active { background: var(--catdb-accent); color: var(--catdb-text-on-accent); }
 
 .input {
   display: block;
