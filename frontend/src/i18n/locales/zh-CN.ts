@@ -957,8 +957,6 @@ export default {
         empty: '尚未配置单价——只显示 token，不计算费用。',
       },
       audit: {
-        title: '审计',
-        filterConn: '连接',
         filterAllConns: '全部连接',
         colTime: '时间',
         colSession: '会话',

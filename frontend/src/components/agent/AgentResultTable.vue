@@ -63,6 +63,7 @@ const note = computed(() => t('agent.result.rowCount', { n: rows.value.length })
         :sort-remote="false"
         :row-height="ROW_H"
         :default-column-width="0"
+        :row-number-width="34"
         @selection-change="onSelectionChange"
         @cell-context-menu="onCellContextMenu"
       />

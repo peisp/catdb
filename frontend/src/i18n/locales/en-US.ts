@@ -966,8 +966,6 @@ export default {
         empty: 'No pricing configured — tokens are shown without cost.',
       },
       audit: {
-        title: 'Audit',
-        filterConn: 'Connection',
         filterAllConns: 'All connections',
         colTime: 'Time',
         colSession: 'Session',

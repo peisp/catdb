@@ -177,20 +177,14 @@ onMounted(() => {
 
 <template>
   <section class="section">
-    <div class="section-head">
-      <h3 class="section-title">{{ $t('agent.settings.audit.title') }}</h3>
-    </div>
-
     <div class="audit-filters">
-      <div class="form-field audit-filter-field">
-        <label class="form-label">{{ $t('agent.settings.audit.filterConn') }}</label>
-        <n-select
-          v-model:value="auditConnId"
-          size="small"
-          :options="auditConnOptions"
-          @update:value="onAuditFilterChange"
-        />
-      </div>
+      <n-select
+        v-model:value="auditConnId"
+        size="small"
+        class="audit-filter-field"
+        :options="auditConnOptions"
+        @update:value="onAuditFilterChange"
+      />
       <n-button size="small" @click="loadAudit(auditPage)">{{ $t('agent.settings.audit.refresh') }}</n-button>
       <n-button size="small" @click="exportAudit('json')">{{ $t('agent.settings.audit.exportJson') }}</n-button>
       <n-button size="small" @click="exportAudit('csv')">{{ $t('agent.settings.audit.exportCsv') }}</n-button>
@@ -198,6 +192,7 @@ onMounted(() => {
 
     <div class="audit-grid">
       <p v-if="!auditEntries.length && !auditLoading" class="empty">{{ $t('agent.settings.audit.empty') }}</p>
+      <!-- All columns start at their header minimum except SQL (index 3). -->
       <DataGrid
         v-else
         :columns="gridColumns"
@@ -205,6 +200,9 @@ onMounted(() => {
         :editable="false"
         :sortable="true"
         :sort-remote="false"
+        :default-column-width="0"
+        :initial-col-widths="[100, 100, null, 320, null, null, null]"
+        :row-number-width="34"
         @selection-change="onGridSelectionChange"
         @cell-context-menu="onGridContextMenu"
       />
@@ -235,25 +233,10 @@ onMounted(() => {
   flex-direction: column;
   gap: 10px;
 }
-.section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.section-title {
-  margin: 0;
-  font-size: var(--catdb-fs-body);
-  font-weight: 600;
-}
 .empty {
   margin: 0;
   font-size: var(--catdb-fs-small);
   opacity: 0.55;
-}
-.form-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
 }
 .form-label {
   font-size: var(--catdb-fs-small);
