@@ -61,7 +61,6 @@ function toggle(v: string, on: boolean) {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  padding: 5px 8px 0;
 }
 .lead {
   font-size: var(--catdb-fs-mini);

@@ -948,13 +948,17 @@ async function onChangeMode(m: 'ask' | 'agent') {
   }
 }
 
-// error bar text: slug → error.* mapping, else raw detail.
+// error bar text: slug → error.* mapping, with the raw detail appended so the
+// actual failure cause (provider/db error text) is never swallowed.
 const errorText = computed(() => {
   const eb = errorBar.value
   if (!eb) return ''
   if (eb.slug) {
     const key = 'error.' + eb.slug
-    if (i18n.global.te(key)) return i18n.global.t(key)
+    if (i18n.global.te(key)) {
+      const base = i18n.global.t(key)
+      return eb.detail ? `${base}: ${eb.detail}` : base
+    }
   }
   return eb.detail || t('agent.panel.genericError')
 })
@@ -1293,6 +1297,9 @@ onBeforeUnmount(() => {
   user-select: text;
   -webkit-user-select: text;
   word-break: break-word;
+  /* Long provider/db error texts scroll inside the bar instead of eating the panel. */
+  max-height: 96px;
+  overflow-y: auto;
 }
 .error-close {
   flex: 0 0 auto;
