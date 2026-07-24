@@ -5,7 +5,7 @@
 // HasProviderKey reports a boolean "configured" state and the key itself is
 // never read back into the UI.
 import { computed, onMounted, reactive, ref } from 'vue'
-import { NButton, NInput, NInputNumber, NSelect, NCheckbox, useMessage } from 'naive-ui'
+import { NButton, NInput, NInputNumber, NSelect, NCheckbox, NVirtualList, useMessage } from 'naive-ui'
 import { agentSettings, dialogs } from '../../api'
 import type { ProviderConfig, ModelInfo } from '../../api/agentSettings'
 import { t as tr } from '../../i18n'
@@ -16,7 +16,10 @@ const providers = ref<ProviderConfig[]>([])
 const keyStatus = reactive<Record<string, boolean>>({})
 const testingId = ref('')
 
-type DraftModel = { ID: string; ContextWindow: number; SupportsTools: boolean }
+// key: local uid for virtualization — model IDs are editable (may be empty or
+// duplicated mid-edit), so rows carry their own stable identity.
+type DraftModel = { key: number; ID: string; ContextWindow: number; SupportsTools: boolean }
+let modelUid = 0
 interface Draft {
   id: string
   name: string
@@ -79,7 +82,7 @@ function startEdit(p: ProviderConfig) {
     name: p.name,
     type: p.type,
     baseURL: p.baseURL,
-    models: p.models.map((m) => ({ ID: m.ID, ContextWindow: m.ContextWindow, SupportsTools: m.SupportsTools })),
+    models: p.models.map((m) => ({ key: ++modelUid, ID: m.ID, ContextWindow: m.ContextWindow, SupportsTools: m.SupportsTools })),
     defaultModel: p.defaultModel,
     apiKey: '',
     hasKey: keyStatus[p.id] ?? false,
@@ -91,7 +94,7 @@ function cancelEdit() {
 
 function addModelRow() {
   modelFilter.value = ''
-  editing.value?.models.push({ ID: '', ContextWindow: 128000, SupportsTools: true })
+  editing.value?.models.push({ key: ++modelUid, ID: '', ContextWindow: 128000, SupportsTools: true })
 }
 function removeModel(m: DraftModel) {
   const d = editing.value
@@ -119,7 +122,7 @@ async function fetchModels() {
     let added = 0
     for (const m of fetched) {
       if (existingIds.has(m.ID.trim())) continue
-      d.models.push({ ID: m.ID, ContextWindow: m.ContextWindow || 128000, SupportsTools: m.SupportsTools })
+      d.models.push({ key: ++modelUid, ID: m.ID, ContextWindow: m.ContextWindow || 128000, SupportsTools: m.SupportsTools })
       existingIds.add(m.ID.trim())
       added++
     }
@@ -312,14 +315,25 @@ async function testProvider(p: ProviderConfig) {
           <span class="mh-tools">{{ $t('agent.settings.form.supportsTools') }}</span>
           <span class="mh-del"></span>
         </div>
-        <div v-if="editing.models.length" class="model-list-wrap">
-          <div v-for="(m, i) in filteredModels" :key="i" class="model-row">
-            <n-input v-model:value="m.ID" size="small" class="model-id" :placeholder="$t('agent.settings.form.modelIdPlaceholder')" />
-            <n-input-number v-model:value="m.ContextWindow" size="small" class="model-ctx" :min="0" :show-button="false" :placeholder="$t('agent.settings.form.contextWindow')" />
-            <n-checkbox v-model:checked="m.SupportsTools" class="model-tools" />
-            <n-button size="tiny" quaternary class="model-del" @click="removeModel(m)">{{ $t('agent.settings.form.removeModel') }}</n-button>
-          </div>
-        </div>
+        <!-- Virtualized: fetched provider lists can hold hundreds of models —
+             only the visible rows mount their (heavy) form controls. -->
+        <n-virtual-list
+          v-if="editing.models.length"
+          class="model-list-wrap"
+          :style="{ maxHeight: '260px' }"
+          :item-size="34"
+          :items="filteredModels"
+          key-field="key"
+        >
+          <template #default="{ item: m }">
+            <div :key="m.key" class="model-row">
+              <n-input v-model:value="m.ID" size="small" class="model-id" :placeholder="$t('agent.settings.form.modelIdPlaceholder')" />
+              <n-input-number v-model:value="m.ContextWindow" size="small" class="model-ctx" :min="0" :show-button="false" :placeholder="$t('agent.settings.form.contextWindow')" />
+              <n-checkbox v-model:checked="m.SupportsTools" class="model-tools" />
+              <n-button size="tiny" quaternary class="model-del" @click="removeModel(m)">{{ $t('agent.settings.form.removeModel') }}</n-button>
+            </div>
+          </template>
+        </n-virtual-list>
       </div>
 
       <div class="form-field">
@@ -472,19 +486,18 @@ async function testProvider(p: ProviderConfig) {
   flex: 0 0 64px;
 }
 .model-list-wrap {
-  max-height: 260px;
-  overflow-y: auto;
   border: 1px solid var(--catdb-separator);
   border-radius: var(--catdb-rounded-sm);
   padding: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
 }
+/* Fixed 34px stride (28px controls + 6px gap) — must match :item-size. */
 .model-row {
   display: flex;
   align-items: center;
   gap: 8px;
+  height: 34px;
+  padding-bottom: 6px;
+  box-sizing: border-box;
 }
 .model-id {
   flex: 1 1 auto;
