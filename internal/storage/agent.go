@@ -306,6 +306,72 @@ func (s *Store) AppendAgentMessage(ctx context.Context, msg AgentMessage) (Agent
 	return msg, nil
 }
 
+// GetAgentMessage returns one message by ID.
+func (s *Store) GetAgentMessage(ctx context.Context, id string) (AgentMessage, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, session_id, seq, role, content, tokens_in, tokens_out, compacted, created_at
+		FROM agent_messages WHERE id=?`, id)
+	m, err := scanAgentMessage(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return AgentMessage{}, ErrNotFound
+	}
+	if err != nil {
+		return AgentMessage{}, fmt.Errorf("storage: get agent message: %w", err)
+	}
+	return m, nil
+}
+
+// DeleteAgentMessagesFrom removes every message of the session with
+// seq >= fromSeq (edit-and-resend truncation). If the deleted range contained
+// a compaction summary, the surviving fold state is inconsistent (folded rows
+// would have no summary covering them) — in that case all remaining summary
+// rows are dropped and every message is un-compacted: the session returns to
+// its full original history and auto-compaction may re-fold it later.
+func (s *Store) DeleteAgentMessagesFrom(ctx context.Context, sessID string, fromSeq int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("storage: delete agent messages from: %w", err)
+	}
+	defer tx.Rollback()
+
+	var hadSummary bool
+	if err := tx.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM agent_messages WHERE session_id=? AND seq>=? AND role='summary')`,
+		sessID, fromSeq,
+	).Scan(&hadSummary); err != nil {
+		return fmt.Errorf("storage: delete agent messages from: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM agent_messages WHERE session_id=? AND seq>=?`, sessID, fromSeq,
+	); err != nil {
+		return fmt.Errorf("storage: delete agent messages from: %w", err)
+	}
+	if hadSummary {
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM agent_messages WHERE session_id=? AND role='summary'`, sessID,
+		); err != nil {
+			return fmt.Errorf("storage: delete agent messages from: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE agent_messages SET compacted=0 WHERE session_id=?`, sessID,
+		); err != nil {
+			return fmt.Errorf("storage: delete agent messages from: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE agent_sessions SET updated_at=? WHERE id=?`, time.Now().Unix(), sessID,
+	); err != nil {
+		return fmt.Errorf("storage: delete agent messages from: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("storage: delete agent messages from: %w", err)
+	}
+	return nil
+}
+
 // ListAgentMessages returns every message of a session in seq order —
 // callers filter out Compacted messages themselves when building the
 // LLM-facing context (§9: the chat panel always shows full history).

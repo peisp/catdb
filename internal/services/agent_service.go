@@ -127,6 +127,19 @@ func (s *AgentService) SendMessage(ctx context.Context, sessID, text string, men
 	return s.engine.Send(ctx, sessID, text, mentions)
 }
 
+// EditResend rewrites a previously sent user message: the message and every
+// later one are deleted, then a fresh turn runs with the new text. Same
+// blocking/cancel semantics as SendMessage.
+func (s *AgentService) EditResend(ctx context.Context, sessID, msgID, text string, mentions []string) error {
+	if text == "" {
+		return fmt.Errorf("AgentService: empty message")
+	}
+	if msgID == "" {
+		return fmt.Errorf("AgentService: empty messageId")
+	}
+	return s.engine.Resend(ctx, sessID, msgID, text, mentions)
+}
+
 // Cancel stops the session's running loop, if any.
 func (s *AgentService) Cancel(ctx context.Context, sessID string) error {
 	s.engine.Cancel(sessID)

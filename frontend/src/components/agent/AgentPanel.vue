@@ -23,7 +23,7 @@ import botIcon from '../../assets/icons/bot.svg?raw'
 import lockIcon from '../../assets/icons/lock.svg?raw'
 import { driverLogo } from '../../assets/logo'
 import { AGENT_SQL_ACTIONS, type AgentSqlActions } from './sqlActions'
-import { entryId, type ApprovalEntry, type AssistantEntry, type Entry, type PlanEntry, type ToolEntry } from './types'
+import { entryId, type ApprovalEntry, type AssistantEntry, type Entry, type PlanEntry, type ToolEntry, type UserEntry } from './types'
 import * as agentApi from '../../api/agent'
 import type { AgentSession } from '../../api/agent'
 import { getAgentSettings, getDefaults, listProviders, onProvidersChanged, type ModelPricing, type ProviderConfig } from '../../api/agentSettings'
@@ -361,7 +361,7 @@ function historyToEntries(msgs: agentApi.AgentMessage[]): Entry[] {
     const c = agentApi.parseContent(m.content)
     if (m.role === 'user') {
       const mentions = (c.extra?.tables ?? []).map((tbl) => tbl.name).filter(Boolean)
-      out.push({ kind: 'user', id: entryId(), text: c.text ?? '', mentions: mentions.length ? mentions : undefined })
+      out.push({ kind: 'user', id: entryId(), text: c.text ?? '', mentions: mentions.length ? mentions : undefined, msgId: m.id })
     } else if (m.role === 'assistant') {
       if ((c.text && c.text.trim()) || (c.thinking && c.thinking.trim())) {
         out.push({ kind: 'assistant', id: entryId(), text: c.text ?? '', thinking: c.thinking ?? '', streaming: false })
@@ -614,24 +614,66 @@ function onSend(text: string, mentions: string[] = []) {
         return
       }
     }
-    const h = agentApi.sendMessage(live.id, text, mentions)
-    currentSend = h
-    h.done
-      .catch((err: unknown) => {
-        const msg = String(err)
-        if (!/cancel/i.test(msg) && !errorBar.value) errorBar.value = { slug: '', detail: msg }
-      })
-      .finally(() => {
-        finalizeStreaming()
-        busy.value = false
-        currentSend = null
-        scrollToBottom()
-        // The engine connected server-side to run the turn — if the namespace
-        // was never loaded (lazy connect), catch up now for @completion.
-        if (session.value === live && allDatabases.value.length === 0) void loadNamespace(true)
-      })
+    trackTurn(agentApi.sendMessage(live.id, text, mentions), live)
   })()
 }
+
+// Shared turn-completion handling for send and edit-resend.
+function trackTurn(h: { done: Promise<void>; stop: () => void }, live: AgentSession) {
+  currentSend = h
+  h.done
+    .catch((err: unknown) => {
+      const msg = String(err)
+      if (!/cancel/i.test(msg) && !errorBar.value) errorBar.value = { slug: '', detail: msg }
+    })
+    .finally(() => {
+      finalizeStreaming()
+      busy.value = false
+      currentSend = null
+      scrollToBottom()
+      void syncUserIds()
+      // The engine connected server-side to run the turn — if the namespace
+      // was never loaded (lazy connect), catch up now for @completion.
+      if (session.value === live && allDatabases.value.length === 0) void loadNamespace(true)
+    })
+}
+
+// Backfill persisted message IDs onto the timeline's user entries after a
+// turn — edit-and-resend needs them. On a count mismatch (e.g. a turn that
+// failed before persisting the user message) the backfill is skipped rather
+// than guessed: edit simply stays unavailable for those entries.
+async function syncUserIds() {
+  const s = session.value
+  if (!s || !s.id) return
+  try {
+    const msgs = await agentApi.getMessages(s.id)
+    const userMsgs = msgs.filter((m) => m.role === 'user')
+    const userEntries = entries.value.filter((en): en is UserEntry => en.kind === 'user')
+    if (userMsgs.length !== userEntries.length) return
+    userEntries.forEach((en, i) => { en.msgId = userMsgs[i].id })
+  } catch { /* best-effort */ }
+}
+
+// Edit-and-resend (edit a sent user message): truncates the timeline locally,
+// then the backend deletes the message and everything after it and runs a
+// fresh turn with the new text. The original @mentions are carried over.
+const canEditMsgs = computed(() =>
+  !busy.value && !txPending.value && !orphan.value && !isDraft(session.value))
+function onEditResend(entry: UserEntry, text: string) {
+  const s = session.value
+  if (!s || !canEditMsgs.value || !entry.msgId || !text) return
+  const idx = entries.value.indexOf(entry)
+  if (idx < 0) return
+  errorBar.value = null
+  const mentions = entry.mentions ?? []
+  const msgId = entry.msgId
+  entries.value = entries.value.slice(0, idx)
+  entries.value.push({ kind: 'user', id: entryId(), text, mentions: mentions.length ? mentions : undefined })
+  busy.value = true
+  scrollToBottom()
+  trackTurn(agentApi.editResend(s.id, msgId, text, mentions), s)
+}
+
 function onStop() {
   currentSend?.stop()
   busy.value = false
@@ -1055,7 +1097,12 @@ onBeforeUnmount(() => {
             @reject="(reason) => onRejectPlan(e, reason)"
           />
           <AgentResultTable v-else-if="e.kind === 'result'" :entry="e" />
-          <AgentMessage v-else :entry="e" />
+          <AgentMessage
+            v-else
+            :entry="e"
+            :editable="e.kind === 'user' && canEditMsgs && !!e.msgId"
+            @resend="(text: string) => { if (e.kind === 'user') onEditResend(e, text) }"
+          />
         </template>
       </div>
 

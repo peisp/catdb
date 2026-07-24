@@ -118,7 +118,7 @@ interface Row {
 }
 
 const KNOWN_KINDS = new Set([
-  'user', 'request', 'response', 'tool', 'approval', 'plan', 'compact', 'repair', 'done', 'error',
+  'user', 'request', 'response', 'tool', 'approval', 'plan', 'compact', 'repair', 'done', 'error', 'edit',
 ])
 
 const rows = computed<Row[]>(() =>
@@ -162,6 +162,8 @@ function summarize(kind: string, d: Record<string, any>): string {
       return `${d.foldedCount ?? 0} · ${fmtTokens(d.before ?? 0)} → ${fmtTokens(d.after ?? 0)}`
     case 'repair':
       return String(d.missing ?? '')
+    case 'edit':
+      return `seq ≥ ${d.fromSeq ?? '?'}`
     case 'done':
       return String(d.stopReason ?? '')
     case 'error':

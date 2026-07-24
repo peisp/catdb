@@ -11,6 +11,9 @@ export interface UserEntry {
   text: string
   /** @table mentions attached to this turn (§10.3), rendered as chips above the bubble. */
   mentions?: string[]
+  /** Persisted message ID — set from history or backfilled after a turn;
+   *  required for edit-and-resend (truncates everything after this message). */
+  msgId?: string
 }
 
 export interface AssistantEntry {

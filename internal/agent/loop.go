@@ -100,6 +100,40 @@ func (e *Engine) Send(ctx context.Context, sessID, text string, mentions []strin
 	return err
 }
 
+// Resend edits a previously sent user message: it deletes that message and
+// everything after it, then runs a normal turn with the new text — same
+// begin/end guard as Send, so the truncation can never race a running loop.
+func (e *Engine) Resend(ctx context.Context, sessID, msgID, text string, mentions []string) error {
+	if e.txm.get(sessID) != nil {
+		return fmt.Errorf("%s: commit or roll back the pending transaction first", slugTxPending)
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	if err := e.begin(sessID, cancel); err != nil {
+		return err
+	}
+	defer e.end(sessID)
+
+	m, err := e.store.GetAgentMessage(ctx, msgID)
+	if err != nil {
+		return fmt.Errorf("agent: edit message: %w", err)
+	}
+	if m.SessionID != sessID || m.Role != "user" {
+		return fmt.Errorf("agent: edit message: %s is not a user message of this session", msgID)
+	}
+	if err := e.store.DeleteAgentMessagesFrom(ctx, sessID, m.Seq); err != nil {
+		return fmt.Errorf("agent: truncate history: %w", err)
+	}
+	e.trace.Rec(sessID, "edit", map[string]any{"msgId": msgID, "fromSeq": m.Seq})
+
+	err = e.run(ctx, sessID, text, mentions)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		e.emit("agent:error", map[string]any{"sessId": sessID, "slug": "agent.loop-failed", "detail": err.Error()})
+		e.trace.Rec(sessID, "error", map[string]any{"error": err.Error()})
+	}
+	return err
+}
+
 func (e *Engine) run(ctx context.Context, sessID, text string, mentions []string) error {
 	sess, err := e.store.GetAgentSession(ctx, sessID)
 	if err != nil {

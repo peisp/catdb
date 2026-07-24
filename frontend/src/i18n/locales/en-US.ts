@@ -787,6 +787,11 @@ export default {
         resultEphemeral: 'The result table is shown only at execution time and is not kept after reopening the session',
         copySql: 'Copy SQL',
       },
+      edit: {
+        button: 'Edit & resend',
+        hint: 'Resending deletes everything after this message',
+        resend: 'Resend',
+      },
       sql: {
         insert: 'Insert',
         openTab: 'New Tab',
@@ -1024,6 +1029,7 @@ export default {
       repair: 'Repair',
       done: 'Done',
       error: 'Error',
+      edit: 'Edit resend',
     },
     f: {
       mode: 'Mode',

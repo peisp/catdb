@@ -778,6 +778,11 @@ export default {
         resultEphemeral: '结果表格仅执行时显示，重新打开会话后不保留',
         copySql: '复制 SQL',
       },
+      edit: {
+        button: '编辑并重发',
+        hint: '重新发送将删除此消息之后的所有对话',
+        resend: '重新发送',
+      },
       sql: {
         insert: '插入编辑器',
         openTab: '新查询',
@@ -1015,6 +1020,7 @@ export default {
       repair: '修补',
       done: '完成',
       error: '错误',
+      edit: '编辑重发',
     },
     f: {
       mode: '模式',

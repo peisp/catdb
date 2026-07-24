@@ -227,6 +227,82 @@ func (s *Store) forceInsertAgentMessageSeq(ctx context.Context, sessID string, s
 	return err
 }
 
+func TestDeleteAgentMessagesFrom(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	conn, _ := s.SaveConnection(ctx, ConnectionProfile{Name: "c", Driver: "mysql"})
+	sess, _ := s.CreateAgentSession(ctx, AgentSession{ConnID: conn.ID, Title: "t", Mode: "ask", ProviderID: "p", Model: "m"})
+
+	var ids []string
+	for _, role := range []string{"user", "assistant", "user", "assistant"} {
+		m, err := s.AppendAgentMessage(ctx, AgentMessage{SessionID: sess.ID, Role: role, Content: "{}"})
+		if err != nil {
+			t.Fatalf("AppendAgentMessage: %v", err)
+		}
+		ids = append(ids, m.ID)
+	}
+
+	// GetAgentMessage round-trips; unknown id → ErrNotFound.
+	got, err := s.GetAgentMessage(ctx, ids[2])
+	if err != nil || got.Seq != 3 || got.Role != "user" {
+		t.Fatalf("GetAgentMessage: %+v, %v", got, err)
+	}
+	if _, err := s.GetAgentMessage(ctx, "nope"); err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+
+	// Truncate from the second user message: only the first round survives.
+	if err := s.DeleteAgentMessagesFrom(ctx, sess.ID, 3); err != nil {
+		t.Fatalf("DeleteAgentMessagesFrom: %v", err)
+	}
+	msgs, _ := s.ListAgentMessages(ctx, sess.ID)
+	if len(msgs) != 2 || msgs[0].ID != ids[0] || msgs[1].ID != ids[1] {
+		t.Fatalf("expected first round only, got %+v", msgs)
+	}
+}
+
+func TestDeleteAgentMessagesFromUnfoldsSummary(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	conn, _ := s.SaveConnection(ctx, ConnectionProfile{Name: "c", Driver: "mysql"})
+	sess, _ := s.CreateAgentSession(ctx, AgentSession{ConnID: conn.ID, Title: "t", Mode: "ask", ProviderID: "p", Model: "m"})
+
+	// seq 1-4 folded into a summary at seq 5, then a live round at seq 6-7.
+	for _, role := range []string{"user", "assistant", "user", "assistant"} {
+		if _, err := s.AppendAgentMessage(ctx, AgentMessage{SessionID: sess.ID, Role: role, Content: "{}"}); err != nil {
+			t.Fatalf("AppendAgentMessage: %v", err)
+		}
+	}
+	if _, err := s.AppendAgentMessage(ctx, AgentMessage{SessionID: sess.ID, Role: "summary", Content: `{"text":"sum"}`}); err != nil {
+		t.Fatalf("append summary: %v", err)
+	}
+	if err := s.MarkMessagesCompacted(ctx, sess.ID, 4); err != nil {
+		t.Fatalf("MarkMessagesCompacted: %v", err)
+	}
+	for _, role := range []string{"user", "assistant"} {
+		if _, err := s.AppendAgentMessage(ctx, AgentMessage{SessionID: sess.ID, Role: role, Content: "{}"}); err != nil {
+			t.Fatalf("append live round: %v", err)
+		}
+	}
+
+	// Truncating from the summary's seq destroys it → everything un-compacts.
+	if err := s.DeleteAgentMessagesFrom(ctx, sess.ID, 5); err != nil {
+		t.Fatalf("DeleteAgentMessagesFrom: %v", err)
+	}
+	msgs, _ := s.ListAgentMessages(ctx, sess.ID)
+	if len(msgs) != 4 {
+		t.Fatalf("expected the 4 original messages, got %d", len(msgs))
+	}
+	for _, m := range msgs {
+		if m.Role == "summary" {
+			t.Fatalf("summary row should be gone: %+v", m)
+		}
+		if m.Compacted {
+			t.Fatalf("message should be un-compacted: %+v", m)
+		}
+	}
+}
+
 func TestMarkMessagesCompacted(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

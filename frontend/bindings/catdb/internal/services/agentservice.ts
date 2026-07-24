@@ -71,6 +71,15 @@ export function DeleteSession(sessID: string): $CancellablePromise<void> {
 }
 
 /**
+ * EditResend rewrites a previously sent user message: the message and every
+ * later one are deleted, then a fresh turn runs with the new text. Same
+ * blocking/cancel semantics as SendMessage.
+ */
+export function EditResend(sessID: string, msgID: string, text: string, mentions: string[]): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.AgentService.EditResend", sessID, msgID, text, mentions);
+}
+
+/**
  * GetMessages returns a session's full message history (compacted included —
  * the chat panel always shows everything, §9).
  */

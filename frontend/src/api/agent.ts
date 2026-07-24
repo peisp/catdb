@@ -244,6 +244,23 @@ export function sendMessage(sessId: string, text: string, mentions: string[] = [
   }
 }
 
+/**
+ * Edit a previously sent user message and resend: the message and everything
+ * after it are deleted server-side, then a fresh turn runs with the new text.
+ * Same handle semantics as sendMessage.
+ */
+export function editResend(sessId: string, msgId: string, text: string, mentions: string[] = []): { done: Promise<void>; stop: () => void } {
+  resetOrder(sessId)
+  const p = AgentService.EditResend(sessId, msgId, text, mentions)
+  return {
+    done: Promise.resolve(p as PromiseLike<void>),
+    stop: () => {
+      try { (p as { cancel?: () => void }).cancel?.() } catch { /* ignore */ }
+      void AgentService.Cancel(sessId)
+    },
+  }
+}
+
 // --- streaming subscription -------------------------------------------------
 
 export interface AgentEventHandlers {
