@@ -85,6 +85,12 @@ const note = computed(() => t('agent.result.rowCount', { n: rows.value.length })
 .grid-wrap {
   min-height: 0;
 }
+/* Inline in the chat: hitting the grid's top/bottom chains the scroll to the
+   conversation list (DataGrid's own default is overscroll-behavior: none).
+   Horizontal stays unchained — the chat doesn't scroll sideways. */
+.grid-wrap :deep(.dg-scroller) {
+  overscroll-behavior-y: auto;
+}
 .empty {
   padding: 8px;
   font-size: var(--catdb-fs-mono-small);
