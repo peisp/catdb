@@ -77,8 +77,16 @@ const schemas = ref<string[]>([])
 const schemasSupported = ref(false)
 const currentDb = ref('')
 const currentSchema = ref('')
-// Table names of the current namespace, the @mention completion source (§10.3).
-const tableNames = ref<string[]>([])
+// Table names of the current namespace, the @mention completion source
+// (§10.3). Reads reactively from the metadata store cache — in-app DDL
+// (object tree refresh, table designer, rename/drop) invalidates that cache
+// and this list follows for free. panelConn is defined below; the computed
+// only evaluates lazily so the forward reference is safe.
+const tableNames = computed<string[]>(() => {
+  const conn = connStore.connections.find((c) => c.id === session.value?.connId)
+  if (!conn || !currentDb.value) return []
+  return metaStore.tablesFor(conn.id, currentDb.value, currentSchema.value).map((tbl) => tbl.name)
+})
 
 // Estimated cumulative cost (§9): session model's per-1M pricing × tokens.
 // null when the model has no pricing row → the header shows tokens only.
@@ -280,6 +288,7 @@ function attachEvents(sessId: string) {
     onThinking: (e) => { ensureAssistant().thinking += e.text; scrollToBottom() },
     onTool: (e) => {
       sealStreamingAssistant()
+      if (e.name === 'run_sql') turnRanSql = true
       if (e.phase === 'start') {
         entries.value.push({ kind: 'tool', id: entryId(), callId: e.callId, name: e.name, phase: 'start', summary: '', isError: false })
       } else {
@@ -409,7 +418,6 @@ async function loadNamespace(force = false) {
   if (!conn || (!force && !connStore.isLive(conn.id))) {
     allDatabases.value = []
     schemas.value = []
-    tableNames.value = []
     schemasSupported.value = false
     return
   }
@@ -440,15 +448,28 @@ async function loadNamespace(force = false) {
   await loadTableNames()
 }
 
-// @mention completion source: table names of the current namespace (§10.3),
-// served from the metadata store's existing cache.
+// Fill the metadata store's table cache for the current namespace — the
+// tableNames computed reads from it. Cache hit = no request.
 async function loadTableNames() {
   const conn = panelConn.value
-  if (!conn || !currentDb.value) { tableNames.value = []; return }
+  if (!conn || !currentDb.value) return
   try {
-    const list = await metaStore.ensureTables(conn.id, currentDb.value, false, currentSchema.value)
-    tableNames.value = (list ?? []).map((tbl) => tbl.name)
-  } catch { tableNames.value = [] }
+    await metaStore.ensureTables(conn.id, currentDb.value, false, currentSchema.value)
+  } catch { /* completion just stays empty */ }
+}
+
+// Force-refetch the table list so external DDL (another client) shows up at
+// the moment of use, throttled so hammering @ doesn't hammer the server.
+let lastTableFetch = 0
+const TABLE_REFRESH_MS = 10_000
+async function refreshTableNames() {
+  const conn = panelConn.value
+  if (!conn || !currentDb.value || orphan.value) return
+  if (Date.now() - lastTableFetch < TABLE_REFRESH_MS) return
+  lastTableFetch = Date.now()
+  try {
+    await metaStore.ensureTables(conn.id, currentDb.value, true, currentSchema.value)
+  } catch { /* keep the cached list */ }
 }
 
 // Lazy-connect trigger shared by the db dropdown (open) and the @ completion
@@ -464,7 +485,13 @@ async function ensureNamespace() {
   try { await loadNamespace(true) } finally { nsLoading.value = false }
 }
 function onRequestNamespace() {
-  void ensureNamespace()
+  // First gesture loads the namespace (lazy connect); once loaded, opening
+  // the @ menu / db dropdown re-checks the table list (throttled) so DDL
+  // done outside the app shows up too.
+  void (async () => {
+    await ensureNamespace()
+    await refreshTableNames()
+  })()
 }
 
 // --- session lifecycle ---
@@ -618,9 +645,15 @@ function onSend(text: string, mentions: string[] = []) {
   })()
 }
 
+// The turn ran run_sql at least once — its DDL may have changed the table
+// list, so the @ completion refreshes when the turn ends (bypassing the
+// throttle). Set from the agent:tool event, reset per turn.
+let turnRanSql = false
+
 // Shared turn-completion handling for send and edit-resend.
 function trackTurn(h: { done: Promise<void>; stop: () => void }, live: AgentSession) {
   currentSend = h
+  turnRanSql = false
   h.done
     .catch((err: unknown) => {
       const msg = String(err)
@@ -635,6 +668,10 @@ function trackTurn(h: { done: Promise<void>; stop: () => void }, live: AgentSess
       // The engine connected server-side to run the turn — if the namespace
       // was never loaded (lazy connect), catch up now for @completion.
       if (session.value === live && allDatabases.value.length === 0) void loadNamespace(true)
+      else if (session.value === live && turnRanSql) {
+        lastTableFetch = 0 // the agent may have created/dropped tables — refresh now
+        void refreshTableNames()
+      }
     })
 }
 
@@ -879,7 +916,6 @@ async function onChangeConn(connId: string) {
   s.currentSchema = ''
   allDatabases.value = []
   schemas.value = []
-  tableNames.value = []
   schemasSupported.value = false
   await loadNamespace()
 }
