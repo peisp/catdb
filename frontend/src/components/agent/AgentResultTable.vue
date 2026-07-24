@@ -53,6 +53,8 @@ const note = computed(() => t('agent.result.rowCount', { n: rows.value.length })
   <div class="result">
     <div v-if="entry.columns.length === 0" class="empty">{{ $t('agent.result.empty') }}</div>
     <div v-else class="grid-wrap" :style="{ height: gridHeight + 'px' }">
+      <!-- default-column-width 0: columns start at their header's minimum
+           width (the chat dock is narrow) — widen by drag / double-click. -->
       <DataGrid
         :columns="columns"
         :rows="rows"
@@ -60,6 +62,7 @@ const note = computed(() => t('agent.result.rowCount', { n: rows.value.length })
         :sortable="true"
         :sort-remote="false"
         :row-height="ROW_H"
+        :default-column-width="0"
         @selection-change="onSelectionChange"
         @cell-context-menu="onCellContextMenu"
       />
