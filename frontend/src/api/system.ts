@@ -55,8 +55,8 @@ export function openExternalURL(url: string): Promise<void> {
 export function copyText(text: string): Promise<void> {
   return SystemService.CopyToClipboard(text) as unknown as Promise<void>
 }
-export function openSettingsWindow(): Promise<void> {
-  return SystemService.OpenSettingsWindow() as unknown as Promise<void>
+export function openSettingsWindow(section = ''): Promise<void> {
+  return SystemService.OpenSettingsWindow(section) as unknown as Promise<void>
 }
 export type LocaleChangedPayload = { locale: string }
 export function onLocaleChanged(cb: (p: LocaleChangedPayload) => void): () => void {

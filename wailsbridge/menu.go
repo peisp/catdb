@@ -26,7 +26,7 @@ func BuildApplicationMenu(app *application.App) *application.Menu {
 		settingsItem := appMenu.Add(tr("menu.settings"))
 		settingsItem.SetAccelerator("Cmd+,")
 		settingsItem.OnClick(func(_ *application.Context) {
-			OpenSettingsWindow()
+			OpenSettingsWindow("")
 		})
 		appMenu.AddSeparator()
 		appMenu.AddRole(application.Hide)

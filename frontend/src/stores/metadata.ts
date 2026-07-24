@@ -126,6 +126,12 @@ export const useMetadataStore = defineStore('metadata', () => {
     return snapshots.value[connId]?.[nsKey(db, schema)]
   }
 
+  /** Reactive read of the cached table list — no fetch; [] when not loaded.
+   *  Callers inside a computed track invalidations/refetches automatically. */
+  function tablesFor(connId: string, db: string, schema = ''): TableInfo[] {
+    return tables.value[connId]?.[nsKey(db, schema)] ?? []
+  }
+
   const totalCached = computed(() => Object.keys(databases.value).length)
 
   return {
@@ -144,5 +150,6 @@ export const useMetadataStore = defineStore('metadata', () => {
     invalidateTables,
     invalidateColumns,
     snapshotFor,
+    tablesFor,
   }
 })

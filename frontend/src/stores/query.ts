@@ -165,6 +165,30 @@ export const useQueryStore = defineStore('query', () => {
     schemaFilter.value = { ...schemaFilter.value, [connId]: schemas }
   }
 
+  // localStorage key of the object tree's persisted schema filter — owned
+  // here so every reader/writer shares one definition.
+  function schemaFilterKey(connId: string): string {
+    return `catdb.schemaFilter.v1.${connId}`
+  }
+
+  // schemaFilterFor returns the object tree's schema filter for a connection,
+  // falling back to the persisted selection when the tree hasn't been mounted
+  // for that connection this run (e.g. the agent panel's decoupled context).
+  // null = show all.
+  function schemaFilterFor(connId: string): string[] | null {
+    const live = schemaFilter.value[connId]
+    if (live !== undefined) return live
+    try {
+      const raw = localStorage.getItem(schemaFilterKey(connId))
+      if (!raw) return null
+      const v = JSON.parse(raw)
+      if (v?.followAll === true || !Array.isArray(v?.schemas)) return null
+      return v.schemas.filter((s: unknown): s is string => typeof s === 'string')
+    } catch {
+      return null
+    }
+  }
+
   function setSelectedDb(connId: string, db: string | null) {
     selectedDb.value = { ...selectedDb.value, [connId]: db }
   }
@@ -323,6 +347,24 @@ export const useQueryStore = defineStore('query', () => {
     if (!t || !t.txnId) return
     await queryApi.rollbackTransaction(t.txnId)
     t.txnId = null
+  }
+
+  /**
+   * Append SQL into the connection's active query editor (AI Ask-mode exit).
+   * Falls back to the last query tab, or a fresh one, when the active tab is
+   * not a query editor. Mutating `sql` flows through SqlEditor's modelValue
+   * watch, so the editor content updates in place.
+   */
+  function appendSqlToActiveQuery(connId: string, sql: string): QueryTab {
+    let t = activeTab(connId)
+    if (!t || t.kind !== 'query') {
+      const qtabs = tabsForConn(connId).filter((x) => x.kind === 'query')
+      t = qtabs.length ? qtabs[qtabs.length - 1] : addTab(connId, { kind: 'query' })
+    }
+    const cur = (t.sql ?? '').trim()
+    t.sql = cur ? cur + '\n\n' + sql : sql
+    setActive(connId, t.id)
+    return t
   }
 
   function openTableTab(connId: string, db: string, table: string, kind: 'table' | 'structure' = 'table', schema = ''): QueryTab {
@@ -737,6 +779,7 @@ export const useQueryStore = defineStore('query', () => {
     openSavedQuery,
     isQueryDirty,
     saveTabQuery,
+    appendSqlToActiveQuery,
     openTableTab,
     openNewTableTab,
     promoteNewTableTab,
@@ -761,6 +804,8 @@ export const useQueryStore = defineStore('query', () => {
     setSelectedDb,
     schemaFilter,
     setSchemaFilter,
+    schemaFilterKey,
+    schemaFilterFor,
   }
 })
 

@@ -433,7 +433,7 @@ function onSplitDown(e: PointerEvent) {
 <template>
   <div class="qt">
     <div class="toolbar">
-      <n-space :size="8" align="center">
+      <n-space :size="8" align="center" :wrap="false">
         <n-button size="tiny" type="primary" :disabled="tab.status === 'running'" @click="runFull">
           {{ $t('queryTab.run') }}
         </n-button>
@@ -499,7 +499,7 @@ function onSplitDown(e: PointerEvent) {
           </option>
         </select>
       </n-space>
-      <n-space :size="6" align="center" class="hint mono">
+      <n-space :size="6" align="center" :wrap="false" class="hint mono">
         <n-button v-if="tab.status === 'running'" size="tiny" type="warning" @click="cancel">
           {{ $t('common.cancel') }}
         </n-button>
@@ -666,6 +666,9 @@ function onSplitDown(e: PointerEvent) {
   border-bottom: 1px solid var(--catdb-separator);
   height: var(--catdb-viewbar-height);
 }
+/* 窄宽场景（如 Agent 面板打开）：控件保持原始宽度，溢出被 .qt 裁切而非挤变形。 */
+.toolbar > * { flex-shrink: 0; }
+.toolbar :deep(.n-space > *) { flex-shrink: 0; }
 .sep { display: inline-block; width: 1px; height: 12px; background: currentColor; opacity: 0.15; }
 .mute { opacity: 0.6; font-size: var(--catdb-fs-small); }
 .hint { opacity: 0.4; font-size: var(--catdb-fs-mini); }

@@ -140,9 +140,10 @@ func (s *SystemService) OpenDataSyncDialog(_ context.Context) {
 }
 
 // OpenSettingsWindow opens the app settings as its own native child window,
-// keyed by name "settings".
-func (s *SystemService) OpenSettingsWindow(_ context.Context) {
-	wailsbridge.OpenSettingsWindow()
+// keyed by name "settings". section optionally pre-selects a settings
+// category (e.g. "ai"); empty string means the default category.
+func (s *SystemService) OpenSettingsWindow(_ context.Context, section string) {
+	wailsbridge.OpenSettingsWindow(section)
 }
 
 // CopyToClipboard writes text to the native system clipboard. The WebView's

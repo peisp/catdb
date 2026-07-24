@@ -120,6 +120,7 @@ var messages = map[Locale]map[string]string{
 		"window.structureSync":  "Structure Synchronization",
 		"window.dataSync":       "Data Synchronization",
 		"window.settings":       "Settings",
+		"window.agentTrace":     "Agent Trace",
 	},
 	LocaleZH: {
 		"menu.file":           "文件",
@@ -185,5 +186,6 @@ var messages = map[Locale]map[string]string{
 		"window.structureSync":  "结构同步",
 		"window.dataSync":       "数据同步",
 		"window.settings":       "设置",
+		"window.agentTrace":     "Agent 追踪",
 	},
 }

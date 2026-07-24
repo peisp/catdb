@@ -87,6 +87,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			port INTEGER NOT NULL DEFAULT 0,
 			user TEXT NOT NULL DEFAULT '',
 			"database" TEXT NOT NULL DEFAULT '',
+			environment TEXT NOT NULL DEFAULT '',
 			params_json TEXT NOT NULL DEFAULT '',
 			ssl_json TEXT NOT NULL DEFAULT '',
 			ssh_json TEXT NOT NULL DEFAULT '',
@@ -113,6 +114,52 @@ func (s *Store) migrate(ctx context.Context) error {
 			FOREIGN KEY (conn_id) REFERENCES connection(id) ON DELETE CASCADE
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_saved_query_scope ON saved_query(conn_id, db_name)`,
+		`CREATE TABLE IF NOT EXISTS agent_sessions (
+			id TEXT PRIMARY KEY,
+			conn_id TEXT NOT NULL,
+			title TEXT NOT NULL,
+			mode TEXT NOT NULL,
+			provider_id TEXT NOT NULL,
+			model TEXT NOT NULL,
+			grants TEXT NOT NULL DEFAULT '[]',
+			current_db TEXT,
+			current_schema TEXT,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_agent_sessions_conn ON agent_sessions(conn_id)`,
+		`CREATE TABLE IF NOT EXISTS agent_messages (
+			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
+			seq INTEGER NOT NULL,
+			role TEXT NOT NULL,
+			content TEXT NOT NULL,
+			tokens_in INTEGER,
+			tokens_out INTEGER,
+			compacted INTEGER NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL,
+			UNIQUE(session_id, seq)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_agent_messages_session ON agent_messages(session_id)`,
+		// agent_audit deliberately has no FK to agent_sessions: deleting a
+		// session must preserve its audit trail (cascade only removes
+		// messages), see DeleteAgentSession.
+		`CREATE TABLE IF NOT EXISTS agent_audit (
+			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL,
+			conn_id TEXT NOT NULL,
+			"sql" TEXT NOT NULL,
+			class TEXT NOT NULL,
+			approval TEXT NOT NULL,
+			"rows" INTEGER,
+			duration_ms INTEGER,
+			status TEXT NOT NULL,
+			error TEXT,
+			created_at INTEGER NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_agent_audit_conn ON agent_audit(conn_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_agent_audit_session ON agent_audit(session_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_agent_audit_created ON agent_audit(created_at)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
@@ -134,8 +181,23 @@ func (s *Store) migrate(ctx context.Context) error {
 			return fmt.Errorf("storage: migrate: %w", err)
 		}
 	}
+	// Additive column for the connection environment label (AGENT_DESIGN §5
+	// gate 1). "" = unmarked. Same probe pattern as schema_name above.
+	var hasEnvCol int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pragma_table_info('connection') WHERE name='environment'`,
+	).Scan(&hasEnvCol); err != nil {
+		return fmt.Errorf("storage: migrate: %w", err)
+	}
+	if hasEnvCol == 0 {
+		if _, err := s.db.ExecContext(ctx,
+			`ALTER TABLE connection ADD COLUMN environment TEXT NOT NULL DEFAULT ''`,
+		); err != nil {
+			return fmt.Errorf("storage: migrate: %w", err)
+		}
+	}
 	_, _ = s.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO schema_version(version, applied_at) VALUES (2, ?)`,
+		`INSERT OR IGNORE INTO schema_version(version, applied_at) VALUES (3, ?)`,
 		time.Now().Unix(),
 	)
 	return nil
@@ -246,7 +308,7 @@ func (s *Store) MoveConnection(ctx context.Context, id, groupID string) error {
 // ListConnections returns every saved profile, ordered by name.
 func (s *Store) ListConnections(ctx context.Context) ([]ConnectionProfile, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, driver, group_id, host, port, user, "database",
+		SELECT id, name, driver, group_id, host, port, user, "database", environment,
 		       params_json, ssl_json, ssh_json, created_at, updated_at
 		FROM connection ORDER BY name`)
 	if err != nil {
@@ -267,7 +329,7 @@ func (s *Store) ListConnections(ctx context.Context) ([]ConnectionProfile, error
 // GetConnection returns one profile by ID.
 func (s *Store) GetConnection(ctx context.Context, id string) (ConnectionProfile, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, name, driver, group_id, host, port, user, "database",
+		SELECT id, name, driver, group_id, host, port, user, "database", environment,
 		       params_json, ssl_json, ssh_json, created_at, updated_at
 		FROM connection WHERE id=?`, id)
 	p, err := scanConnection(row)
@@ -289,6 +351,9 @@ func (s *Store) SaveConnection(ctx context.Context, p ConnectionProfile) (Connec
 	if p.Driver == "" {
 		return ConnectionProfile{}, fmt.Errorf("storage: driver is required")
 	}
+	if !validEnvironment(p.Environment) {
+		return ConnectionProfile{}, fmt.Errorf("storage: invalid environment %q", p.Environment)
+	}
 	paramsJSON, _ := json.Marshal(p.Params)
 	sslJSON := jsonOrEmpty(p.SSL)
 	sshJSON := jsonOrEmpty(p.SSHTunnel)
@@ -299,11 +364,11 @@ func (s *Store) SaveConnection(ctx context.Context, p ConnectionProfile) (Connec
 		p.CreatedAt = now
 		p.UpdatedAt = now
 		_, err := s.db.ExecContext(ctx, `
-			INSERT INTO connection(id, name, driver, group_id, host, port, user, "database",
+			INSERT INTO connection(id, name, driver, group_id, host, port, user, "database", environment,
 			                       params_json, ssl_json, ssh_json, created_at, updated_at)
-			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			p.ID, p.Name, p.Driver, nilIfEmpty(p.GroupID),
-			p.Host, p.Port, p.User, p.Database,
+			p.Host, p.Port, p.User, p.Database, p.Environment,
 			string(paramsJSON), sslJSON, sshJSON,
 			p.CreatedAt.Unix(), p.UpdatedAt.Unix())
 		if err != nil {
@@ -314,11 +379,11 @@ func (s *Store) SaveConnection(ctx context.Context, p ConnectionProfile) (Connec
 
 	p.UpdatedAt = now
 	res, err := s.db.ExecContext(ctx, `
-		UPDATE connection SET name=?, driver=?, group_id=?, host=?, port=?, user=?, "database"=?,
+		UPDATE connection SET name=?, driver=?, group_id=?, host=?, port=?, user=?, "database"=?, environment=?,
 		                     params_json=?, ssl_json=?, ssh_json=?, updated_at=?
 		WHERE id=?`,
 		p.Name, p.Driver, nilIfEmpty(p.GroupID),
-		p.Host, p.Port, p.User, p.Database,
+		p.Host, p.Port, p.User, p.Database, p.Environment,
 		string(paramsJSON), sslJSON, sshJSON, p.UpdatedAt.Unix(),
 		p.ID)
 	if err != nil {
@@ -468,7 +533,7 @@ func scanConnection(r rowScanner) (ConnectionProfile, error) {
 		updated    int64
 	)
 	if err := r.Scan(&p.ID, &p.Name, &p.Driver, &groupID, &p.Host, &p.Port, &p.User, &p.Database,
-		&paramsJSON, &sslJSON, &sshJSON, &created, &updated); err != nil {
+		&p.Environment, &paramsJSON, &sslJSON, &sshJSON, &created, &updated); err != nil {
 		return ConnectionProfile{}, err
 	}
 	p.GroupID = groupID.String
@@ -501,6 +566,16 @@ func jsonOrEmpty(v any) string {
 		return ""
 	}
 	return string(b)
+}
+
+// validEnvironment reports whether e is an allowed environment label. "" =
+// unmarked; the rest are the deployment tiers (AGENT_DESIGN §5 gate 1).
+func validEnvironment(e string) bool {
+	switch e {
+	case "", "dev", "test", "staging", "prod":
+		return true
+	}
+	return false
 }
 
 func nilIfEmpty(s string) any {

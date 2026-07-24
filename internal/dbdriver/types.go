@@ -108,17 +108,45 @@ const (
 // ColumnMeta is the column descriptor returned by a ResultSet — sent to the
 // front-end once per query (NOT per row) to keep IPC payloads small.
 type ColumnMeta struct {
-	Name           string      `json:"name"`
-	NativeType     string      `json:"nativeType"` // e.g. "VARCHAR", "BIGINT", "DATETIME(6)"
-	LogicalType    LogicalType `json:"logicalType"`
-	Nullable       bool        `json:"nullable"`
-	Length         int64       `json:"length,omitempty"`
-	Precision      int64       `json:"precision,omitempty"`
-	Scale          int64       `json:"scale,omitempty"`
-	Default        *string     `json:"default,omitempty"`
-	IsPrimaryKey   bool        `json:"isPrimaryKey,omitempty"`
-	IsAutoIncrement bool       `json:"isAutoIncrement,omitempty"`
-	Comment        string      `json:"comment,omitempty"`
+	Name            string      `json:"name"`
+	NativeType      string      `json:"nativeType"` // e.g. "VARCHAR", "BIGINT", "DATETIME(6)"
+	LogicalType     LogicalType `json:"logicalType"`
+	Nullable        bool        `json:"nullable"`
+	Length          int64       `json:"length,omitempty"`
+	Precision       int64       `json:"precision,omitempty"`
+	Scale           int64       `json:"scale,omitempty"`
+	Default         *string     `json:"default,omitempty"`
+	IsPrimaryKey    bool        `json:"isPrimaryKey,omitempty"`
+	IsAutoIncrement bool        `json:"isAutoIncrement,omitempty"`
+	Comment         string      `json:"comment,omitempty"`
+}
+
+// StatementClass is the risk class of one SQL statement, used by the AI
+// Agent's safety gates (AGENT_DESIGN.md §5 gate 2). Direction is strict:
+// anything unrecognizable is ClassUnknown and treated as highest risk.
+type StatementClass string
+
+const (
+	ClassRead     StatementClass = "read"
+	ClassWriteDML StatementClass = "write_dml"
+	ClassDDL      StatementClass = "ddl"
+	ClassAdmin    StatementClass = "admin"
+	ClassUnknown  StatementClass = "unknown"
+)
+
+// StatementVerb is the verb-level subdivision (lowercase canonical first
+// keyword: "select", "insert", "update", …). Session grants and per-approval
+// scopes match on the verb, not the coarse class — otherwise approving one
+// INSERT would wave through a later DELETE.
+type StatementVerb string
+
+// StatementClassification is the classifier verdict for one statement.
+type StatementClassification struct {
+	Class StatementClass `json:"class"`
+	Verb  StatementVerb  `json:"verb"`
+	// MissingWhere marks an UPDATE/DELETE without a top-level WHERE clause
+	// (gate 5 hard intercept).
+	MissingWhere bool `json:"missingWhere,omitempty"`
 }
 
 // ScriptRules describes the lexical rules a SQL-script splitter needs to

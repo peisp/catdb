@@ -5,7 +5,7 @@
 // Layout mirrors ConnectionEditorWindow/ConnectionForm: a titlebar on top, then
 // a two-column body — a left category rail + a right settings panel. Categories:
 // 语言 (Language) and 关于 (About, incl. check-for-updates).
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Window } from '@wailsio/runtime'
 import { NButton, useMessage } from 'naive-ui'
 import { settings as settingsApi } from '../../api'
@@ -13,6 +13,11 @@ import type { UpdateChannel } from '../../api/update'
 import { i18n, setLocale, isSupportedLocale, t as tr } from '../../i18n'
 import { useUpdatesStore } from '../../stores/updates'
 import UpdateDialog from '../update/UpdateDialog.vue'
+import AiProvidersPanel from './AiProvidersPanel.vue'
+import AiDefaultsPanel from './AiDefaultsPanel.vue'
+import AiPrivacyPanel from './AiPrivacyPanel.vue'
+import AiLimitsPanel from './AiLimitsPanel.vue'
+import AiAuditPanel from './AiAuditPanel.vue'
 
 const message = useMessage()
 const updates = useUpdatesStore()
@@ -31,8 +36,45 @@ function toggleMaximise() {
   void Window.ToggleMaximise()
 }
 
-type Category = 'language' | 'about'
+type Category =
+  | 'language'
+  | 'ai-providers'
+  | 'ai-defaults'
+  | 'ai-privacy'
+  | 'ai-limits'
+  | 'ai-audit'
+  | 'about'
 const category = ref<Category>('language')
+const CATEGORIES: Category[] = ['language', 'ai-providers', 'ai-defaults', 'ai-privacy', 'ai-limits', 'ai-audit', 'about']
+// The AI sub-categories share a small group label in the rail.
+const AI_CATEGORIES: Category[] = ['ai-providers', 'ai-defaults', 'ai-privacy', 'ai-limits', 'ai-audit']
+
+// The Go side re-points an already-open settings window at a new `?section=`
+// via SetURL, which only changes the hash — no page reload — so we read the
+// hash on mount and again on every hashchange (SystemService.OpenSettingsWindow).
+function applyHashSection() {
+  const m = /[?&]section=([a-z-]+)/.exec(window.location.hash)
+  const s = m?.[1]
+  if (s && (CATEGORIES as string[]).includes(s)) category.value = s as Category
+  // Strip the query once applied so the next SetURL with the same section is
+  // still a hash *change* (otherwise no hashchange fires and a re-open would
+  // not re-select the category). replaceState fires no hashchange → no loop.
+  if (m) history.replaceState(null, '', '#/settings')
+}
+
+// Rail labels resolve per category key; computed so they follow language switch.
+function categoryLabel(c: Category): string {
+  const keys: Record<Category, string> = {
+    'language': 'settingsWindow.categoryLanguage',
+    'ai-providers': 'settingsWindow.categoryAiProviders',
+    'ai-defaults': 'settingsWindow.categoryAiDefaults',
+    'ai-privacy': 'settingsWindow.categoryAiPrivacy',
+    'ai-limits': 'settingsWindow.categoryAiLimits',
+    'ai-audit': 'settingsWindow.categoryAiAudit',
+    'about': 'settingsWindow.categoryAbout',
+  }
+  return keys[c]
+}
 
 // --- Language panel ---
 // Fixed two options; labels stay in their native form (not translated).
@@ -65,7 +107,14 @@ function onChannelChange(e: Event) {
 }
 
 // Load the persisted channel so the select reflects the effective value.
-onMounted(() => { void updates.loadChannel() })
+onMounted(() => {
+  void updates.loadChannel()
+  applyHashSection()
+  window.addEventListener('hashchange', applyHashSection)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('hashchange', applyHashSection)
+})
 async function onCheckUpdate() {
   if (updates.currentVersion === 'dev') {
     message.info(tr('settingsWindow.devBuildNoUpdate'))
@@ -120,20 +169,29 @@ async function onCheckUpdate() {
       </div>
     </header>
     <main class="body">
-      <!-- Left rail: category picker. -->
+      <!-- Left rail: category picker. AI sub-categories sit under a group label. -->
       <aside class="cat-rail">
         <button
           type="button"
           class="rail-item"
           :class="{ active: category === 'language' }"
           @click="category = 'language'"
-        >{{ $t('settingsWindow.categoryLanguage') }}</button>
+        >{{ $t(categoryLabel('language')) }}</button>
+        <div class="rail-group">{{ $t('settingsWindow.categoryAi') }}</div>
+        <button
+          v-for="c in AI_CATEGORIES"
+          :key="c"
+          type="button"
+          class="rail-item rail-sub"
+          :class="{ active: category === c }"
+          @click="category = c"
+        >{{ $t(categoryLabel(c)) }}</button>
         <button
           type="button"
           class="rail-item"
           :class="{ active: category === 'about' }"
           @click="category = 'about'"
-        >{{ $t('settingsWindow.categoryAbout') }}</button>
+        >{{ $t(categoryLabel('about')) }}</button>
       </aside>
 
       <!-- Right panel: the active category's settings. -->
@@ -147,6 +205,12 @@ async function onCheckUpdate() {
           </div>
           <p class="hint">{{ $t('settingsWindow.languageHint') }}</p>
         </template>
+
+        <AiProvidersPanel v-else-if="category === 'ai-providers'" />
+        <AiDefaultsPanel v-else-if="category === 'ai-defaults'" />
+        <AiPrivacyPanel v-else-if="category === 'ai-privacy'" />
+        <AiLimitsPanel v-else-if="category === 'ai-limits'" />
+        <AiAuditPanel v-else-if="category === 'ai-audit'" />
 
         <template v-else-if="category === 'about'">
           <div class="about-head">
@@ -283,6 +347,16 @@ async function onCheckUpdate() {
   background: var(--catdb-accent-soft);
   font-weight: 600;
 }
+.rail-group {
+  margin-top: 8px;
+  padding: 2px 10px;
+  font-size: var(--catdb-fs-mini);
+  font-weight: 600;
+  opacity: 0.5;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.rail-sub { padding-left: 18px; }
 
 /* --- Settings panel (right) --- */
 .panel {

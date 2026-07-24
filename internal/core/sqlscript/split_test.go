@@ -13,71 +13,71 @@ var splitCases = []struct {
 	script string
 	want   []string
 }{
-		{
-			name:   "empty",
-			script: "   \n\t ",
-			want:   nil,
-		},
-		{
-			name:   "single no trailing delimiter",
-			script: "SELECT 1",
-			want:   []string{"SELECT 1"},
-		},
-		{
-			name:   "single trailing delimiter",
-			script: "SELECT 1;",
-			want:   []string{"SELECT 1"},
-		},
-		{
-			name:   "two statements",
-			script: "SELECT 1; SELECT 2;",
-			want:   []string{"SELECT 1", "SELECT 2"},
-		},
-		{
-			name:   "semicolon inside single-quoted string",
-			script: "SELECT ';' AS a; SELECT 2",
-			want:   []string{"SELECT ';' AS a", "SELECT 2"},
-		},
-		{
-			name:   "semicolon inside double-quoted and backtick",
-			script: "SELECT \"a;b\", `c;d`; SELECT 2",
-			want:   []string{"SELECT \"a;b\", `c;d`", "SELECT 2"},
-		},
-		{
-			name:   "escaped quote in string",
-			script: `INSERT INTO t VALUES ('a\'; b'); SELECT 1`,
-			want:   []string{`INSERT INTO t VALUES ('a\'; b')`, "SELECT 1"},
-		},
-		{
-			name:   "doubled quote in string",
-			script: "SELECT 'it''s; ok'; SELECT 2",
-			want:   []string{"SELECT 'it''s; ok'", "SELECT 2"},
-		},
-		{
-			name:   "line comment with semicolon",
-			script: "SELECT 1; -- a; b\nSELECT 2",
-			// A leading comment stays attached to the next statement; the
-			// server skips it. Only a pure-comment span produces no statement.
-			want: []string{"SELECT 1", "-- a; b\nSELECT 2"},
-		},
-		{
-			name:   "hash comment with semicolon",
-			script: "SELECT 1 # c; d\n; SELECT 2",
-			want:   []string{"SELECT 1 # c; d", "SELECT 2"},
-		},
-		{
-			name:   "block comment with semicolon",
-			script: "SELECT /* x; y */ 1; SELECT 2",
-			want:   []string{"SELECT /* x; y */ 1", "SELECT 2"},
-		},
-		{
-			name:   "trailing comment only is dropped",
-			script: "SELECT 1; -- trailing",
-			want:   []string{"SELECT 1"},
-		},
-		{
-			name: "delimiter directive with function body",
-			script: `DELIMITER //
+	{
+		name:   "empty",
+		script: "   \n\t ",
+		want:   nil,
+	},
+	{
+		name:   "single no trailing delimiter",
+		script: "SELECT 1",
+		want:   []string{"SELECT 1"},
+	},
+	{
+		name:   "single trailing delimiter",
+		script: "SELECT 1;",
+		want:   []string{"SELECT 1"},
+	},
+	{
+		name:   "two statements",
+		script: "SELECT 1; SELECT 2;",
+		want:   []string{"SELECT 1", "SELECT 2"},
+	},
+	{
+		name:   "semicolon inside single-quoted string",
+		script: "SELECT ';' AS a; SELECT 2",
+		want:   []string{"SELECT ';' AS a", "SELECT 2"},
+	},
+	{
+		name:   "semicolon inside double-quoted and backtick",
+		script: "SELECT \"a;b\", `c;d`; SELECT 2",
+		want:   []string{"SELECT \"a;b\", `c;d`", "SELECT 2"},
+	},
+	{
+		name:   "escaped quote in string",
+		script: `INSERT INTO t VALUES ('a\'; b'); SELECT 1`,
+		want:   []string{`INSERT INTO t VALUES ('a\'; b')`, "SELECT 1"},
+	},
+	{
+		name:   "doubled quote in string",
+		script: "SELECT 'it''s; ok'; SELECT 2",
+		want:   []string{"SELECT 'it''s; ok'", "SELECT 2"},
+	},
+	{
+		name:   "line comment with semicolon",
+		script: "SELECT 1; -- a; b\nSELECT 2",
+		// A leading comment stays attached to the next statement; the
+		// server skips it. Only a pure-comment span produces no statement.
+		want: []string{"SELECT 1", "-- a; b\nSELECT 2"},
+	},
+	{
+		name:   "hash comment with semicolon",
+		script: "SELECT 1 # c; d\n; SELECT 2",
+		want:   []string{"SELECT 1 # c; d", "SELECT 2"},
+	},
+	{
+		name:   "block comment with semicolon",
+		script: "SELECT /* x; y */ 1; SELECT 2",
+		want:   []string{"SELECT /* x; y */ 1", "SELECT 2"},
+	},
+	{
+		name:   "trailing comment only is dropped",
+		script: "SELECT 1; -- trailing",
+		want:   []string{"SELECT 1"},
+	},
+	{
+		name: "delimiter directive with function body",
+		script: `DELIMITER //
 CREATE FUNCTION f(x DECIMAL(10,2))
 RETURNS DECIMAL(10,2)
 DETERMINISTIC
@@ -86,35 +86,35 @@ BEGIN
     RETURN x * 13;
 END //
 DELIMITER ;`,
-			want: []string{`CREATE FUNCTION f(x DECIMAL(10,2))
+		want: []string{`CREATE FUNCTION f(x DECIMAL(10,2))
 RETURNS DECIMAL(10,2)
 DETERMINISTIC
 BEGIN
     -- comment
     RETURN x * 13;
 END`},
-		},
-		{
-			name: "delimiter then normal statements after reset",
-			script: `DELIMITER //
+	},
+	{
+		name: "delimiter then normal statements after reset",
+		script: `DELIMITER //
 CREATE TRIGGER t BEFORE INSERT ON x FOR EACH ROW BEGIN SET @a = 1; END //
 DELIMITER ;
 SELECT 1;`,
-			want: []string{
-				"CREATE TRIGGER t BEFORE INSERT ON x FOR EACH ROW BEGIN SET @a = 1; END",
-				"SELECT 1",
-			},
+		want: []string{
+			"CREATE TRIGGER t BEFORE INSERT ON x FOR EACH ROW BEGIN SET @a = 1; END",
+			"SELECT 1",
 		},
-		{
-			name:   "delimiter is not matched inside string",
-			script: "SELECT 'delimiter //' AS x",
-			want:   []string{"SELECT 'delimiter //' AS x"},
-		},
-		{
-			name:   "identifier starting with delimiter word is not a directive",
-			script: "SELECT delimiter_col FROM t",
-			want:   []string{"SELECT delimiter_col FROM t"},
-		},
+	},
+	{
+		name:   "delimiter is not matched inside string",
+		script: "SELECT 'delimiter //' AS x",
+		want:   []string{"SELECT 'delimiter //' AS x"},
+	},
+	{
+		name:   "identifier starting with delimiter word is not a directive",
+		script: "SELECT delimiter_col FROM t",
+		want:   []string{"SELECT delimiter_col FROM t"},
+	},
 	{
 		name:   "crlf line endings",
 		script: "DELIMITER //\r\nSELECT 1//\r\n",

@@ -11,10 +11,12 @@ import arrowLeftRightIcon from '../../assets/icons/arrow-left-right.svg?raw'
 import tableIcon from '../../assets/icons/table-2.svg?raw'
 import databaseZapIcon from '../../assets/icons/database-zap.svg?raw'
 import settingsIcon from '../../assets/icons/settings.svg?raw'
+import botIcon from '../../assets/icons/bot.svg?raw'
 
 const queryStore = useQueryStore()
 
-const props = defineProps<{ activeConn: ConnectionProfile | null; sidebarVisible: boolean }>()
+const props = defineProps<{ activeConn: ConnectionProfile | null; sidebarVisible: boolean; agentOpen: boolean }>()
+const emit = defineEmits<{ (e: 'toggle-agent'): void }>()
 
 const isWin = !navigator.platform.includes('Mac')
 const isMaximised = ref(false)
@@ -73,6 +75,15 @@ function openSettings() {
       {{ $t('tabBar.newQuery') }}
     </button>
     <span class="toolbar-spacer"></span>
+    <button
+      type="button"
+      class="toolbar-btn toolbar-btn-icon"
+      :class="{ active: agentOpen }"
+      :title="$t('agent.panel.toggle')"
+      @click="emit('toggle-agent')"
+    >
+      <AppIcon :src="botIcon" :size="16" />
+    </button>
     <button type="button" class="toolbar-btn toolbar-btn-icon" :title="$t('settingsWindow.openSettings')" @click="openSettings">
       <AppIcon :src="settingsIcon" :size="16" />
     </button>
@@ -134,6 +145,9 @@ function openSettings() {
 .toolbar-btn:active { background: var(--catdb-pressed-fill); }
 .toolbar-btn:disabled { opacity: 0.4; pointer-events: none; }
 .toolbar-btn-icon { width: 24px; padding: 0; justify-content: center; }
+/* Toggle button open state: accent icon + accent-soft fill (DESIGN.md button-toolbar). */
+.toolbar-btn-icon.active { background: var(--catdb-accent-soft); }
+.toolbar-btn-icon.active :deep(.app-icon) { opacity: 1; color: var(--catdb-accent); }
 .toolbar { transition: padding-left 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
 /* macOS: 给红绿灯+浮动按钮让位。用 padding（而非 margin）让 chrome 底通栏
    铺满，避免让位区露出 content 底的缺口。 */

@@ -66,6 +66,11 @@ interface Props {
   contextMenuName?: string
   /** 表头第二行显示字段类型（nativeType）。合成列的表（如 TablesOverview）不开。 */
   showTypes?: boolean
+  /** 序号列宽度，默认 50。窄容器（如 agent 结果表格）可调小。 */
+  rowNumberWidth?: number
+  /** 各列初始宽度（body 列下标）；null/缺省的列用 defaultColumnWidth。
+   *  仍会被表头最小宽度托底。 */
+  initialColWidths?: (number | null)[]
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -82,6 +87,7 @@ const props = withDefaults(defineProps<Props>(), {
   sortState: null,
   contextMenuName: '',
   showTypes: false,
+  rowNumberWidth: 50,
 })
 
 const emit = defineEmits<{
@@ -103,7 +109,7 @@ const theme = useThemeStore()
 // 面板焦点态:聚焦时选区用 accent,失焦降灰(DESIGN.md「选中与焦点」)。
 const gridFocused = ref(false)
 
-const ROWNUM_W = 50
+const rowNumW = computed(() => props.rowNumberWidth)
 // 显示字段类型时表头两行布局，加高
 const headerH = computed(() => (props.showTypes ? 38 : 28))
 const FONT_SIZE = 12
@@ -273,7 +279,7 @@ function headerMinWidth(col: ColumnMeta): number {
 
 // ---- 几何 ----
 const offsets = computed(() => buildOffsets(colWidths.value))
-const totalWidth = computed(() => ROWNUM_W + (offsets.value[offsets.value.length - 1] ?? 0))
+const totalWidth = computed(() => rowNumW.value + (offsets.value[offsets.value.length - 1] ?? 0))
 const totalHeight = computed(() => headerH.value + props.rows.length * props.rowHeight)
 // canvas 尺寸钳到 min(视口, 内容)：canvas 绝不把 scroller 内容区撑得比
 // spacer 大，否则「canvas 撑出滚动条 → clientWidth/Height 变化 → RO 触发
@@ -283,7 +289,7 @@ const canvasH = computed(() => Math.min(viewH.value, totalHeight.value))
 
 function geoOpts() {
   return {
-    rowNumberWidth: ROWNUM_W,
+    rowNumberWidth: rowNumW.value,
     headerHeight: headerH.value,
     rowHeight: props.rowHeight,
     colOffsets: offsets.value,
@@ -381,7 +387,7 @@ function draw() {
     height: canvasH.value,
     theme: gridTheme.value,
     fonts: { family: FONT_FAMILY, size: FONT_SIZE },
-    rowNumberWidth: ROWNUM_W,
+    rowNumberWidth: rowNumW.value,
     headerHeight: headerH.value,
     rowHeight: props.rowHeight,
     colWidths: colWidths.value,
@@ -440,9 +446,9 @@ function scrollCellIntoView(row: number, col: number) {
   const cellLeft = offsets.value[col] ?? 0
   const cellRight = cellLeft + (colWidths.value[col] ?? 0)
   const viewLeft = el.scrollLeft
-  const viewRight = viewLeft + el.clientWidth - ROWNUM_W
+  const viewRight = viewLeft + el.clientWidth - rowNumW.value
   if (cellLeft < viewLeft) el.scrollLeft = cellLeft
-  else if (cellRight > viewRight) el.scrollLeft = cellRight - (el.clientWidth - ROWNUM_W)
+  else if (cellRight > viewRight) el.scrollLeft = cellRight - (el.clientWidth - rowNumW.value)
 }
 
 // ---- 命中测试 ----
@@ -570,7 +576,7 @@ function bodyCellAtPointer(clientX: number, clientY: number): { row: number; col
   const y = clientY - rect.top
   const contentY = y - headerH.value + scrollTop.value
   const row = Math.max(0, Math.min(props.rows.length - 1, Math.floor(contentY / props.rowHeight)))
-  const contentX = x - ROWNUM_W + scrollLeft.value
+  const contentX = x - rowNumW.value + scrollLeft.value
   const off = offsets.value
   let col: number
   if (contentX <= 0) col = 0
@@ -645,7 +651,7 @@ function maybeAutoScroll() {
     let dy = 0
     if (py < rect.top + headerH.value) dy = -Math.min(40, (rect.top + headerH.value - py) / 2)
     else if (py > rect.bottom) dy = Math.min(40, (py - rect.bottom) / 2)
-    if (px < rect.left + ROWNUM_W) dx = -Math.min(40, (rect.left + ROWNUM_W - px) / 2)
+    if (px < rect.left + rowNumW.value) dx = -Math.min(40, (rect.left + rowNumW.value - px) / 2)
     else if (px > rect.right) dx = Math.min(40, (px - rect.right) / 2)
     if (dx || dy) {
       el.scrollTop += dy
@@ -950,7 +956,7 @@ function onEditorKeydown(e: KeyboardEvent) {
 const editorStyle = computed(() => {
   const ed = editing.value
   if (!ed) return {}
-  const left = ROWNUM_W + (offsets.value[ed.col] ?? 0)
+  const left = rowNumW.value + (offsets.value[ed.col] ?? 0)
   const top = headerH.value + ed.row * props.rowHeight
   const width = colWidths.value[ed.col] ?? props.defaultColumnWidth
   const height = ed.kind === 'textarea' ? Math.max(props.rowHeight * 4, 96) : props.rowHeight
@@ -1075,7 +1081,8 @@ function onPaste(e: ClipboardEvent) {
 
 // ---- 列宽初始化 / props 监听 ----
 function resetColumnWidths() {
-  colWidths.value = props.columns.map((c) => Math.max(props.defaultColumnWidth, headerMinWidth(c)))
+  colWidths.value = props.columns.map((c, i) =>
+    Math.max(props.initialColWidths?.[i] ?? props.defaultColumnWidth, headerMinWidth(c)))
 }
 
 // 列「签名」不变（同表刷新重建 columns 数组）时保留列宽/选区/排序，
@@ -1167,9 +1174,9 @@ function scrollToColumn(bodyCol: number) {
     const cellLeft = offsets.value[bodyCol] ?? 0
     const cellRight = cellLeft + (colWidths.value[bodyCol] ?? 0)
     const viewLeft = el.scrollLeft
-    const viewRight = viewLeft + el.clientWidth - ROWNUM_W
+    const viewRight = viewLeft + el.clientWidth - rowNumW.value
     if (cellLeft < viewLeft) el.scrollLeft = cellLeft
-    else if (cellRight > viewRight) el.scrollLeft = cellRight - (el.clientWidth - ROWNUM_W)
+    else if (cellRight > viewRight) el.scrollLeft = cellRight - (el.clientWidth - rowNumW.value)
   }
   if (props.rows.length) setSelection({ row: 0, col: bodyCol })
 }

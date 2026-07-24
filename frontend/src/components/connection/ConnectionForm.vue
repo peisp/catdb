@@ -87,6 +87,36 @@ const driverList = computed(() => {
   return [...store.drivers].sort((a, b) => rank(a.name) - rank(b.name))
 })
 const driverLocked = computed(() => !!props.initial)
+// Editing an existing profile: password fields are write-only (secrets live
+// in the OS keychain and never round-trip to the UI) — blank keeps the
+// stored secret, so show a hint plus an explicit "clear" affordance.
+const isEditing = computed(() => !!props.initial?.id)
+
+// Secret fields the user explicitly asked to clear on save (schema keys:
+// password / sshTunnel.password / sshTunnel.privateKeyPass). Typing a new
+// value into the field withdraws the pending clear.
+const clearedSecrets = ref(new Set<string>())
+function isCleared(key: string): boolean {
+  return clearedSecrets.value.has(key)
+}
+function toggleClear(key: string) {
+  const next = new Set(clearedSecrets.value)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    next.add(key)
+    setPath(values.value, key, '')
+  }
+  clearedSecrets.value = next
+}
+function onSecretInput(key: string, v: string) {
+  setPath(values.value, key, v)
+  if (v && clearedSecrets.value.has(key)) {
+    const next = new Set(clearedSecrets.value)
+    next.delete(key)
+    clearedSecrets.value = next
+  }
+}
 
 function pickInitialDriver(): DriverInfo | null {
   if (props.driver) return props.driver
@@ -122,6 +152,16 @@ const name = ref<string>(props.initial?.name ?? '')
 // created from the sidebar's right-click menu (新建分组) — keeping the
 // concerns separate avoids cluttering the connection form with group CRUD.
 const groupId = ref<string | null>(props.initial?.groupId ?? null)
+// Environment label (闸 1, AGENT_DESIGN §5). Stored value is the raw English
+// key ('' | dev | test | staging | prod); labels are localized. '' = unmarked.
+const environment = ref<string>(props.initial?.environment ?? '')
+const ENVIRONMENTS = ['', 'dev', 'test', 'staging', 'prod'] as const
+const environmentOptions = computed(() =>
+  ENVIRONMENTS.map((e) => ({
+    value: e,
+    label: e ? t(`connection.form.environments.${e}`) : t('connection.form.environments.unmarked'),
+  })),
+)
 
 // Walk dotted-key segments. Returns undefined when the path is unset.
 function getPath(obj: any, path: string): any {
@@ -226,6 +266,7 @@ function buildDraft(): ConnectionDraft {
     name: name.value.trim(),
     driver: selectedDriver.value?.name ?? '',
     groupId: groupId.value ?? undefined,
+    environment: environment.value || undefined,
     host: v.host ?? '',
     port: v.port != null && v.port !== '' ? Number(v.port) : 0,
     user: v.user ?? '',
@@ -236,6 +277,9 @@ function buildDraft(): ConnectionDraft {
     password: v.password || undefined,
     sshPassword: v.sshTunnel?.password || undefined,
     sshKeyPassword: v.sshTunnel?.privateKeyPass || undefined,
+    clearPassword: isCleared('password') || undefined,
+    clearSSHPassword: isCleared('sshTunnel.password') || undefined,
+    clearSSHKeyPassword: isCleared('sshTunnel.privateKeyPass') || undefined,
   }
   return draft
 }
@@ -423,6 +467,13 @@ function selectOptions(opts: string[]) {
               <option v-for="g in store.groups" :key="g.id" :value="g.id">{{ g.name }}</option>
             </select>
           </n-form-item>
+          <!-- Environment label (闸 1). Same native <select> chrome as the
+               group picker; raw English key is stored, label is localized. -->
+          <n-form-item :label="$t('connection.form.environment')" label-width="82px" class="header-item header-item-env">
+            <select v-model="environment" class="group-select">
+              <option v-for="o in environmentOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+            </select>
+          </n-form-item>
         </div>
       </n-form>
 
@@ -458,7 +509,7 @@ function selectOptions(opts: string[]) {
                 :key="f.key"
                 :label="fieldLabel(f)"
                 :required="f.required"
-                :show-feedback="!!f.help"
+                :show-feedback="!!f.help || (f.type === 'password' && isEditing)"
               >
                 <template v-if="f.type === 'select'">
                   <n-select
@@ -489,7 +540,7 @@ function selectOptions(opts: string[]) {
                     type="password"
                     show-password-on="click"
                     size="small"
-                    @update:value="setPath(values, f.key, $event)"
+                    @update:value="onSecretInput(f.key, $event)"
                   />
                 </template>
                 <template v-else>
@@ -499,8 +550,14 @@ function selectOptions(opts: string[]) {
                     @update:value="setPath(values, f.key, $event)"
                   />
                 </template>
-                <template v-if="f.help" #feedback>
-                  <span class="hint">{{ fieldHelp(f) }}</span>
+                <template v-if="f.help || (f.type === 'password' && isEditing)" #feedback>
+                  <span v-if="f.type === 'password' && isEditing" class="hint">
+                    {{ isCleared(f.key) ? $t('connection.form.passwordWillClear') : $t('connection.form.passwordKeepHint') }}
+                    <button type="button" class="hint-link" @click="toggleClear(f.key)">
+                      {{ isCleared(f.key) ? $t('connection.form.passwordClearUndo') : $t('connection.form.passwordClear') }}
+                    </button>
+                  </span>
+                  <span v-else class="hint">{{ fieldHelp(f) }}</span>
                 </template>
               </n-form-item>
             </n-form>
@@ -584,6 +641,17 @@ function selectOptions(opts: string[]) {
   gap: 8px;
 }
 .hint { font-size: var(--catdb-fs-mini); opacity: 0.65; }
+/* Inline "clear saved password" affordance inside a field hint. */
+.hint-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin-left: 4px;
+  font: inherit;
+  color: var(--catdb-accent);
+  cursor: pointer;
+}
+.hint-link:hover { text-decoration: underline; }
 
 /* --- Driver-type rail (left) -------------------------------------------
    Compact desktop list. Active item gets a soft highlight + green dot.
@@ -665,7 +733,8 @@ function selectOptions(opts: string[]) {
 }
 .header-item { margin-bottom: 0 !important; min-width: 0; }
 .header-item-grow { flex: 1 1 auto; }
-.header-item-group { flex: 0 0 220px; }
+.header-item-group { flex: 0 0 180px; }
+.header-item-env { flex: 0 0 200px; }
 .header-form :deep(.n-form-item-feedback-wrapper) { min-height: 0; padding: 0; }
 
 /* Native <select> for the group picker — sized to align with Naive's small
