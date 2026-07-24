@@ -1142,7 +1142,7 @@ onBeforeUnmount(() => {
         <div v-if="orphan" class="dock-hint">{{ $t('agent.panel.orphanHint') }}</div>
         <div v-if="noProvider" class="provider-hint">
           <span class="provider-hint-text">{{ $t('agent.panel.noProviderHint') }}</span>
-          <button type="button" class="provider-hint-btn" @click="openSettingsWindow('ai')">{{ $t('agent.panel.openProviderSettings') }}</button>
+          <button type="button" class="provider-hint-btn" @click="openSettingsWindow('ai-providers')">{{ $t('agent.panel.openProviderSettings') }}</button>
         </div>
 
         <!-- Connection + namespace context, above the input box. The database

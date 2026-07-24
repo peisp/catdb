@@ -491,6 +491,11 @@ export default {
     openSettings: 'Settings',
     categoryLanguage: 'Language',
     categoryAi: 'AI',
+    categoryAiProviders: 'Model Providers',
+    categoryAiDefaults: 'Default Model',
+    categoryAiPrivacy: 'Agent Privacy',
+    categoryAiLimits: 'Limits & Compaction',
+    categoryAiAudit: 'Agent Audit',
     categoryAbout: 'About',
     uiLanguage: 'Interface Language',
     languageHint: 'Changes take effect immediately across all windows.',
@@ -728,7 +733,7 @@ export default {
     selectDatabase: 'Select database',
     batchSizeHint: 'Rows per INSERT batch (100–10000)',
   },
-  // AI Agent settings page (components/settings/AiSettingsPanel.vue).
+  // AI Agent settings page (components/settings/Ai*Panel.vue).
   agent: {
     // Docked AI assistant panel (components/agent/*).
     panel: {
@@ -853,7 +858,6 @@ export default {
     // Inline result table (§7).
     result: {
       rowCount: '{n} rows',
-      showingCapped: 'Showing first {shown} of {total} rows',
       truncated: 'Truncated',
       empty: 'No rows',
     },

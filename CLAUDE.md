@@ -13,7 +13,7 @@
 - **多语言**：`vue-i18n` v9（前端）+ `internal/i18n` 消息目录（Go 原生菜单/对话框）—— 规约见下方「多语言（i18n）」
 - **UI 框架**：Naive UI（TS-first、JS 主题系统、自带 `n-tree` 虚拟化树与表单）—— 同类对标 Tiny RDM（Wails+Vue3 数据库 GUI）即用此栈
 - **SQL 编辑器**：CodeMirror 6（`@codemirror/lang-sql`，Vue 下用 `vue-codemirror` 薄封装）—— **不用 Monaco**
-- **结果表格**：`@tanstack/vue-table` + `@tanstack/vue-virtual` —— **不用 AG Grid**（除非任务单明确要求）
+- **表格渲染**：自研 canvas 网格 `frontend/src/components/data-grid/DataGrid.vue` —— **所有表格展示（查询结果、列表、审计、Agent 结果等）统一用它**，不引入 AG Grid / TanStack 等第三方表格，也不手写 `<table>`；只读列表用合成 `ColumnMeta`（参考 `TablesOverview.vue`）
 - **MySQL 驱动**：`github.com/go-sql-driver/mysql`
 - **本地配置存储**：`modernc.org/sqlite`（纯 Go，**禁止引入 CGO SQLite 驱动**）
 - **凭据存储**：`github.com/zalando/go-keyring`

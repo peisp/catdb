@@ -13,7 +13,11 @@ import type { UpdateChannel } from '../../api/update'
 import { i18n, setLocale, isSupportedLocale, t as tr } from '../../i18n'
 import { useUpdatesStore } from '../../stores/updates'
 import UpdateDialog from '../update/UpdateDialog.vue'
-import AiSettingsPanel from './AiSettingsPanel.vue'
+import AiProvidersPanel from './AiProvidersPanel.vue'
+import AiDefaultsPanel from './AiDefaultsPanel.vue'
+import AiPrivacyPanel from './AiPrivacyPanel.vue'
+import AiLimitsPanel from './AiLimitsPanel.vue'
+import AiAuditPanel from './AiAuditPanel.vue'
 
 const message = useMessage()
 const updates = useUpdatesStore()
@@ -32,20 +36,44 @@ function toggleMaximise() {
   void Window.ToggleMaximise()
 }
 
-type Category = 'language' | 'ai' | 'about'
+type Category =
+  | 'language'
+  | 'ai-providers'
+  | 'ai-defaults'
+  | 'ai-privacy'
+  | 'ai-limits'
+  | 'ai-audit'
+  | 'about'
 const category = ref<Category>('language')
+const CATEGORIES: Category[] = ['language', 'ai-providers', 'ai-defaults', 'ai-privacy', 'ai-limits', 'ai-audit', 'about']
+// The AI sub-categories share a small group label in the rail.
+const AI_CATEGORIES: Category[] = ['ai-providers', 'ai-defaults', 'ai-privacy', 'ai-limits', 'ai-audit']
 
 // The Go side re-points an already-open settings window at a new `?section=`
 // via SetURL, which only changes the hash — no page reload — so we read the
 // hash on mount and again on every hashchange (SystemService.OpenSettingsWindow).
 function applyHashSection() {
-  const m = /[?&]section=([a-z]+)/.exec(window.location.hash)
+  const m = /[?&]section=([a-z-]+)/.exec(window.location.hash)
   const s = m?.[1]
-  if (s === 'language' || s === 'ai' || s === 'about') category.value = s
+  if (s && (CATEGORIES as string[]).includes(s)) category.value = s as Category
   // Strip the query once applied so the next SetURL with the same section is
   // still a hash *change* (otherwise no hashchange fires and a re-open would
   // not re-select the category). replaceState fires no hashchange → no loop.
   if (m) history.replaceState(null, '', '#/settings')
+}
+
+// Rail labels resolve per category key; computed so they follow language switch.
+function categoryLabel(c: Category): string {
+  const keys: Record<Category, string> = {
+    'language': 'settingsWindow.categoryLanguage',
+    'ai-providers': 'settingsWindow.categoryAiProviders',
+    'ai-defaults': 'settingsWindow.categoryAiDefaults',
+    'ai-privacy': 'settingsWindow.categoryAiPrivacy',
+    'ai-limits': 'settingsWindow.categoryAiLimits',
+    'ai-audit': 'settingsWindow.categoryAiAudit',
+    'about': 'settingsWindow.categoryAbout',
+  }
+  return keys[c]
 }
 
 // --- Language panel ---
@@ -141,26 +169,29 @@ async function onCheckUpdate() {
       </div>
     </header>
     <main class="body">
-      <!-- Left rail: category picker. -->
+      <!-- Left rail: category picker. AI sub-categories sit under a group label. -->
       <aside class="cat-rail">
         <button
           type="button"
           class="rail-item"
           :class="{ active: category === 'language' }"
           @click="category = 'language'"
-        >{{ $t('settingsWindow.categoryLanguage') }}</button>
+        >{{ $t(categoryLabel('language')) }}</button>
+        <div class="rail-group">{{ $t('settingsWindow.categoryAi') }}</div>
         <button
+          v-for="c in AI_CATEGORIES"
+          :key="c"
           type="button"
-          class="rail-item"
-          :class="{ active: category === 'ai' }"
-          @click="category = 'ai'"
-        >{{ $t('settingsWindow.categoryAi') }}</button>
+          class="rail-item rail-sub"
+          :class="{ active: category === c }"
+          @click="category = c"
+        >{{ $t(categoryLabel(c)) }}</button>
         <button
           type="button"
           class="rail-item"
           :class="{ active: category === 'about' }"
           @click="category = 'about'"
-        >{{ $t('settingsWindow.categoryAbout') }}</button>
+        >{{ $t(categoryLabel('about')) }}</button>
       </aside>
 
       <!-- Right panel: the active category's settings. -->
@@ -175,9 +206,11 @@ async function onCheckUpdate() {
           <p class="hint">{{ $t('settingsWindow.languageHint') }}</p>
         </template>
 
-        <template v-else-if="category === 'ai'">
-          <AiSettingsPanel />
-        </template>
+        <AiProvidersPanel v-else-if="category === 'ai-providers'" />
+        <AiDefaultsPanel v-else-if="category === 'ai-defaults'" />
+        <AiPrivacyPanel v-else-if="category === 'ai-privacy'" />
+        <AiLimitsPanel v-else-if="category === 'ai-limits'" />
+        <AiAuditPanel v-else-if="category === 'ai-audit'" />
 
         <template v-else-if="category === 'about'">
           <div class="about-head">
@@ -314,6 +347,16 @@ async function onCheckUpdate() {
   background: var(--catdb-accent-soft);
   font-weight: 600;
 }
+.rail-group {
+  margin-top: 8px;
+  padding: 2px 10px;
+  font-size: var(--catdb-fs-mini);
+  font-weight: 600;
+  opacity: 0.5;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.rail-sub { padding-left: 18px; }
 
 /* --- Settings panel (right) --- */
 .panel {

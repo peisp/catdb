@@ -1,57 +1,68 @@
 <script setup lang="ts">
 // AgentResultTable — a compact inline table for a run_sql SELECT result on the
-// user path (§7). Monospace, tight rows, scrolls inside its own container.
-// Renders at most ROW_CAP rows with a "showing first N of M" note; the
-// backend's own truncation flag adds a separate "truncated" hint (data
-// incomplete vs. this view capped are different facts).
-import { computed } from 'vue'
+// user path (§7), rendered with the shared canvas DataGrid (the app-wide table
+// component). Read-only; height grows with rows up to a cap and then scrolls
+// inside the grid. The backend's truncation flag adds a "truncated" hint.
+import { computed, ref } from 'vue'
+import DataGrid from '../data-grid/DataGrid.vue'
+import { setActiveGridContext } from '../../api/gridContextMenu'
+import { LogicalType, type ColumnMeta } from '../../api/metadata'
+import type { SelectionRange } from '../../composables/useTableSelection'
 import { t } from '../../i18n'
 import type { ResultEntry } from './types'
 
 const props = defineProps<{ entry: ResultEntry }>()
 
-const ROW_CAP = 100
-
-const total = computed(() => props.entry.rows.length)
-const shown = computed(() => props.entry.rows.slice(0, ROW_CAP))
-const capped = computed(() => total.value > ROW_CAP)
-
-function fmt(v: unknown): string {
-  if (v === null || v === undefined) return 'NULL'
-  if (typeof v === 'object') {
-    try { return JSON.stringify(v) } catch { return String(v) }
-  }
-  return String(v)
-}
-function isNull(v: unknown): boolean {
-  return v === null || v === undefined
-}
-
-const note = computed(() =>
-  capped.value
-    ? t('agent.result.showingCapped', { shown: ROW_CAP, total: total.value })
-    : t('agent.result.rowCount', { n: total.value }),
+// Synthetic column metadata: result columns arrive as bare names (§7 user
+// path), so everything renders as string cells.
+const columns = computed<ColumnMeta[]>(() =>
+  props.entry.columns.map((name) => ({
+    name,
+    nativeType: '',
+    logicalType: LogicalType.TypeString,
+    nullable: true,
+  } as ColumnMeta)),
 )
+const rows = computed(() => props.entry.rows as unknown[][] as any[][])
+
+// Grid sizing: header 28 + 24 per row, capped — the grid scrolls internally
+// past the cap (canvas-virtualized, no need to slice rows).
+const ROW_H = 24
+const HEADER_H = 28
+const MAX_H = 260
+const gridHeight = computed(() => Math.min(MAX_H, HEADER_H + rows.value.length * ROW_H + 4))
+
+// Native copy menu support (catdb-grid-cell): push rows + selection into the
+// grid context singleton on right-click, same pattern as ResultTable.
+const selection = ref<SelectionRange | null>(null)
+function onSelectionChange(p: { range: SelectionRange | null }) {
+  selection.value = p.range
+}
+function onCellContextMenu() {
+  setActiveGridContext({
+    rows: rows.value,
+    columnNames: props.entry.columns,
+    selection: selection.value,
+  })
+}
+
+const note = computed(() => t('agent.result.rowCount', { n: rows.value.length }))
 </script>
 
 <template>
   <div class="result">
-    <div class="scroll">
-      <table class="grid mono">
-        <thead>
-          <tr>
-            <th v-for="(c, i) in entry.columns" :key="i">{{ c }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(row, r) in shown" :key="r">
-            <td v-for="(cell, c) in row" :key="c" :class="{ null: isNull(cell) }">{{ fmt(cell) }}</td>
-          </tr>
-          <tr v-if="entry.columns.length === 0 && shown.length === 0">
-            <td class="empty">{{ $t('agent.result.empty') }}</td>
-          </tr>
-        </tbody>
-      </table>
+    <div v-if="entry.columns.length === 0" class="empty">{{ $t('agent.result.empty') }}</div>
+    <div v-else class="grid-wrap" :style="{ height: gridHeight + 'px' }">
+      <DataGrid
+        :columns="columns"
+        :rows="rows"
+        :editable="false"
+        :sortable="true"
+        :sort-remote="false"
+        :row-height="ROW_H"
+        @selection-change="onSelectionChange"
+        @cell-context-menu="onCellContextMenu"
+      />
     </div>
     <div class="foot">
       <span class="count">{{ note }}</span>
@@ -68,42 +79,15 @@ const note = computed(() =>
   margin: 6px 0;
   overflow: hidden;
 }
-.scroll {
-  max-height: 260px;
-  overflow: auto;
+.grid-wrap {
+  min-height: 0;
 }
-.grid {
-  border-collapse: collapse;
-  width: max-content;
-  min-width: 100%;
+.empty {
+  padding: 8px;
   font-size: var(--catdb-fs-mono-small);
+  color: var(--catdb-text-tertiary);
+  text-align: center;
 }
-.grid th, .grid td {
-  border-right: 1px solid var(--catdb-separator);
-  border-bottom: 1px solid var(--catdb-separator);
-  padding: 2px 8px;
-  height: var(--catdb-grid-row-height);
-  text-align: left;
-  white-space: nowrap;
-  max-width: 280px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  user-select: text;
-  -webkit-user-select: text;
-  cursor: text;
-}
-.grid th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--catdb-surface-chrome);
-  color: var(--catdb-text-secondary);
-  font-weight: 600;
-  height: var(--catdb-grid-header-height);
-}
-.grid td { color: var(--catdb-text-primary); }
-.grid td.null { color: var(--catdb-text-tertiary); font-style: italic; }
-.grid td.empty { color: var(--catdb-text-tertiary); text-align: center; }
 
 .foot {
   display: flex;

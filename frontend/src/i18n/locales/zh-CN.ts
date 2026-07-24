@@ -483,6 +483,11 @@ export default {
     openSettings: '设置',
     categoryLanguage: '语言',
     categoryAi: 'AI',
+    categoryAiProviders: '模型供应商',
+    categoryAiDefaults: '默认模型',
+    categoryAiPrivacy: 'Agent 隐私',
+    categoryAiLimits: '限额与压缩',
+    categoryAiAudit: 'Agent 审计',
     categoryAbout: '关于',
     uiLanguage: '界面语言',
     languageHint: '更改立即生效，作用于所有窗口。',
@@ -719,7 +724,7 @@ export default {
     selectDatabase: '选择数据库',
     batchSizeHint: '每批 INSERT 的行数（100–10000）',
   },
-  // AI Agent 设置页（components/settings/AiSettingsPanel.vue）。
+  // AI Agent 设置页（components/settings/Ai*Panel.vue）。
   agent: {
     // 停靠式 AI 助手面板（components/agent/*）。
     panel: {
@@ -844,7 +849,6 @@ export default {
     // 内嵌结果表格（§7）。
     result: {
       rowCount: '共 {n} 行',
-      showingCapped: '显示前 {shown} 行，共 {total} 行',
       truncated: '已截断',
       empty: '无数据行',
     },
