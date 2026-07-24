@@ -4,17 +4,39 @@
 // reveals the JSON args and full result (available when rendering history).
 // Error state tints the card red; a still-running step shows a spinner.
 import { computed, ref } from 'vue'
-import { NSpin } from 'naive-ui'
+import { NSpin, useMessage } from 'naive-ui'
 import AppIcon from '../shared/AppIcon.vue'
 import chevronDownIcon from '../../assets/icons/chevron-down.svg?raw'
 import scanEyeIcon from '../../assets/icons/scan-eye.svg?raw'
+import copyIcon from '../../assets/icons/copy.svg?raw'
+import { copyText } from '../../api/system'
+import { t } from '../../i18n'
 import type { ToolEntry } from './types'
 
 const props = defineProps<{ entry: ToolEntry }>()
 const expanded = ref(false)
+const message = useMessage()
 
 const running = computed(() => props.entry.phase === 'start')
 const hasDetail = computed(() => !!(props.entry.args || props.entry.result))
+
+// run_sql quick action: lift the sql arg out of the args JSON for one-click copy.
+const sqlArg = computed(() => {
+  if (props.entry.name !== 'run_sql' || !props.entry.args) return ''
+  try {
+    const a = JSON.parse(props.entry.args) as { sql?: unknown }
+    return typeof a.sql === 'string' ? a.sql : ''
+  } catch { return '' }
+})
+
+async function onCopySql() {
+  try {
+    await copyText(sqlArg.value)
+    message.success(t('common.copied'))
+  } catch {
+    message.error(t('agent.panel.sql.copyFailed'))
+  }
+}
 
 function prettyArgs(raw?: string): string {
   if (!raw) return ''
@@ -29,6 +51,15 @@ function prettyArgs(raw?: string): string {
       <n-spin v-else :size="12" class="tool-spin" />
       <span class="tool-name mono">{{ entry.name }}</span>
       <span v-if="entry.summary" class="tool-summary">{{ entry.summary }}</span>
+      <span
+        v-if="sqlArg"
+        class="tool-copy"
+        role="button"
+        :title="$t('agent.panel.tool.copySql')"
+        @click.stop="onCopySql"
+      >
+        <AppIcon :src="copyIcon" :size="12" />
+      </span>
       <AppIcon
         v-if="hasDetail"
         :src="chevronDownIcon"
@@ -37,6 +68,7 @@ function prettyArgs(raw?: string): string {
         :class="{ open: expanded }"
       />
     </button>
+    <div v-if="entry.resultEphemeral" class="tool-ephemeral">{{ $t('agent.panel.tool.resultEphemeral') }}</div>
     <div v-if="expanded && hasDetail" class="tool-detail">
       <template v-if="entry.args">
         <div class="detail-label">{{ $t('agent.panel.tool.args') }}</div>
@@ -86,6 +118,28 @@ function prettyArgs(raw?: string): string {
   flex: 1 1 auto;
   min-width: 0;
 }
+/* run_sql quick copy — quiet by default, lights up on hover. */
+.tool-copy {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--catdb-rounded-sm);
+  color: var(--catdb-text-tertiary);
+  transition: background 130ms ease-out;
+}
+.tool-copy:hover { background: var(--catdb-hover-fill); color: var(--catdb-text-primary); }
+.tool-copy:active { background: var(--catdb-pressed-fill); }
+
+/* History-restored run_sql: the inline table was event-only (§7) — hint line. */
+.tool-ephemeral {
+  padding: 0 8px 5px 27px;
+  font-size: var(--catdb-fs-mini);
+  color: var(--catdb-text-tertiary);
+}
+
 /* Collapsed points right (>), expanded points down (v). */
 .tool-caret {
   flex: 0 0 auto;

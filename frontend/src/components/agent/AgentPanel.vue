@@ -374,8 +374,23 @@ function historyToEntries(msgs: agentApi.AgentMessage[]): Entry[] {
       }
     } else if (m.role === 'tool' && c.result) {
       const te = toolById.get(c.result.callId)
-      if (te) { te.result = c.result.content; te.isError = !!c.result.isError; te.summary = te.summary || summarize(c.result.content) }
-      else out.push({ kind: 'tool', id: entryId(), callId: c.result.callId, name: '', phase: 'end', summary: summarize(c.result.content), isError: !!c.result.isError, result: c.result.content })
+      if (te) {
+        te.result = c.result.content
+        te.isError = !!c.result.isError
+        te.summary = te.summary || summarize(c.result.content)
+        // The inline result table came from the ephemeral agent:result event
+        // (§7 user path) and was not persisted — flag the card so it explains
+        // where the table went. Both the model view ({columns, rows}) and the
+        // privacy-off shape ({columns, rowCount}) carry a columns array.
+        if (te.name === 'run_sql' && !te.isError) {
+          try {
+            const r = JSON.parse(c.result.content) as { columns?: unknown }
+            if (Array.isArray(r.columns)) te.resultEphemeral = true
+          } catch { /* non-JSON result — not a SELECT */ }
+        }
+      } else {
+        out.push({ kind: 'tool', id: entryId(), callId: c.result.callId, name: '', phase: 'end', summary: summarize(c.result.content), isError: !!c.result.isError, result: c.result.content })
+      }
     }
   }
   return out

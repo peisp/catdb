@@ -784,6 +784,8 @@ export default {
       tool: {
         args: 'Arguments',
         result: 'Result',
+        resultEphemeral: 'The result table is shown only at execution time and is not kept after reopening the session',
+        copySql: 'Copy SQL',
       },
       sql: {
         insert: 'Insert',

@@ -775,6 +775,8 @@ export default {
       tool: {
         args: '参数',
         result: '结果',
+        resultEphemeral: '结果表格仅执行时显示，重新打开会话后不保留',
+        copySql: '复制 SQL',
       },
       sql: {
         insert: '插入编辑器',

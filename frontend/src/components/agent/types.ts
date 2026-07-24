@@ -40,6 +40,9 @@ export interface ToolEntry {
   args?: string
   /** Full tool result content, when known (tool-end event or history). */
   result?: string
+  /** History-restored run_sql SELECT: the inline result table was event-only
+   *  (§7 user path, not persisted) — the card shows a hint line instead. */
+  resultEphemeral?: boolean
 }
 
 export interface SystemEntry { kind: 'system'; id: string; text: string }
