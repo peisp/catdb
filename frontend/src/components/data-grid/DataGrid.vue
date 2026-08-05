@@ -160,8 +160,10 @@ function renderCellValue(v: any): string {
 function cellText(row: number, col: number): string {
   const v = props.rows[row]?.[col]
   if (v == null) return 'NULL'
-  // 仅展示层：多行值在单行单元格里用空格代替换行，存储值保持原样
-  return renderCellValue(v).replace(/\r?\n/g, ' ')
+  const s = renderCellValue(v)
+  // 多行值只显示第一行，省略号提示后面还有内容（canvas 会把 \n 画成空格，须截断）
+  const idx = s.search(/\r?\n/)
+  return idx < 0 ? s : s.slice(0, idx) + '…'
 }
 
 // ---- 列类型 → 编辑器种类 ----
@@ -963,7 +965,10 @@ const editorStyle = computed(() => {
   const left = rowNumW.value + (offsets.value[ed.col] ?? 0)
   const top = headerH.value + ed.row * props.rowHeight
   const width = colWidths.value[ed.col] ?? props.defaultColumnWidth
-  const height = ed.kind === 'textarea' ? Math.max(props.rowHeight * 4, 96) : props.rowHeight
+  // varchar 虽用 textarea（为了能输换行），但保持单行输入框的高度；TEXT/JSON 才展开
+  const expand =
+    ed.kind === 'textarea' && props.columns[ed.col]?.logicalType !== LogicalType.TypeString
+  const height = expand ? Math.max(props.rowHeight * 4, 96) : props.rowHeight
   return {
     left: `${left}px`,
     top: `${top}px`,
