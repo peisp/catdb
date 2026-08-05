@@ -160,7 +160,8 @@ function renderCellValue(v: any): string {
 function cellText(row: number, col: number): string {
   const v = props.rows[row]?.[col]
   if (v == null) return 'NULL'
-  return renderCellValue(v)
+  // 仅展示层：多行值在单行单元格里用空格代替换行，存储值保持原样
+  return renderCellValue(v).replace(/\r?\n/g, ' ')
 }
 
 // ---- 列类型 → 编辑器种类 ----
@@ -177,6 +178,8 @@ function pickEditorKind(col: ColumnMeta | undefined): EditorKind | null {
       return 'datetime'
     case LogicalType.TypeJSON:
     case LogicalType.TypeText:
+    // 字符串列也用 textarea：单行 <input> 无法输入换行，且粘贴时换行会被浏览器替换成空格
+    case LogicalType.TypeString:
       return 'textarea'
     case LogicalType.TypeBytes:
       // 二进制不在表格内编辑
@@ -892,7 +895,8 @@ function startEdit(row: number, col: number) {
     const el = editorEl.value
     if (!el) return
     el.focus()
-    if (el instanceof HTMLInputElement && (kind === 'input')) el.select()
+    // 短文本（input / varchar）保持打开即全选的覆盖式编辑；TEXT/JSON 不全选
+    if (kind === 'input' || meta?.logicalType === LogicalType.TypeString) el.select()
   })
 }
 
