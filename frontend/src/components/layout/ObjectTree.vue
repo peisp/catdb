@@ -331,7 +331,17 @@ const GROUP_LABEL_KEYS: Record<string, string> = {
 function renderTreeLabel({ option }: { option: TreeOption }) {
   const kind = ((option as any).extra as TreeMeta | undefined)?.kind
   const key = kind ? GROUP_LABEL_KEYS[kind] : undefined
-  return key ? t(key) : (option.label as string)
+  const label = key ? t(key) : (option.label as string)
+  // 搜索时只加粗命中的子串（与 n-tree 默认过滤一致：不区分大小写的 includes）。
+  const q = treeFilter.value.trim()
+  if (!q) return label
+  const idx = label.toLowerCase().indexOf(q.toLowerCase())
+  if (idx < 0) return label
+  return h('span', [
+    label.slice(0, idx),
+    h('span', { class: 'tree-match' }, label.slice(idx, idx + q.length)),
+    label.slice(idx + q.length),
+  ])
 }
 
 async function onLoad(node: TreeOption): Promise<boolean> {
@@ -1143,7 +1153,10 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  border-bottom: none;
 }
+/* Search match — only the matched substring goes bold (no underline). */
+.body :deep(.tree-match) { font-weight: 600; color: var(--catdb-accent); }
 .body :deep(.n-spin-container),
 .body :deep(.n-spin-content) { height: 100%; min-height: 0; }
 </style>
