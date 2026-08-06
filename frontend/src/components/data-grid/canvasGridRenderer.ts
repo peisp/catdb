@@ -216,19 +216,25 @@ function drawSortIndicator(
 
 export function drawGrid(o: DrawGridOptions): void {
   const dpr = Math.max(1, window.devicePixelRatio || 1)
-  const pw = Math.max(1, Math.ceil(o.width * dpr))
-  const ph = Math.max(1, Math.ceil(o.height * dpr))
+  const pw = Math.max(1, Math.round(o.width * dpr))
+  const ph = Math.max(1, Math.round(o.height * dpr))
   if (o.canvas.width !== pw) o.canvas.width = pw
   if (o.canvas.height !== ph) o.canvas.height = ph
   // CSS 尺寸与位图在同一帧原子更新——由 Vue 绑定异步改 style 会先绘出一帧
   // 「旧位图拉伸到新尺寸」的画面，容器连续 resize 时表现为抖动。
-  const cssW = `${o.width}px`
-  const cssH = `${o.height}px`
+  // CSS 尺寸从位图反推（pw/dpr），保证 1 位图像素 = 1 物理像素；直接用
+  // o.width 在小数 DPR（Windows 125%/150%）下会整幅重采样导致发糊。
+  const cssW = `${pw / dpr}px`
+  const cssH = `${ph / dpr}px`
   if (o.canvas.style.width !== cssW) o.canvas.style.width = cssW
   if (o.canvas.style.height !== cssH) o.canvas.style.height = cssH
   const ctx = o.canvas.getContext('2d')
   if (!ctx) return
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+  // 文字坐标吸附到整数物理像素：小数 DPR 下整数 CSS 坐标会落在小数物理
+  // 像素上，抗锯齿把笔画密的 CJK 字形晕开——表现为部分行/列文字发糊。
+  const snap = (v: number) => Math.round(v * dpr) / dpr
 
   const { theme, fonts, rowNumberWidth: rnw, headerHeight: hh, rowHeight: rh } = o
   const normalFont = `${fonts.size}px ${fonts.family}`
@@ -296,13 +302,13 @@ export function drawGrid(o: DrawGridOptions): void {
       const align = o.columns[c].align
       if (align === 'right') {
         ctx.textAlign = 'right'
-        ctx.fillText(t, x + w - CELL_PAD, y + rh / 2)
+        ctx.fillText(t, snap(x + w - CELL_PAD), snap(y + rh / 2))
       } else if (align === 'center') {
         ctx.textAlign = 'center'
-        ctx.fillText(t, x + w / 2, y + rh / 2)
+        ctx.fillText(t, snap(x + w / 2), snap(y + rh / 2))
       } else {
         ctx.textAlign = 'left'
-        ctx.fillText(t, x + CELL_PAD, y + rh / 2)
+        ctx.fillText(t, snap(x + CELL_PAD), snap(y + rh / 2))
       }
       // 删除行文本划线
       if (deleted && t) {
@@ -346,8 +352,8 @@ export function drawGrid(o: DrawGridOptions): void {
     ctx.font = rowNumFont
     ctx.fillStyle = deleted ? theme.deletedText : dirtyRow ? theme.dirtyText : theme.rowNumText
     const label = String(r + 1)
-    const tx = rnw - 8
-    const ty = y + rh / 2
+    const tx = snap(rnw - 8)
+    const ty = snap(y + rh / 2)
     ctx.fillText(label, tx, ty)
     if (deleted) {
       const tw = ctx.measureText(label).width
@@ -385,7 +391,7 @@ export function drawGrid(o: DrawGridOptions): void {
     if (o.columns[c].pk) {
       ctx.font = subtitleFont
       const kw = ctx.measureText('🔑').width
-      ctx.fillText('🔑', textX, sub ? hh * 0.32 : hh / 2)
+      ctx.fillText('🔑', snap(textX), snap(sub ? hh * 0.32 : hh / 2))
       textX += kw + 4
       maxTextW -= kw + 4
     }
@@ -393,12 +399,12 @@ export function drawGrid(o: DrawGridOptions): void {
     ctx.fillStyle = theme.text
     if (sub) {
       // 两行：字段名 + 类型
-      ctx.fillText(fitText(ctx, o.columns[c].title, maxTextW), textX, hh * 0.32)
+      ctx.fillText(fitText(ctx, o.columns[c].title, maxTextW), snap(textX), snap(hh * 0.32))
       ctx.font = subtitleFont
       ctx.fillStyle = theme.textMuted
-      ctx.fillText(fitText(ctx, sub, maxTextW), x + CELL_PAD, hh * 0.72)
+      ctx.fillText(fitText(ctx, sub, maxTextW), snap(x + CELL_PAD), snap(hh * 0.72))
     } else {
-      ctx.fillText(fitText(ctx, o.columns[c].title, maxTextW), textX, hh / 2)
+      ctx.fillText(fitText(ctx, o.columns[c].title, maxTextW), snap(textX), snap(hh / 2))
     }
     if (o.sortable) {
       const order = sortHere ? o.sortState!.order : 'none'
@@ -427,7 +433,7 @@ export function drawGrid(o: DrawGridOptions): void {
   ctx.font = rowNumFont
   ctx.fillStyle = theme.rowNumText
   ctx.textAlign = 'right'
-  ctx.fillText('#', rnw - 8, hh / 2)
+  ctx.fillText('#', snap(rnw - 8), snap(hh / 2))
   ctx.strokeStyle = theme.border
   ctx.beginPath()
   ctx.moveTo(rnb, 0)
