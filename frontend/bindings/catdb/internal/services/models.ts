@@ -17,9 +17,6 @@ import * as dbdriver$0 from "../dbdriver/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as storage$0 from "../storage/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as time$0 from "../../../time/models.js";
 
 /**
  * AgentDefaults is the persisted default Provider instance + model.
@@ -1833,7 +1830,7 @@ export class TraceSession {
     "sessionId": string;
     "title": string;
     "size": number;
-    "updatedAt": time$0.Time;
+    "updatedAt": string;
 
     /** Creates a new TraceSession instance. */
     constructor($$source: Partial<TraceSession> = {}) {
@@ -1847,7 +1844,7 @@ export class TraceSession {
             this["size"] = 0;
         }
         if (!("updatedAt" in $$source)) {
-            this["updatedAt"] = null;
+            this["updatedAt"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);

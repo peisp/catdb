@@ -8,9 +8,6 @@ import { Create as $Create } from "@wailsio/runtime";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as dbdriver$0 from "../dbdriver/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as time$0 from "../../../time/models.js";
 
 /**
  * AgentAuditEntry is one audited statement execution (§5 "审计"). Rows and
@@ -28,7 +25,7 @@ export class AgentAuditEntry {
     "durationMs"?: number | null;
     "status": string;
     "error"?: string;
-    "createdAt": time$0.Time;
+    "createdAt": string;
 
     /** Creates a new AgentAuditEntry instance. */
     constructor($$source: Partial<AgentAuditEntry> = {}) {
@@ -54,7 +51,7 @@ export class AgentAuditEntry {
             this["status"] = "";
         }
         if (!("createdAt" in $$source)) {
-            this["createdAt"] = null;
+            this["createdAt"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
@@ -85,7 +82,7 @@ export class AgentMessage {
     "tokensIn"?: number | null;
     "tokensOut"?: number | null;
     "compacted": boolean;
-    "createdAt": time$0.Time;
+    "createdAt": string;
 
     /** Creates a new AgentMessage instance. */
     constructor($$source: Partial<AgentMessage> = {}) {
@@ -108,7 +105,7 @@ export class AgentMessage {
             this["compacted"] = false;
         }
         if (!("createdAt" in $$source)) {
-            this["createdAt"] = null;
+            this["createdAt"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
@@ -143,8 +140,8 @@ export class AgentSession {
     "grants": string[];
     "currentDb"?: string;
     "currentSchema"?: string;
-    "createdAt": time$0.Time;
-    "updatedAt": time$0.Time;
+    "createdAt": string;
+    "updatedAt": string;
 
     /** Creates a new AgentSession instance. */
     constructor($$source: Partial<AgentSession> = {}) {
@@ -170,10 +167,10 @@ export class AgentSession {
             this["grants"] = [];
         }
         if (!("createdAt" in $$source)) {
-            this["createdAt"] = null;
+            this["createdAt"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("updatedAt" in $$source)) {
-            this["updatedAt"] = null;
+            this["updatedAt"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
@@ -219,8 +216,8 @@ export class ConnectionProfile {
     "params"?: { [_ in string]?: string };
     "ssl"?: dbdriver$0.SSLConfig | null;
     "sshTunnel"?: dbdriver$0.SSHConfig | null;
-    "createdAt": time$0.Time;
-    "updatedAt": time$0.Time;
+    "createdAt": string;
+    "updatedAt": string;
 
     /** Creates a new ConnectionProfile instance. */
     constructor($$source: Partial<ConnectionProfile> = {}) {
@@ -246,10 +243,10 @@ export class ConnectionProfile {
             this["user"] = "";
         }
         if (!("createdAt" in $$source)) {
-            this["createdAt"] = null;
+            this["createdAt"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("updatedAt" in $$source)) {
-            this["updatedAt"] = null;
+            this["updatedAt"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
@@ -283,7 +280,7 @@ export class Group {
     "id": string;
     "name": string;
     "sortOrder": number;
-    "createdAt": time$0.Time;
+    "createdAt": string;
 
     /** Creates a new Group instance. */
     constructor($$source: Partial<Group> = {}) {
@@ -297,7 +294,7 @@ export class Group {
             this["sortOrder"] = 0;
         }
         if (!("createdAt" in $$source)) {
-            this["createdAt"] = null;
+            this["createdAt"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
@@ -326,8 +323,8 @@ export class SavedQuery {
     "name": string;
     "sqlText": string;
     "sortOrder": number;
-    "createdAt": time$0.Time;
-    "updatedAt": time$0.Time;
+    "createdAt": string;
+    "updatedAt": string;
 
     /** Creates a new SavedQuery instance. */
     constructor($$source: Partial<SavedQuery> = {}) {
@@ -353,10 +350,10 @@ export class SavedQuery {
             this["sortOrder"] = 0;
         }
         if (!("createdAt" in $$source)) {
-            this["createdAt"] = null;
+            this["createdAt"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("updatedAt" in $$source)) {
-            this["updatedAt"] = null;
+            this["updatedAt"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
