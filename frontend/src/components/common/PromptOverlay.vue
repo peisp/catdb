@@ -9,12 +9,12 @@
 // flashy animation. The backdrop is a thin dim layer; the panel is sized
 // only as wide as a name field needs.
 import { computed, nextTick, ref, watch } from 'vue'
-import { NButton, NInput } from 'naive-ui'
+import { CButton, CInput } from '../ui'
 import { currentPrompt, resolveCurrentPrompt } from '../../api/prompts'
 
 const value = ref('')
 const errorMsg = ref<string | null>(null)
-const inputRef = ref<InstanceType<typeof NInput> | null>(null)
+const inputRef = ref<InstanceType<typeof CInput> | null>(null)
 
 const visible = computed(() => currentPrompt.value !== null)
 
@@ -45,7 +45,7 @@ function onCancel() {
   resolveCurrentPrompt(null)
 }
 
-// Esc on the input fires NInput's @keydown; backdrop click also cancels.
+// Esc on the input fires the inner input's @keydown; backdrop click also cancels.
 function onBackdropClick(e: MouseEvent) {
   if (e.target === e.currentTarget) onCancel()
 }
@@ -56,18 +56,18 @@ function onBackdropClick(e: MouseEvent) {
     <div class="prompt-panel" role="dialog" aria-modal="true">
       <div class="title">{{ currentPrompt?.title }}</div>
       <div v-if="currentPrompt?.label" class="label">{{ currentPrompt.label }}</div>
-      <n-input
+      <CInput
         ref="inputRef"
-        v-model:value="value"
+        v-model="value"
         size="small"
-        :status="errorMsg ? 'error' : undefined"
+        :error="!!errorMsg"
         @keydown.enter.prevent="onConfirm"
         @keydown.esc.prevent="onCancel"
       />
       <div v-if="errorMsg" class="err">{{ errorMsg }}</div>
       <div class="actions">
-        <n-button size="small" @click="onCancel">{{ currentPrompt?.cancelText ?? $t('common.cancel') }}</n-button>
-        <n-button size="small" type="primary" @click="onConfirm">{{ currentPrompt?.okText ?? $t('common.ok') }}</n-button>
+        <CButton size="small" @click="onCancel">{{ currentPrompt?.cancelText ?? $t('common.cancel') }}</CButton>
+        <CButton size="small" variant="primary" @click="onConfirm">{{ currentPrompt?.okText ?? $t('common.ok') }}</CButton>
       </div>
     </div>
   </div>
@@ -90,7 +90,7 @@ function onBackdropClick(e: MouseEvent) {
   width: 360px;
   max-width: calc(100vw - 32px);
   background: var(--catdb-surface-raised);
-  border: 1px solid var(--catdb-separator);
+  /* shadow token 第一段自带 0.5px 描边环,不再叠 separator 描边(DESIGN.md) */
   border-radius: var(--catdb-rounded-lg);
   box-shadow: var(--catdb-shadow-modal);
   padding: 14px 16px 12px;

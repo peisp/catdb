@@ -4,7 +4,7 @@
 // connection name, connection status, current database, server version/user,
 // theme mode, and build tag.
 import { computed, ref, watch } from 'vue'
-import { useMessage } from 'naive-ui'
+import { useMessage } from '../ui'
 import { connections as connectionsApi, system as systemApi } from '../../api'
 import { useConnectionsStore } from '../../stores/connections'
 import { useQueryStore } from '../../stores/query'

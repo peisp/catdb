@@ -4,10 +4,10 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { Window } from '@wailsio/runtime'
 import {
-  NButton, NCheckbox,
-  NRadioGroup, NRadio, NInputNumber, NProgress,
-  NSpin, useMessage,
-} from 'naive-ui'
+  CButton, CCheckbox,
+  CRadioGroup, CRadio, CInputNumber, CProgress,
+  CSpin, useMessage,
+} from '../ui'
 import { useConnectionsStore } from '../../stores/connections'
 // Aliased: several arrow params in this file already bind the name `t`.
 import { t as tr } from '../../i18n'
@@ -328,7 +328,7 @@ function onClose() {
     </header>
     <main class="body">
       <div v-if="loading" class="loading">
-        <n-spin size="small" />
+        <CSpin :size="14" />
       </div>
       <div v-else-if="loadError" class="error">{{ loadError }}</div>
       <template v-else>
@@ -433,19 +433,19 @@ function onClose() {
 
             <!-- Options -->
             <div class="section options-row">
-              <n-checkbox v-model:checked="createTable" :disabled="isRunning">
+              <CCheckbox v-model="createTable" :disabled="isRunning">
                 {{ $t('transfer.createTable') }}
-              </n-checkbox>
+              </CCheckbox>
               <div class="option-group">
                 <label class="field-label">{{ $t('transfer.transferMode') }}</label>
-                <n-radio-group v-model:value="transferMode" :disabled="isRunning" size="small">
-                  <n-radio value="append">{{ $t('transfer.append') }}</n-radio>
-                  <n-radio value="overwrite">{{ $t('transfer.overwrite') }}</n-radio>
-                </n-radio-group>
+                <CRadioGroup v-model="transferMode">
+                  <CRadio value="append" :disabled="isRunning">{{ $t('transfer.append') }}</CRadio>
+                  <CRadio value="overwrite" :disabled="isRunning">{{ $t('transfer.overwrite') }}</CRadio>
+                </CRadioGroup>
               </div>
               <div class="option-group batch-size">
                 <label class="field-label">{{ $t('transfer.batchSize') }}</label>
-                <n-input-number
+                <CInputNumber
                   v-model:value="batchSize"
                   :min="100"
                   :max="10000"
@@ -459,7 +459,7 @@ function onClose() {
 
             <!-- Progress -->
             <div v-if="isRunning" class="progress-row">
-              <n-progress type="line" :percentage="66" :show-indicator="false" :height="4" :border-radius="2" />
+              <CProgress indeterminate />
               <span class="progress-text">{{ $t('transfer.transferring') }} — {{ progressRows }} {{ $t('transfer.rowsTransferred', { n: progressRows }) }}</span>
             </div>
 
@@ -482,21 +482,21 @@ function onClose() {
           <div class="footer">
             <span class="footer-time" v-if="startTime">{{ startTime }} → {{ endTime || '…' }}</span>
             <span class="footer-spacer" />
-            <n-button v-if="isRunning" type="error" size="small" @click="cancelTransfer">
+            <CButton v-if="isRunning" variant="danger" size="small" @click="cancelTransfer">
               {{ $t('transfer.cancel') }}
-            </n-button>
-            <n-button v-else size="small" @click="onClose">
+            </CButton>
+            <CButton v-else size="small" @click="onClose">
               {{ $t('common.close') }}
-            </n-button>
-            <n-button
+            </CButton>
+            <CButton
               v-if="!isRunning"
-              type="primary"
+              variant="primary"
               size="small"
               :disabled="!canStart"
               @click="startTransfer"
             >
               {{ $t('transfer.start') }}
-            </n-button>
+            </CButton>
           </div>
         </div>
       </template>
@@ -513,7 +513,7 @@ function onClose() {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--n-color);
+  background: var(--catdb-surface-content);
 }
 
 /* --- Titlebar -------------------------------------------------------------- */

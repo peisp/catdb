@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue'
-import { NSpin, useMessage } from 'naive-ui'
+import { CSpin, useMessage } from '../ui'
 import { copyText } from '../../api/system'
 import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
@@ -163,17 +163,17 @@ function onResizePointerUp() {
         <button class="ddl-close" :title="$t('common.close')" @click="emit('close')">&times;</button>
       </div>
     </div>
-    <n-spin :show="loading" class="ddl-body">
+    <CSpin :show="loading" class="ddl-body">
       <div v-if="!table && variant === 'panel'" class="ddl-empty mute">{{ $t('tablesOverview.ddlSelectHint') }}</div>
       <div v-else ref="ddlHost" class="ddl-host" />
-    </n-spin>
+    </CSpin>
   </aside>
 
   <!-- Tab variant (just the editor, no panel chrome) -->
   <div v-if="variant === 'tab'" class="ddl-tab">
-    <n-spin :show="loading" class="ddl-body">
+    <CSpin :show="loading" class="ddl-body">
       <div ref="ddlHost" class="ddl-host" />
-    </n-spin>
+    </CSpin>
   </div>
 </template>
 
@@ -186,7 +186,7 @@ function onResizePointerUp() {
   flex-direction: column;
   min-height: 0;
   border-left: 1px solid var(--catdb-separator);
-  background: var(--n-color);
+  background: var(--catdb-surface-content);
 }
 .ddl-panel > .ddl-resize.is-vertical { right: auto; left: 0; }
 .ddl-head {
@@ -236,8 +236,6 @@ function onResizePointerUp() {
 }
 .ddl-close:hover { background: var(--catdb-hover-fill); opacity: 1; }
 .ddl-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
-.ddl-body :deep(.n-spin-container),
-.ddl-body :deep(.n-spin-content) { height: 100%; min-height: 0; }
 .ddl-host { height: 100%; min-height: 0; overflow: hidden; }
 .ddl-host :deep(.cm-content),
 .ddl-host :deep(.cm-line) {

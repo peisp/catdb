@@ -6,7 +6,7 @@
 // passes in the freshly-diffed statements via :statements. Applying just
 // shells out to the parent (it knows the connId and how to refresh after).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { NButton, NEmpty, NFlex, NText, useMessage } from 'naive-ui'
+import { CButton, CEmpty, CSpin, useMessage } from '../ui'
 import { dialogs } from '../../api'
 import { copyText } from '../../api/system'
 import { Compartment, EditorState } from '@codemirror/state'
@@ -187,39 +187,39 @@ function onReset() {
       @pointercancel="onResizePointerUp"
     />
     <header class="alter-panel-head">
-      <n-text depth="3" :class="{ 'has-changes': !isEmpty }">
+      <span class="alter-panel-status" :class="{ 'has-changes': !isEmpty }">
         <template v-if="isEmpty">{{ $t('structure.alter.noChanges') }}</template>
         <template v-else>{{ $t('structure.alter.changeCount', { n: statements.length }) }}</template>
-      </n-text>
-      <n-flex :size="6">
-        <n-button
-          size="tiny"
+      </span>
+      <div class="alter-panel-actions">
+        <CButton
+          size="mini"
           :disabled="isEmpty || busy"
           @click="onReset"
         >
           {{ $t('structure.alter.discard') }}
-        </n-button>
-        <n-button
-          size="tiny"
+        </CButton>
+        <CButton
+          size="mini"
           :disabled="isEmpty"
           @click="onCopy"
         >
           {{ $t('common.copySql') }}
-        </n-button>
-        <n-button
-          size="tiny"
-          type="primary"
+        </CButton>
+        <CButton
+          size="mini"
+          variant="primary"
           :disabled="isEmpty || applyDisabled || busy"
-          :loading="busy"
           @click="onApply"
         >
+          <CSpin v-if="busy" :size="12" />
           {{ $t('common.apply') }}
-        </n-button>
-      </n-flex>
+        </CButton>
+      </div>
     </header>
     <div v-if="!isEmpty" ref="host" class="alter-panel-cm" />
     <div v-else class="alter-panel-empty">
-      <n-empty size="small" :description="$t('structure.alter.emptyDesc')" />
+      <CEmpty :description="$t('structure.alter.emptyDesc')" />
     </div>
   </section>
 </template>
@@ -232,7 +232,7 @@ function onReset() {
   min-height: 0;
   position: relative;
   border-top: var(--catdb-separator);
-  background: var(--n-card-color);
+  background: var(--catdb-surface-content);
 }
 .alter-panel-head {
   display: flex;
@@ -243,8 +243,16 @@ function onReset() {
   border-top: 1px solid var(--catdb-separator);
   border-bottom: 1px solid var(--catdb-separator);
 }
-.has-changes :deep(.n-text) {
-  color: var(--n-warning-color);
+.alter-panel-status {
+  color: var(--catdb-text-tertiary);
+}
+.alter-panel-status.has-changes {
+  color: var(--catdb-warning);
+}
+.alter-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .alter-panel-cm {
   flex: 1;

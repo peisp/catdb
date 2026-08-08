@@ -14,7 +14,7 @@
 // 新建分组 / 重命名 actions go through the in-app PromptOverlay (api/prompts)
 // because Wails v3 ships no native text-input dialog; 删除 uses the native
 // warning dialog.
-import { createDiscreteApi } from 'naive-ui'
+import { message } from '../components/ui'
 import { confirm } from './dialogs'
 import { t } from '../i18n'
 import { useConnectionsStore } from '../stores/connections'
@@ -39,8 +39,6 @@ let installed = false
 export function installSidebarContextMenuListener(): void {
   if (installed) return
   installed = true
-
-  const { message } = createDiscreteApi(['message'])
 
   on('ctx:sb-new-group', () => {
     // The sidebar renders an inline input row when it sees this event —

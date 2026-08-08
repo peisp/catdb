@@ -4,7 +4,7 @@
 // 渲染（虚拟化、列宽、选区高亮、键盘导航）全部下沉到 DataGrid；
 // 右键菜单走 Wails 原生（CLAUDE.md 规则 11），状态通过 setActiveGridContext 同步。
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useMessage } from 'naive-ui'
+import { useMessage } from '../ui'
 import DataGrid from '../data-grid/DataGrid.vue'
 import ResultFooter from './ResultFooter.vue'
 import { useTableSelection, type SelectionRange } from '../../composables/useTableSelection'
@@ -364,8 +364,8 @@ watch(() => props.editTable, async (et) => {
   padding: 2px 10px;
   border: 1px solid var(--catdb-separator);
   border-radius: var(--catdb-rounded-sm);
-  background: var(--n-color);
-  color: var(--n-text-color);
+  background: var(--catdb-surface-content);
+  color: var(--catdb-text-primary);
   cursor: pointer;
   font-family: inherit;
   line-height: 20px;

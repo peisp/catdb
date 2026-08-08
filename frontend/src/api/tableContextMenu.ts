@@ -13,7 +13,7 @@
 //
 // 删除 / 清空 走客户端确认对话框 + 真实 SQL，刷新由调用方注入的
 // `onAfterMutate` 回调触发（重新拉取表列表 + 清理元数据缓存）。
-import { createDiscreteApi } from 'naive-ui'
+import { message } from '../components/ui'
 import { confirm } from './dialogs'
 import { t } from '../i18n'
 import { quoteIdentWith, uiDialectForConnection } from './dialect'
@@ -70,7 +70,6 @@ export function setActiveTableContext(ctx: ActiveCtx): void {
  * 既被右键菜单 `ctx:tbl-rename` 调用，也被 TablesOverview 工具栏按钮直接调用。
  */
 export async function renameTable(ctx: ActiveCtx): Promise<void> {
-  const { message } = createDiscreteApi(['message'])
   const newName = await openTextPrompt({
     title: t('table.rename.title'),
     label: t('common.currentLabel', { name: displayName(ctx) }),
@@ -125,8 +124,6 @@ let installed = false
 export function installTableContextMenuListener(): void {
   if (installed) return
   installed = true
-
-  const { message } = createDiscreteApi(['message'])
 
   on('ctx:tbl-open', () => {
     if (!active) return

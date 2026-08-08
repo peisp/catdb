@@ -9,7 +9,7 @@
 //   - 每次单元格编辑 = 一次基于原行 PK 的 UPDATE
 //   - 乐观：先本地写入，applyChange 失败则 reload 整页恢复真值
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { NAlert, NButton, NInput, NSpin, NTag, useMessage } from 'naive-ui'
+import { CAlert, CButton, CInput, CTag, useMessage } from '../ui'
 import { edit as editApi, metadata as metaApi } from '../../api'
 import { genericUIDialect, quoteIdentWith, uiDialectForConnection, type UIDialect } from '../../api/dialect'
 import { on } from '../../api/events'
@@ -648,8 +648,8 @@ async function loadDdl() {
     <!-- 操作 + 过滤合一行（view bar chrome 条）：行编辑动作 | WHERE/ORDER | 面板/导出。 -->
     <div class="actionbar">
       <template v-if="addingRow">
-        <n-button size="tiny" type="primary" :disabled="loading" @click="saveNewRow">{{ $t('common.save') }}</n-button>
-        <n-button size="tiny" :disabled="loading" @click="cancelAddRow">{{ $t('common.cancel') }}</n-button>
+        <CButton size="small" variant="primary" :disabled="loading" @click="saveNewRow">{{ $t('common.save') }}</CButton>
+        <CButton size="small" :disabled="loading" @click="cancelAddRow">{{ $t('common.cancel') }}</CButton>
       </template>
       <template v-else>
         <button
@@ -672,8 +672,8 @@ async function loadDdl() {
         </button>
       </template>
       <template v-if="hasUnsavedChanges && !addingRow">
-        <n-button size="tiny" type="primary" :disabled="loading" @click="saveChanges">{{ $t('common.save') }}</n-button>
-        <n-button size="tiny" :disabled="loading" @click="discardChanges">{{ $t('common.cancel') }}</n-button>
+        <CButton size="small" variant="primary" :disabled="loading" @click="saveChanges">{{ $t('common.save') }}</CButton>
+        <CButton size="small" :disabled="loading" @click="discardChanges">{{ $t('common.cancel') }}</CButton>
       </template>
       <button type="button" class="ab-btn" :title="$t('common.refresh')" :disabled="loading" @click="load">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 3v3.5H10" /><path d="M13 6.5A5.5 5.5 0 1 0 13 11" /></svg>
@@ -688,7 +688,7 @@ async function loadDdl() {
           @clear="onFilterClear"
       />
       <span class="ab-sep" />
-      <n-tag v-if="readOnly" size="small" type="warning" class="state-tag">{{ $t('tableBrowser.readOnlyTag') }}</n-tag>
+      <CTag v-if="readOnly" kind="warning" class="state-tag">{{ $t('tableBrowser.readOnlyTag') }}</CTag>
       <button
           type="button"
           class="ab-btn"
@@ -716,9 +716,9 @@ async function loadDdl() {
       </select>
     </div>
 
-    <n-alert v-if="readOnly" type="warning" :show-icon="false" class="banner">
+    <CAlert v-if="readOnly" kind="warning" class="banner">
       {{ $t('tableBrowser.readOnlyBanner') }}
-    </n-alert>
+    </CAlert>
 
     <div class="data-area">
       <div class="data-body">
@@ -760,10 +760,9 @@ async function loadDdl() {
             <button class="cols-close" :title="$t('common.close')" @click="columnsDrawerOpen = false">×</button>
           </div>
           <div class="cols-filter">
-            <n-input
-                v-model:value="columnFilter"
+            <CInput
+                v-model="columnFilter"
                 size="small"
-                clearable
                 :placeholder="$t('tableBrowser.columnsFilter')"
             />
           </div>
@@ -845,7 +844,7 @@ async function loadDdl() {
   flex: 0 0 auto;
 }
 /* 窄宽场景（如 Agent 面板打开）：按钮/下拉保持原始宽度，溢出被 .tb 裁切而非挤变形。 */
-.actionbar > .n-button,
+.actionbar > .c-btn,
 .actionbar > .export-select { flex: 0 0 auto; }
 .ab-btn {
   display: inline-flex;
@@ -912,7 +911,7 @@ async function loadDdl() {
   flex-direction: column;
   min-height: 0;
   border-left: 1px solid var(--catdb-separator);
-  background: var(--n-color);
+  background: var(--catdb-surface-content);
 }
 /* 把手贴在面板左边缘（覆盖 ResizeHandle 默认 .is-vertical 的 right:0） */
 .cols-panel > .cols-resize.is-vertical { right: auto; left: 0; }

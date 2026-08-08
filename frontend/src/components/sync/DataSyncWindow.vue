@@ -8,7 +8,7 @@
 // target-only rows is opt-in and confirmed natively.
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Window } from '@wailsio/runtime'
-import { NButton, NCheckbox, NInputNumber, NSpin, useMessage } from 'naive-ui'
+import { CButton, CCheckbox, CInputNumber, CSpin, useMessage } from '../ui'
 import { useConnectionsStore } from '../../stores/connections'
 import { sync as syncApi, metadata as metadataApi, dialogs, connections as connectionsApi } from '../../api'
 import type { DataTableDiff } from '../../api/sync'
@@ -442,7 +442,7 @@ function sampleText(d: DataTableDiff): string {
       </div>
     </header>
     <main class="body">
-      <div v-if="loading" class="loading"><n-spin size="small" /></div>
+      <div v-if="loading" class="loading"><CSpin :size="14" /></div>
       <div v-else-if="loadError" class="error">{{ loadError }}</div>
       <template v-else>
         <div class="wrapper">
@@ -516,7 +516,7 @@ function sampleText(d: DataTableDiff): string {
                   {{ allSelected ? $t('dataSync.deselectAll') : $t('dataSync.selectAll') }}
                 </button>
               </div>
-              <n-spin :show="loadingTables" size="small">
+              <CSpin :show="loadingTables">
                 <div class="table-list" v-if="filteredTables.length > 0">
                   <label v-for="x in filteredTables" :key="x" class="table-row" :class="{ disabled: isComparing || isExecuting }">
                     <input type="checkbox" :checked="selectedTables.has(x)" :disabled="isComparing || isExecuting" @change="toggleTable(x)" />
@@ -524,7 +524,7 @@ function sampleText(d: DataTableDiff): string {
                   </label>
                 </div>
                 <div v-else class="empty-tables">{{ $t('dataSync.noTables') }}</div>
-              </n-spin>
+              </CSpin>
             </div>
 
             <!-- Live compare rows: every selected table pending → running(counts) → done -->
@@ -596,12 +596,12 @@ function sampleText(d: DataTableDiff): string {
 
           <!-- Footer -->
           <div class="footer">
-            <n-checkbox v-model:checked="allowDelete" :disabled="isComparing || isExecuting" size="small">
+            <CCheckbox v-model="allowDelete" :disabled="isComparing || isExecuting">
               {{ $t('dataSync.allowDelete') }}
-            </n-checkbox>
+            </CCheckbox>
             <div class="option-group">
               <label class="field-label">{{ $t('dataSync.batchSize') }}</label>
-              <n-input-number
+              <CInputNumber
                 v-model:value="batchSize"
                 :min="100" :max="10000" :step="100"
                 :disabled="isComparing || isExecuting"
@@ -609,24 +609,25 @@ function sampleText(d: DataTableDiff): string {
               />
             </div>
             <span class="footer-spacer" />
-            <n-button v-if="isComparing || isExecuting" type="error" size="small" @click="cancelRun">
+            <CButton v-if="isComparing || isExecuting" variant="danger" size="small" @click="cancelRun">
               {{ $t('common.cancel') }}
-            </n-button>
-            <n-button v-else size="small" @click="onClose">{{ $t('common.close') }}</n-button>
-            <n-button
-              type="default" size="small"
-              :disabled="!canCompare" :loading="isComparing"
+            </CButton>
+            <CButton v-else size="small" @click="onClose">{{ $t('common.close') }}</CButton>
+            <CButton
+              size="small"
+              :disabled="!canCompare"
               @click="runCompare"
             >
+              <CSpin v-if="isComparing" :size="12" />
               {{ $t('dataSync.compare') }}
-            </n-button>
-            <n-button
-              type="primary" size="small"
+            </CButton>
+            <CButton
+              variant="primary" size="small"
               :disabled="!compared || executableCount === 0 || isExecuting || isComparing"
               @click="runExecute"
             >
               {{ $t('dataSync.execute', { n: executableCount }) }}
-            </n-button>
+            </CButton>
           </div>
         </div>
       </template>
@@ -764,7 +765,7 @@ function sampleText(d: DataTableDiff): string {
   display: flex;
   flex-direction: column;
 }
-.tables-section :deep(.n-spin-container) { flex: 1 1 0; min-height: 0; }
+.tables-section :deep(.c-spin-wrap) { flex: 1 1 0; min-height: 0; }
 .table-toolbar { display: flex; gap: 8px; margin-bottom: 6px; }
 .search-input {
   flex: 1; height: 26px; padding: 0 8px;

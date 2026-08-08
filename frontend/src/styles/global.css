@@ -13,19 +13,8 @@
     -moz-osx-font-smoothing: grayscale;
     -webkit-text-size-adjust: 100%;
 
-    /* 静态兜底值:真正的单一来源是 styles/tokens.ts(即 DESIGN.md),theme store
-       启动时会以 :root 内联样式注入全套 --catdb-* 并覆盖这里。此处只兜 JS 注入
-       前的一瞬,值须与 tokens.ts 一致。--n-border-color / --n-divider-color 是
-       迁移期遗留别名(Naive 子树外的旧引用),消费方迁到 --catdb-* 后删除。 */
-    --n-border-color: rgba(0, 0, 0, 0.12);
-    --n-divider-color: rgba(0, 0, 0, 0.12);
-}
-
-@media (prefers-color-scheme: dark) {
-    :root {
-        --n-border-color: rgba(255, 255, 255, 0.14);
-        --n-divider-color: rgba(255, 255, 255, 0.14);
-    }
+    /* --catdb-* 变量在启动时由 styles/tokens.ts 的 applyThemeTokens() 以 :root
+       内联样式注入(单一来源是 DESIGN.md),main.ts 在挂载前引导,无需静态兜底。 */
 }
 
 * {

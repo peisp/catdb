@@ -7,7 +7,7 @@
 // 语言 (Language) and 关于 (About, incl. check-for-updates).
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Window } from '@wailsio/runtime'
-import { NButton, useMessage } from 'naive-ui'
+import { CButton, CSpin, useMessage } from '../ui'
 import { settings as settingsApi } from '../../api'
 import type { UpdateChannel } from '../../api/update'
 import { i18n, setLocale, isSupportedLocale, t as tr } from '../../i18n'
@@ -229,9 +229,10 @@ async function onCheckUpdate() {
             </select>
           </div>
           <div class="about-actions">
-            <n-button size="small" :loading="checking" @click="onCheckUpdate">
+            <CButton size="small" :disabled="checking" @click="onCheckUpdate">
+              <CSpin v-if="checking" :size="12" />
               {{ $t('settingsWindow.checkForUpdates') }}
-            </n-button>
+            </CButton>
           </div>
         </template>
       </section>
@@ -250,7 +251,7 @@ async function onCheckUpdate() {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--n-color);
+  background: var(--catdb-surface-content);
 }
 .titlebar {
   position: relative;

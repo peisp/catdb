@@ -4,7 +4,7 @@
 // reveals the JSON args and full result (available when rendering history).
 // Error state tints the card red; a still-running step shows a spinner.
 import { computed, ref } from 'vue'
-import { NSpin, useMessage } from 'naive-ui'
+import { CSpin, useMessage } from '../ui'
 import AppIcon from '../shared/AppIcon.vue'
 import chevronDownIcon from '../../assets/icons/chevron-down.svg?raw'
 import scanEyeIcon from '../../assets/icons/scan-eye.svg?raw'
@@ -48,7 +48,7 @@ function prettyArgs(raw?: string): string {
   <div class="tool-card" :class="{ error: entry.isError }">
     <button type="button" class="tool-head" :class="{ clickable: hasDetail }" @click="hasDetail && (expanded = !expanded)">
       <AppIcon v-if="!running" :src="scanEyeIcon" :size="13" class="tool-glyph" />
-      <n-spin v-else :size="12" class="tool-spin" />
+      <CSpin v-else :size="12" class="tool-spin" />
       <span class="tool-name mono">{{ entry.name }}</span>
       <span v-if="entry.summary" class="tool-summary">{{ entry.summary }}</span>
       <span

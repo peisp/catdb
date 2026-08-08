@@ -62,7 +62,7 @@ func OpenChildWindow(name, title, url string, width, height int) {
 			Backdrop:                application.MacBackdropTranslucent,
 			TitleBar:                application.MacTitleBarHiddenInset,
 		},
-		BackgroundColour: application.NewRGB(245, 245, 247),
+		BackgroundColour: application.NewRGB(246, 246, 247),
 		URL:              url,
 	})
 

@@ -22,7 +22,7 @@
 //     computed final landing slot (post-splice compensation), so the user can
 //     double-check the destination before releasing.
 import { computed, ref } from 'vue'
-import { NButton, NCheckbox, NInput, NTooltip } from 'naive-ui'
+import { CButton, CCheckbox, CInput, CTooltip } from '../ui'
 import {
   baseTypeGroups,
   emptyColumnDraft,
@@ -125,7 +125,7 @@ function buildDragGhost(row: HTMLTableRowElement): HTMLElement {
   wrap.style.left = '-10000px'
   wrap.style.pointerEvents = 'none'
   wrap.style.width = `${refRect.width}px`
-  wrap.style.background = 'var(--n-card-color, #fff)'
+  wrap.style.background = 'var(--catdb-surface-content)'
   wrap.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.25)'
   wrap.style.borderRadius = '4px'
   wrap.style.overflow = 'hidden'
@@ -427,40 +427,34 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
             <th>{{ $t('structure.columns.thName') }}</th>
             <th>{{ $t('structure.columns.thType') }}</th>
             <th>
-              <n-tooltip placement="top" :delay="100" :show-arrow="false">
-                <template #trigger><span class="th-tip">{{ $t('structure.columns.thParams') }}</span></template>
-                {{ COL_TITLES.params }}
-              </n-tooltip>
+              <CTooltip placement="top" :delay="100" :text="COL_TITLES.params">
+                <span class="th-tip">{{ $t('structure.columns.thParams') }}</span>
+              </CTooltip>
             </th>
             <th v-if="showUnsigned" class="th-center">
-              <n-tooltip placement="top" :delay="100" :show-arrow="false">
-                <template #trigger><span class="th-tip">UN</span></template>
-                {{ COL_TITLES.unsigned }}
-              </n-tooltip>
+              <CTooltip placement="top" :delay="100" :text="COL_TITLES.unsigned">
+                <span class="th-tip">UN</span>
+              </CTooltip>
             </th>
             <th class="th-center">
-              <n-tooltip placement="top" :delay="100" :show-arrow="false">
-                <template #trigger><span class="th-tip">PK</span></template>
-                {{ COL_TITLES.pk }}
-              </n-tooltip>
+              <CTooltip placement="top" :delay="100" :text="COL_TITLES.pk">
+                <span class="th-tip">PK</span>
+              </CTooltip>
             </th>
             <th class="th-center">
-              <n-tooltip placement="top" :delay="100" :show-arrow="false">
-                <template #trigger><span class="th-tip">NN</span></template>
-                {{ COL_TITLES.nn }}
-              </n-tooltip>
+              <CTooltip placement="top" :delay="100" :text="COL_TITLES.nn">
+                <span class="th-tip">NN</span>
+              </CTooltip>
             </th>
             <th class="th-center">
-              <n-tooltip placement="top" :delay="100" :show-arrow="false">
-                <template #trigger><span class="th-tip">AI</span></template>
-                {{ COL_TITLES.ai }}
-              </n-tooltip>
+              <CTooltip placement="top" :delay="100" :text="COL_TITLES.ai">
+                <span class="th-tip">AI</span>
+              </CTooltip>
             </th>
             <th>
-              <n-tooltip placement="top" :delay="100" :show-arrow="false">
-                <template #trigger><span class="th-tip">{{ $t('structure.columns.thDefault') }}</span></template>
-                {{ COL_TITLES.default }}
-              </n-tooltip>
+              <CTooltip placement="top" :delay="100" :text="COL_TITLES.default">
+                <span class="th-tip">{{ $t('structure.columns.thDefault') }}</span>
+              </CTooltip>
             </th>
             <th>{{ $t('structure.columns.thComment') }}</th>
             <th></th>
@@ -479,19 +473,18 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
               :draggable="!busy"
               @dragstart="onDragStart($event, i)"
             >
-              <n-tooltip placement="top" :delay="100" :show-arrow="false">
-                <template #trigger><span class="drag-handle">⋮⋮</span></template>
-                {{ COL_TITLES.drag }}
-              </n-tooltip>
+              <CTooltip placement="top" :delay="100" :text="COL_TITLES.drag">
+                <span class="drag-handle">⋮⋮</span>
+              </CTooltip>
             </td>
             <td class="td-idx">{{ i + 1 }}</td>
             <td>
-              <n-input
-                v-model:value="row.name"
-                size="tiny"
+              <CInput
+                v-model="row.name"
+                size="small"
                 placeholder="column_name"
                 :disabled="busy"
-                @update:value="commit"
+                @input="commit"
               />
             </td>
             <td class="td-type">
@@ -519,111 +512,100 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
               </select>
             </td>
             <td class="td-params">
-              <n-tooltip placement="top" :delay="100" :show-arrow="false">
-                <template #trigger>
-                  <input
-                    :value="row.typeParams"
-                    class="native-input params-input"
-                    :class="{ 'is-required': fmtFor(row).paramsRequired && !row.typeParams.trim() }"
-                    :placeholder="fmtFor(row).placeholder"
-                    :disabled="busy || fmtFor(row).kind === 'none'"
-                    @input="onParamsChange(row, ($event.target as HTMLInputElement).value)"
-                  />
-                </template>
-                {{ COL_TITLES.params }}
-              </n-tooltip>
+              <CTooltip placement="top" :delay="100" :text="COL_TITLES.params">
+                <input
+                  :value="row.typeParams"
+                  class="native-input params-input"
+                  :class="{ 'is-required': fmtFor(row).paramsRequired && !row.typeParams.trim() }"
+                  :placeholder="fmtFor(row).placeholder"
+                  :disabled="busy || fmtFor(row).kind === 'none'"
+                  @input="onParamsChange(row, ($event.target as HTMLInputElement).value)"
+                />
+              </CTooltip>
             </td>
             <td v-if="showUnsigned" class="td-center">
-              <n-tooltip placement="top" :delay="100" :show-arrow="false">
-                <template #trigger>
-                  <span class="td-tip-wrap">
-                    <n-checkbox
-                      v-if="fmtFor(row).supportsUnsigned"
-                      :checked="row.unsigned"
-                      :disabled="busy"
-                      @update:checked="(v) => onUnsignedChange(row, !!v)"
-                    />
-                    <span v-else class="td-na">—</span>
-                  </span>
-                </template>
-                {{ fmtFor(row).supportsUnsigned ? COL_TITLES.unsigned : $t('structure.columns.unsignedUnsupported') }}
-              </n-tooltip>
+              <CTooltip
+                placement="top"
+                :delay="100"
+                :text="fmtFor(row).supportsUnsigned ? COL_TITLES.unsigned : $t('structure.columns.unsignedUnsupported')"
+              >
+                <span class="td-tip-wrap">
+                  <CCheckbox
+                    v-if="fmtFor(row).supportsUnsigned"
+                    :model-value="row.unsigned"
+                    :disabled="busy"
+                    @update:model-value="(v) => onUnsignedChange(row, !!v)"
+                  />
+                  <span v-else class="td-na">—</span>
+                </span>
+              </CTooltip>
             </td>
             <td class="td-center">
-              <n-tooltip placement="top" :delay="100" :show-arrow="false">
-                <template #trigger>
-                  <span class="td-tip-wrap">
-                    <n-checkbox
-                      :checked="row.isPrimaryKey"
-                      :disabled="busy"
-                      @update:checked="(v) => onPkChange(row, !!v)"
-                    />
-                  </span>
-                </template>
-                {{ COL_TITLES.pk }}
-              </n-tooltip>
+              <CTooltip placement="top" :delay="100" :text="COL_TITLES.pk">
+                <span class="td-tip-wrap">
+                  <CCheckbox
+                    :model-value="row.isPrimaryKey"
+                    :disabled="busy"
+                    @update:model-value="(v) => onPkChange(row, !!v)"
+                  />
+                </span>
+              </CTooltip>
             </td>
             <td class="td-center">
-              <n-tooltip placement="top" :delay="100" :show-arrow="false">
-                <template #trigger>
-                  <span class="td-tip-wrap">
-                    <n-checkbox
-                      :checked="!row.nullable"
-                      :disabled="busy"
-                      @update:checked="(v) => { row.nullable = !v; commit() }"
-                    />
-                  </span>
-                </template>
-                {{ COL_TITLES.nn }}
-              </n-tooltip>
+              <CTooltip placement="top" :delay="100" :text="COL_TITLES.nn">
+                <span class="td-tip-wrap">
+                  <CCheckbox
+                    :model-value="!row.nullable"
+                    :disabled="busy"
+                    @update:model-value="(v) => { row.nullable = !v; commit() }"
+                  />
+                </span>
+              </CTooltip>
             </td>
             <td class="td-center">
-              <n-tooltip placement="top" :delay="100" :show-arrow="false">
-                <template #trigger>
-                  <span class="td-tip-wrap">
-                    <n-checkbox
-                      v-if="aiSelectable(row)"
-                      :checked="row.isAutoIncrement"
-                      :disabled="busy"
-                      @update:checked="(v) => onAiChange(row, !!v)"
-                    />
-                    <span v-else class="td-na">—</span>
-                  </span>
-                </template>
-                {{ aiTitle(row) }}
-              </n-tooltip>
+              <CTooltip placement="top" :delay="100" :text="aiTitle(row)">
+                <span class="td-tip-wrap">
+                  <CCheckbox
+                    v-if="aiSelectable(row)"
+                    :model-value="row.isAutoIncrement"
+                    :disabled="busy"
+                    @update:model-value="(v) => onAiChange(row, !!v)"
+                  />
+                  <span v-else class="td-na">—</span>
+                </span>
+              </CTooltip>
             </td>
             <td>
               <div class="default-cell">
-                <n-checkbox
-                  :checked="hasDefault(row)"
+                <CCheckbox
+                  :model-value="hasDefault(row)"
                   :disabled="busy"
-                  @update:checked="(v) => toggleDefault(row, !!v)"
+                  @update:model-value="(v) => toggleDefault(row, !!v)"
                 />
-                <n-input
-                  :value="row.default ?? ''"
-                  size="tiny"
+                <CInput
+                  :model-value="row.default ?? ''"
+                  size="small"
                   :placeholder="$t('structure.columns.nonePlaceholder')"
                   :disabled="busy || !hasDefault(row)"
-                  @update:value="(v: string) => setDefault(row, v)"
+                  @update:model-value="(v: string) => setDefault(row, v)"
                 />
               </div>
             </td>
             <td>
-              <n-input
-                v-model:value="row.comment"
-                size="tiny"
+              <CInput
+                v-model="row.comment"
+                size="small"
                 placeholder=""
                 :disabled="busy"
-                @update:value="commit"
+                @input="commit"
               />
             </td>
             <td class="td-actions">
-              <n-button size="tiny" quaternary :disabled="busy" :title="$t('common.delete')" @click="deleteRow(i)">✕</n-button>
+              <CButton size="mini" :disabled="busy" :title="$t('common.delete')" @click="deleteRow(i)">✕</CButton>
             </td>
           </tr>
           <tr v-if="modelValue.length === 0" class="empty-row">
-            <td :colspan="totalCols" style="text-align: center; color: var(--n-text-color-3); padding: 16px">
+            <td :colspan="totalCols" style="text-align: center; color: var(--catdb-text-tertiary); padding: 16px">
               {{ $t('structure.columns.empty') }}
             </td>
           </tr>
@@ -631,7 +613,7 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
       </table>
     </div>
     <div class="cols-toolbar">
-      <n-button size="tiny" :disabled="busy" @click="addRow()">{{ $t('structure.columns.addField') }}</n-button>
+      <CButton size="mini" :disabled="busy" @click="addRow()">{{ $t('structure.columns.addField') }}</CButton>
       <transition name="fade">
         <span v-if="showStatusChip" class="drag-status">
           <i18n-t keypath="structure.columns.dragStatus" tag="span">
@@ -670,7 +652,7 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
   top: 0;
   z-index: 1;
   background: var(--catdb-surface-chrome);
-  color: var(--n-text-color-2);
+  color: var(--catdb-text-secondary);
   font-weight: 600;
   text-align: left;
   padding: 4px 6px;
@@ -684,18 +666,18 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
 }
 .cols-table thead th.th-idx {
   text-align: right;
-  color: var(--n-text-color-3);
+  color: var(--catdb-text-tertiary);
 }
 .cols-table thead th.th-center {
   text-align: center;
 }
-/* Inline trigger for n-tooltip on header cells. The underline cue makes it
+/* Inline trigger for CTooltip on header cells. The underline cue makes it
    discoverable that hovering shows an explanation; without it the bare "UN"/
    "NN"/etc. read as static labels. */
 .th-tip {
   display: inline-block;
   cursor: help;
-  border-bottom: 1px dotted var(--n-text-color-3);
+  border-bottom: 1px dotted var(--catdb-text-tertiary);
   line-height: 1.2;
 }
 .cols-table tbody td {
@@ -707,7 +689,7 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
   padding: 0 2px 0 4px;
   cursor: grab;
   user-select: none;
-  color: var(--n-text-color-3);
+  color: var(--catdb-text-tertiary);
   text-align: center;
   font-size: var(--catdb-fs-body);
   line-height: 1;
@@ -721,7 +703,7 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
 }
 .cols-table tbody td.td-idx {
   text-align: right;
-  color: var(--n-text-color-2);
+  color: var(--catdb-text-secondary);
   user-select: none;
 }
 /* Changed rows (new or renamed) — grey out the row number as a subtle
@@ -729,13 +711,13 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
    markers in the drag-handle cell. */
 .cols-table tbody tr.is-new td.td-idx,
 .cols-table tbody tr.is-renamed td.td-idx {
-  color: var(--n-text-color-3);
+  color: var(--catdb-text-tertiary);
 }
 .cols-table tbody td.td-center {
   text-align: center;
 }
-/* Inline wrapper so n-tooltip's trigger slot has a single root element even
-   when the inner control swaps between n-checkbox and the "—" placeholder. */
+/* Inline wrapper so CTooltip's trigger has a single root element even when the
+   inner control swaps between CCheckbox and the "—" placeholder. */
 .td-tip-wrap {
   display: inline-flex;
   align-items: center;
@@ -745,12 +727,12 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
   white-space: nowrap;
   text-align: right;
 }
-.cols-table tbody td.td-actions :deep(.n-button) {
+.cols-table tbody td.td-actions :deep(.c-btn) {
   padding: 0 4px;
   min-width: 20px;
 }
 .cols-table tbody tr:hover td {
-  background: var(--n-hover-color);
+  background: var(--catdb-hover-fill);
 }
 
 /* ---- Drag visuals --------------------------------------------------------
@@ -770,24 +752,24 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
 }
 .cols-table tbody tr.is-dragging td {
   opacity: 0.4;
-  background: var(--n-color) !important;
+  background: var(--catdb-surface-content) !important;
   box-shadow: inset 0 0 0 1px var(--catdb-separator);
 }
 .cols-table tbody tr.is-dragging td.td-drag {
-  color: var(--n-primary-color);
+  color: var(--catdb-accent);
 }
 
 /* Drop indicator: 3px primary bar across the entire row */
 .cols-table tbody tr.is-drop-top td {
-  box-shadow: inset 0 3px 0 0 var(--n-primary-color);
+  box-shadow: inset 0 3px 0 0 var(--catdb-accent);
 }
 .cols-table tbody tr.is-drop-bottom td {
-  box-shadow: inset 0 -3px 0 0 var(--n-primary-color);
+  box-shadow: inset 0 -3px 0 0 var(--catdb-accent);
 }
 /* Highlighted drop target row gets a faint primary tint as backdrop */
 .cols-table tbody tr.is-drop-top td,
 .cols-table tbody tr.is-drop-bottom td {
-  background: color-mix(in srgb, var(--n-primary-color) 8%, transparent);
+  background: color-mix(in srgb, var(--catdb-accent) 8%, transparent);
 }
 
 /* Filled circle marker anchored to the drag-handle column edge — gives the
@@ -803,8 +785,8 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--n-primary-color);
-  box-shadow: 0 0 0 2px var(--n-card-color);
+  background: var(--catdb-accent);
+  box-shadow: 0 0 0 2px var(--catdb-surface-content);
   pointer-events: none;
   z-index: 2;
 }
@@ -820,7 +802,7 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
   gap: 6px;
   align-items: center;
 }
-.default-cell :deep(.n-input) {
+.default-cell :deep(.c-input) {
   flex: 1 1 auto;
   min-width: 0;
 }
@@ -829,8 +811,13 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
 .td-type,
 .td-params {
   /* Each lives in its own column now; keep them simple so the cells stay
-     vertically centered with the n-input siblings on the row. */
+     vertically centered with the CInput siblings on the row. */
   vertical-align: middle;
+}
+/* CTooltip wraps its trigger in an inline-flex span — stretch it so the
+   params input keeps filling the cell. */
+.td-params :deep(.c-tip-trigger) {
+  width: 100%;
 }
 .type-sel,
 .params-input {
@@ -844,8 +831,8 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
   padding: 2px 4px;
   border: var(--catdb-separator);
   border-radius: var(--catdb-rounded-sm);
-  background: var(--n-input-color, var(--n-card-color));
-  color: var(--n-text-color-1);
+  background: var(--catdb-surface-content);
+  color: var(--catdb-text-primary);
   outline: none;
   box-sizing: border-box;
   line-height: 1.5;
@@ -865,7 +852,7 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
 /* "—" placeholder shown in the UN column when the row's type doesn't support
    UNSIGNED — keeps the column readable instead of looking empty/broken. */
 .td-na {
-  color: var(--n-text-color-3);
+  color: var(--catdb-text-tertiary);
   user-select: none;
 }
 .cols-toolbar {
@@ -879,16 +866,16 @@ const COL_TITLES = computed<Record<string, string>>(() => ({
 /* Live "from N → to M" chip while dragging */
 .drag-status {
   font-size: var(--catdb-fs-mini);
-  color: var(--n-text-color-2);
+  color: var(--catdb-text-secondary);
   padding: 2px 8px;
   border-radius: var(--catdb-rounded-lg);
-  background: color-mix(in srgb, var(--n-primary-color) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--n-primary-color) 30%, transparent);
+  background: color-mix(in srgb, var(--catdb-accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--catdb-accent) 30%, transparent);
   white-space: nowrap;
   user-select: none;
 }
 .drag-status b {
-  color: var(--n-primary-color);
+  color: var(--catdb-accent);
   font-weight: 600;
   padding: 0 1px;
 }

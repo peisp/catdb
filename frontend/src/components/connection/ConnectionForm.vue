@@ -13,19 +13,16 @@
 // — swapping driver mid-edit would orphan saved credentials.
 import { computed, ref, watch } from 'vue'
 import {
-  NButton,
-  NCheckbox,
-  NForm,
-  NFormItem,
-  NInput,
-  NInputNumber,
-  NSelect,
-  NSpace,
-  NSpin,
-  NTabPane,
-  NTabs,
+  CButton,
+  CCheckbox,
+  CInput,
+  CInputNumber,
+  CSelect,
+  CSpin,
+  CTabPane,
+  CTabs,
   useMessage,
-} from 'naive-ui'
+} from '../ui'
 import type { ConnectionDraft, ConnectionProfile, DriverInfo } from '../../api/connections'
 import { useConnectionsStore } from '../../stores/connections'
 import { t, i18n } from '../../i18n'
@@ -441,128 +438,113 @@ function selectOptions(opts: string[]) {
     <div class="form-right">
       <!-- Right pane: header + tabs + active group fields. -->
       <div class="form-pane">
-      <!-- Header: name (wide) + group (narrow) inline. label-left keeps the
-           pattern consistent with the field rows below. -->
-      <n-form
-        label-placement="left"
-        label-width="64px"
-        require-mark-placement="right-hanging"
-        size="small"
-        class="header-form"
-      >
+      <!-- Header: name (wide) + group (narrow) inline. Labels sit left of the
+           control, matching the field rows below. -->
+      <div class="header-form">
         <div class="header-row">
-          <n-form-item :label="$t('connection.form.name')" required class="header-item header-item-grow">
-            <n-input v-model:value="name" size="small" placeholder="My DataBase" />
-          </n-form-item>
-          <n-form-item :label="$t('connection.form.group')" class="header-item header-item-group">
-            <!-- Native HTML <select> — the system's own dropdown chrome
-                 (caret, popup) reads as a real desktop control instead of a
-                 Web overlay (DESIGN.md "向原生靠拢"). The empty option acts
-                 as the "未分组" clearable choice. -->
-            <select
-              v-model="groupId"
-              class="group-select"
-            >
-              <option :value="null">{{ $t('connection.form.ungrouped') }}</option>
-              <option v-for="g in store.groups" :key="g.id" :value="g.id">{{ g.name }}</option>
-            </select>
-          </n-form-item>
+          <div class="field field-inline header-item header-item-grow">
+            <span class="field-label">{{ $t('connection.form.name') }}<i class="req">*</i></span>
+            <div class="field-ctl">
+              <CInput v-model="name" size="small" placeholder="My DataBase" />
+            </div>
+          </div>
+          <div class="field field-inline header-item header-item-group">
+            <span class="field-label">{{ $t('connection.form.group') }}</span>
+            <div class="field-ctl">
+              <!-- Native HTML <select> — the system's own dropdown chrome
+                   (caret, popup) reads as a real desktop control instead of a
+                   Web overlay (DESIGN.md "向原生靠拢"). The empty option acts
+                   as the "未分组" clearable choice. -->
+              <select
+                v-model="groupId"
+                class="group-select"
+              >
+                <option :value="null">{{ $t('connection.form.ungrouped') }}</option>
+                <option v-for="g in store.groups" :key="g.id" :value="g.id">{{ g.name }}</option>
+              </select>
+            </div>
+          </div>
           <!-- Environment label (闸 1). Same native <select> chrome as the
                group picker; raw English key is stored, label is localized. -->
-          <n-form-item :label="$t('connection.form.environment')" label-width="82px" class="header-item header-item-env">
-            <select v-model="environment" class="group-select">
-              <option v-for="o in environmentOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
-            </select>
-          </n-form-item>
+          <div class="field field-inline header-item header-item-env">
+            <span class="field-label field-label-wide">{{ $t('connection.form.environment') }}</span>
+            <div class="field-ctl">
+              <select v-model="environment" class="group-select">
+                <option v-for="o in environmentOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
+            </div>
+          </div>
         </div>
-      </n-form>
+      </div>
 
       <!-- Segmented control: centered in the window via the rail container.
            Keyed by driver: the segment capsule only re-measures on value
            change, so a driver switch that keeps the same activeGroup would
            leave a stale-sized capsule overlapping the new tab layout. -->
       <div class="tabs-wrap">
-        <n-tabs
+        <CTabs
           :key="selectedDriver?.name ?? ''"
           v-model:value="activeGroup"
-          type="segment"
-          size="small"
-          animated
           class="group-tabs"
         >
-          <n-tab-pane
+          <CTabPane
             v-for="[g, fields] in grouped"
             :key="g"
             :name="g"
             :tab="groupLabel(g)"
-            display-directive="show:lazy"
           >
-            <n-form
-              label-placement="left"
-              label-width="96px"
-              require-mark-placement="right-hanging"
-              size="small"
-              class="pane-form"
-            >
-              <n-form-item
-                v-for="f in fields"
-                :key="f.key"
-                :label="fieldLabel(f)"
-                :required="f.required"
-                :show-feedback="!!f.help || (f.type === 'password' && isEditing)"
-              >
-                <template v-if="f.type === 'select'">
-                  <n-select
+            <div class="pane-form">
+              <div v-for="f in fields" :key="f.key" class="field field-inline">
+                <span class="field-label field-label-wide">
+                  {{ fieldLabel(f) }}<i v-if="f.required" class="req">*</i>
+                </span>
+                <div class="field-ctl">
+                  <CSelect
+                    v-if="f.type === 'select'"
                     :value="getPath(values, f.key)"
                     :options="selectOptions(f.options ?? [])"
                     size="small"
                     @update:value="setPath(values, f.key, $event)"
                   />
-                </template>
-                <template v-else-if="f.type === 'number'">
-                  <n-input-number
+                  <CInputNumber
+                    v-else-if="f.type === 'number'"
                     :value="getPath(values, f.key)"
                     size="small"
                     :min="0"
-                    :show-button="false"
                     @update:value="setPath(values, f.key, $event)"
                   />
-                </template>
-                <template v-else-if="f.type === 'bool'">
-                  <n-checkbox
-                    :checked="!!getPath(values, f.key)"
-                    @update:checked="setPath(values, f.key, $event)"
+                  <CCheckbox
+                    v-else-if="f.type === 'bool'"
+                    :model-value="!!getPath(values, f.key)"
+                    @update:model-value="setPath(values, f.key, $event)"
                   />
-                </template>
-                <template v-else-if="f.type === 'password'">
-                  <n-input
-                    :value="getPath(values, f.key) ?? ''"
+                  <CInput
+                    v-else-if="f.type === 'password'"
+                    :model-value="getPath(values, f.key) ?? ''"
                     type="password"
-                    show-password-on="click"
                     size="small"
-                    @update:value="onSecretInput(f.key, $event)"
+                    @update:model-value="onSecretInput(f.key, $event)"
                   />
-                </template>
-                <template v-else>
-                  <n-input
-                    :value="getPath(values, f.key) ?? ''"
+                  <CInput
+                    v-else
+                    :model-value="getPath(values, f.key) ?? ''"
                     size="small"
-                    @update:value="setPath(values, f.key, $event)"
+                    @update:model-value="setPath(values, f.key, $event)"
                   />
-                </template>
-                <template v-if="f.help || (f.type === 'password' && isEditing)" #feedback>
-                  <span v-if="f.type === 'password' && isEditing" class="hint">
-                    {{ isCleared(f.key) ? $t('connection.form.passwordWillClear') : $t('connection.form.passwordKeepHint') }}
-                    <button type="button" class="hint-link" @click="toggleClear(f.key)">
-                      {{ isCleared(f.key) ? $t('connection.form.passwordClearUndo') : $t('connection.form.passwordClear') }}
-                    </button>
-                  </span>
-                  <span v-else class="hint">{{ fieldHelp(f) }}</span>
-                </template>
-              </n-form-item>
-            </n-form>
-          </n-tab-pane>
-        </n-tabs>
+                  <div v-if="f.help || (f.type === 'password' && isEditing)" class="field-feedback">
+                    <span v-if="f.type === 'password' && isEditing" class="hint">
+                      {{ isCleared(f.key) ? $t('connection.form.passwordWillClear') : $t('connection.form.passwordKeepHint') }}
+                      <button type="button" class="hint-link" @click="toggleClear(f.key)">
+                        {{ isCleared(f.key) ? $t('connection.form.passwordClearUndo') : $t('connection.form.passwordClear') }}
+                      </button>
+                    </span>
+                    <span v-else class="hint">{{ fieldHelp(f) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CTabPane>
+        </CTabs>
       </div>
       </div>
 
@@ -596,10 +578,13 @@ function selectOptions(opts: string[]) {
              关闭 → 测试连接 → 保存 so the primary 保存 keeps the
              rightmost (default-action) slot. -->
         <div class="actions-right">
-          <n-button v-if="testing" size="small" @click="cancelTest">{{ $t('connection.form.cancelTest') }}</n-button>
-          <n-button v-else size="small" @click="onTest" :loading="testing">{{ $t('connection.form.testConn') }}</n-button>
-          <n-button size="small" @click="emit('cancel')">{{ $t('common.close') }}</n-button>
-          <n-button size="small" type="primary" :loading="saving" @click="onSave">{{ $t('common.save') }}</n-button>
+          <CButton v-if="testing" size="small" @click="cancelTest">{{ $t('connection.form.cancelTest') }}</CButton>
+          <CButton v-else size="small" @click="onTest">{{ $t('connection.form.testConn') }}</CButton>
+          <CButton size="small" @click="emit('cancel')">{{ $t('common.close') }}</CButton>
+          <CButton size="small" variant="primary" :disabled="saving" @click="onSave">
+            <CSpin v-if="saving" :size="12" />
+            {{ $t('common.save') }}
+          </CButton>
         </div>
       </div>
     </footer>
@@ -731,19 +716,44 @@ function selectOptions(opts: string[]) {
   min-width: 0;
   padding: 0 16px;
 }
-.header-item { margin-bottom: 0 !important; min-width: 0; }
+.header-item { min-width: 0; }
 .header-item-grow { flex: 1 1 auto; }
 .header-item-group { flex: 0 0 180px; }
 .header-item-env { flex: 0 0 200px; }
-.header-form :deep(.n-form-item-feedback-wrapper) { min-height: 0; padding: 0; }
 
-/* Native <select> for the group picker — sized to align with Naive's small
-   input (28px) so the header row reads as one band. We keep the system
-   caret (no -webkit-appearance: none) since the whole point of going native
-   here is to expose the OS-drawn dropdown chrome. */
+/* --- Form rows (label left of control) ---------------------------------- */
+.field { min-width: 0; }
+.field-inline {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+.field-label {
+  flex: 0 0 64px;
+  padding-top: 4px;
+  font-size: var(--catdb-fs-small);
+  color: var(--catdb-text-primary);
+  opacity: 0.85;
+  text-align: right;
+  white-space: nowrap;
+}
+.field-label-wide { flex-basis: 96px; }
+.req {
+  color: var(--catdb-error);
+  font-style: normal;
+  margin-left: 2px;
+}
+.field-ctl { flex: 1 1 auto; min-width: 0; }
+.field-feedback { padding-top: 2px; }
+
+/* Native <select> for the group picker — sized to match CInput size="small"
+   so the header row reads as one band. We keep the system caret (no
+   -webkit-appearance: none) since the whole point of going native here is to
+   expose the OS-drawn dropdown chrome. */
 .group-select {
   width: 100%;
-  height: 28px;
+  height: var(--catdb-control-height);
   padding: 0 8px;
   font: inherit;
   font-size: var(--catdb-fs-body);
@@ -763,114 +773,22 @@ function selectOptions(opts: string[]) {
   box-shadow: var(--catdb-focus-ring);
 }
 
-/* --- Segmented control (liquid glass) -----------------------------------
-   Replaces Naive UI's default segment styling with a frosted-glass look
-   that matches the sidebar toggle in AppShell.vue. The rail gets a
-   translucent gradient + backdrop blur + specular edge; the active pill is
-   a brighter, more opaque glass layer. */
+/* --- Segmented control -------------------------------------------------
+   CTabs 自带 DESIGN.md 的分段控件样式(轨 + 选中段);这里只补外框布局与
+   面板内边距。 */
 .tabs-wrap { display: flex; flex-direction: column; min-width: 0; padding: 0 16px}
-.group-tabs :deep(.n-tabs) {
-  min-width: 0;
-  overflow: hidden;
-}
-.group-tabs :deep(.n-tabs-nav) {
-  display: flex;
-  justify-content: center;
-}
-.group-tabs :deep(.n-tabs-rail) {
-  min-width: 0;
-  margin: 0 auto;
-  padding: 3px;
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg,
-      rgba(255, 255, 255, 0.5) 0%,
-      rgba(255, 255, 255, 0.18) 100%);
-  backdrop-filter: blur(18px) saturate(180%);
-  -webkit-backdrop-filter: blur(18px) saturate(180%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.75),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.04),
-    0 0 0 0.5px rgba(0, 0, 0, 0.1),
-    0 1px 2px rgba(0, 0, 0, 0.08);
-}
-.group-tabs :deep(.n-tabs-tab) {
-  padding: 3px 16px;
-  border-radius: 8px;
-  font-size: var(--catdb-fs-small);
-  font-weight: 600;
-  color: inherit;
-  opacity: 0.7;
-  transition: opacity 120ms ease, background 120ms ease;
-}
-.group-tabs :deep(.n-tabs-tab:hover) {
-  opacity: 0.95;
-  background: rgba(255, 255, 255, 0.35);
-}
-.group-tabs :deep(.n-tabs-tab--active) {
-  opacity: 1;
-  font-weight: 600;
-  color: inherit;
-  background:
-    linear-gradient(180deg,
-      rgba(255, 255, 255, 0.85) 0%,
-      rgba(255, 255, 255, 0.55) 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.04),
-    0 0.5px 1px rgba(0, 0, 0, 0.08);
-}
-.group-tabs :deep(.n-tab-pane) {
-  padding-top: 12px;
+.group-tabs { min-width: 0; overflow: hidden; }
+.group-tabs :deep(.c-tab-pane) {
   min-width: 0;
   overflow: auto;
 }
-.group-tabs :deep(.n-tabs-pane-wrapper) {
-  min-width: 0;
-}
-
-@media (prefers-color-scheme: dark) {
-  .group-tabs :deep(.n-tabs-rail) {
-    background:
-      linear-gradient(180deg,
-        rgba(255, 255, 255, 0.12) 0%,
-        rgba(255, 255, 255, 0.04) 100%);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.18),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.3),
-      0 0 0 0.5px rgba(255, 255, 255, 0.06),
-      0 1px 2px rgba(0, 0, 0, 0.3);
-  }
-  .group-tabs :deep(.n-tabs-tab:hover) {
-    background: rgba(255, 255, 255, 0.1);
-  }
-  .group-tabs :deep(.n-tabs-tab--active) {
-    background:
-      linear-gradient(180deg,
-        rgba(255, 255, 255, 0.2) 0%,
-        rgba(255, 255, 255, 0.08) 100%);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.25),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.25),
-      0 0.5px 1px rgba(0, 0, 0, 0.25);
-  }
-}
-
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .group-tabs :deep(.n-tabs-rail) { background: rgba(255, 255, 255, 0.6); }
-  @media (prefers-color-scheme: dark) {
-    .group-tabs :deep(.n-tabs-rail) { background: rgba(255, 255, 255, 0.1); }
-  }
-}
 
 /* --- Field rows --------------------------------------------------------- */
-.pane-form { min-width: 0; }
-.pane-form :deep(.n-form-item) { margin-bottom: 8px; }
-/* When show-feedback is false the wrapper still reserves space — collapse it. */
-.pane-form :deep(.n-form-item-feedback-wrapper:empty) { min-height: 0; padding: 0; }
-.pane-form :deep(.n-form-item-label) {
-  font-size: var(--catdb-fs-small);
-  opacity: 0.85;
+.pane-form {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 /* --- Action bar --------------------------------------------------------
@@ -879,7 +797,7 @@ function selectOptions(opts: string[]) {
    (关闭 / 测试连接 / 保存) so 保存 keeps the default-action position. */
 .action-bar {
   border-top: 1px solid var(--catdb-separator);
-  background: var(--n-color, transparent);
+  background: transparent;
 }
 .actions {
   display: flex;

@@ -7,7 +7,7 @@
 // The diff layer composes the DDL verbatim from whatever the user typed, then
 // MySQL validates at apply time.
 import { computed } from 'vue'
-import { NButton, NInput } from 'naive-ui'
+import { CButton, CInput } from '../ui'
 import {
   emptyForeignKeyDraft,
   type ColumnDraft,
@@ -101,12 +101,12 @@ const ACTIONS = [
           >
             <td class="td-idx">{{ i + 1 }}</td>
             <td>
-              <n-input
-                v-model:value="row.name"
-                size="tiny"
+              <CInput
+                v-model="row.name"
+                size="small"
                 placeholder="fk_name"
                 :disabled="busy"
-                @update:value="commit"
+                @input="commit"
               />
             </td>
             <td>
@@ -124,21 +124,21 @@ const ACTIONS = [
             </datalist>
             </td>
             <td>
-              <n-input
-                v-model:value="row.referencedSchema"
-                size="tiny"
+              <CInput
+                v-model="row.referencedSchema"
+                size="small"
                 :placeholder="currentDb"
                 :disabled="busy"
-                @update:value="commit"
+                @input="commit"
               />
             </td>
             <td>
-              <n-input
-                v-model:value="row.referencedTable"
-                size="tiny"
+              <CInput
+                v-model="row.referencedTable"
+                size="small"
                 placeholder="table"
                 :disabled="busy"
-                @update:value="commit"
+                @input="commit"
               />
             </td>
             <td>
@@ -180,11 +180,11 @@ const ACTIONS = [
             </select>
             </td>
             <td class="td-actions">
-              <n-button size="tiny" quaternary :disabled="busy" :title="$t('common.delete')" @click="deleteRow(i)">✕</n-button>
+              <CButton size="mini" :disabled="busy" :title="$t('common.delete')" @click="deleteRow(i)">✕</CButton>
             </td>
           </tr>
           <tr v-if="modelValue.length === 0" class="empty-row">
-            <td colspan="9" style="text-align: center; color: var(--n-text-color-3); padding: 16px">
+            <td colspan="9" style="text-align: center; color: var(--catdb-text-tertiary); padding: 16px">
               {{ $t('structure.fk.empty') }}
             </td>
           </tr>
@@ -192,7 +192,7 @@ const ACTIONS = [
       </table>
     </div>
     <div class="fk-toolbar">
-      <n-button size="tiny" :disabled="busy" @click="addRow">{{ $t('structure.fk.addRow') }}</n-button>
+      <CButton size="mini" :disabled="busy" @click="addRow">{{ $t('structure.fk.addRow') }}</CButton>
     </div>
   </div>
 </template>
@@ -223,7 +223,7 @@ const ACTIONS = [
   top: 0;
   z-index: 1;
   background: var(--catdb-surface-chrome);
-  color: var(--n-text-color-2);
+  color: var(--catdb-text-secondary);
   font-weight: 600;
   text-align: left;
   padding: 4px 6px;
@@ -231,7 +231,7 @@ const ACTIONS = [
   white-space: nowrap;
   user-select: none;
 }
-.fk-table thead th.th-idx { text-align: right; color: var(--n-text-color-2); }
+.fk-table thead th.th-idx { text-align: right; color: var(--catdb-text-secondary); }
 .fk-table tbody td {
   padding: 3px 6px;
   vertical-align: middle;
@@ -239,18 +239,18 @@ const ACTIONS = [
 }
 .fk-table tbody td.td-idx {
   text-align: right;
-  color: var(--n-text-color-3);
+  color: var(--catdb-text-tertiary);
   user-select: none;
 }
 .fk-table tbody td.td-actions { text-align: right; }
-.fk-table tbody td.td-actions :deep(.n-button) {
+.fk-table tbody td.td-actions :deep(.c-btn) {
   padding: 0 4px;
   min-width: 20px;
 }
-.fk-table tbody tr:hover td { background: var(--n-hover-color); }
+.fk-table tbody tr:hover td { background: var(--catdb-hover-fill); }
 .fk-table tbody tr.is-new td:first-child::before {
   content: '+';
-  color: var(--n-success-color);
+  color: var(--catdb-success);
   margin-right: 2px;
 }
 .fk-toolbar {
@@ -268,8 +268,8 @@ const ACTIONS = [
   padding: 2px 4px;
   border: var(--catdb-separator);
   border-radius: var(--catdb-rounded-sm);
-  background: var(--n-input-color, var(--n-card-color));
-  color: var(--n-text-color-1);
+  background: var(--catdb-surface-content);
+  color: var(--catdb-text-primary);
   outline: none;
   box-sizing: border-box;
   line-height: 1.5;

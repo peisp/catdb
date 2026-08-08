@@ -9,11 +9,15 @@ import { installSidebarContextMenuListener } from './api/sidebarContextMenu'
 import { installTabContextMenuListener } from './api/tabContextMenu'
 import { installTableContextMenuListener } from './api/tableContextMenu'
 import { installTreeContextMenuListener } from './api/treeContextMenu'
+import { useThemeStore } from './stores/theme'
 import './styles/global.css'
 
 const app = createApp(App)
 app.use(createPinia())
 app.use(i18n)
+// 引导 theme store:首次实例化即把 --catdb-* token 注入 :root 并订阅系统
+// 深浅色切换。必须在挂载前完成,所有窗口路由都依赖这组变量。
+useThemeStore()
 // Subscribe once to Wails native context-menu actions.
 installConnectionContextMenuListener()
 installGridContextMenuListener()
