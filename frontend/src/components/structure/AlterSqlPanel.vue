@@ -7,6 +7,8 @@
 // shells out to the parent (it knows the connId and how to refresh after).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { CButton, CEmpty, CSpin, useMessage } from '../ui'
+import AppIcon from '../shared/AppIcon.vue'
+import scanEyeIcon from '../../assets/icons/scan-eye.svg?raw'
 import { dialogs } from '../../api'
 import { copyText } from '../../api/system'
 import { Compartment, EditorState } from '@codemirror/state'
@@ -219,7 +221,11 @@ function onReset() {
     </header>
     <div v-if="!isEmpty" ref="host" class="alter-panel-cm" />
     <div v-else class="alter-panel-empty">
-      <CEmpty :description="$t('structure.alter.emptyDesc')" />
+      <CEmpty :description="$t('structure.alter.emptyDesc')">
+        <template #icon>
+          <AppIcon :src="scanEyeIcon" :size="28" />
+        </template>
+      </CEmpty>
     </div>
   </section>
 </template>
