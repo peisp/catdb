@@ -8,7 +8,7 @@ Currently supports **MySQL**, **PostgreSQL**, **SQLite** and **DM (Dameng)**; mo
 
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)
 ![go](https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go&logoColor=white)
-![wails](https://img.shields.io/badge/Wails-v3.0.0--alpha2.106-DF0000)
+![wails](https://img.shields.io/badge/Wails-v3.0.0--beta.4-DF0000)
 ![vue](https://img.shields.io/badge/Vue-3-42b883?logo=vue.js&logoColor=white)
 ![license](https://img.shields.io/badge/license-Apache--2.0-green)
 
@@ -73,7 +73,7 @@ Currently supports **MySQL**, **PostgreSQL**, **SQLite** and **DM (Dameng)**; mo
 
 | Layer | Choice |
 |---|---|
-| Backend | Go 1.22+, [Wails v3.0.0-alpha2.106](https://v3.wails.io/) (**version pinned**) |
+| Backend | Go 1.22+, [Wails v3.0.0-beta.4](https://v3.wails.io/) (**version pinned**) |
 | Frontend | Vue 3 (`<script setup>` + Composition API) + TypeScript + Vite, Pinia for state |
 | UI components | [Naive UI](https://www.naiveui.com/) (TS-first, JS theme system) |
 | SQL editor | [CodeMirror 6](https://codemirror.net/) (`@codemirror/lang-sql` + custom completion sources) |
