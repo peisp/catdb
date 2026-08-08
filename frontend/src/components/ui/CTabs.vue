@@ -24,6 +24,7 @@ provide(C_TABS, ctx)
 
 <template>
   <div class="c-tabs">
+    <div class="railbar">
     <div class="rail" role="tablist">
       <button
         v-for="p in panes"
@@ -38,6 +39,7 @@ provide(C_TABS, ctx)
         {{ p.tab }}
       </button>
     </div>
+    </div>
     <div class="body">
       <slot />
     </div>
@@ -51,8 +53,15 @@ provide(C_TABS, ctx)
   min-height: 0;
   min-width: 0;
 }
+/* railbar:轨道的通栏容器,默认只做居中;视图可 :deep 覆写成 view bar 带
+   (chrome 底 + 底边 hairline,见 TableStructure)。 */
+.railbar {
+  display: flex;
+  justify-content: center;
+  flex: none;
+  margin-bottom: var(--catdb-space-md);
+}
 .rail {
-  align-self: center;
   display: inline-flex;
   align-items: center;
   gap: 1px;
@@ -60,7 +69,6 @@ provide(C_TABS, ctx)
   padding: 2px;
   border-radius: 7px;
   background: var(--catdb-hover-fill);
-  margin-bottom: var(--catdb-space-md);
 }
 .seg {
   display: inline-flex;

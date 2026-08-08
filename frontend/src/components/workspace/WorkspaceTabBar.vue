@@ -164,6 +164,7 @@ const overflowOptions = computed(() =>
   hiddenTabs.value.map((t) => ({
     key: t.id,
     label: tabTitle(t.title),
+    icon: TAB_ICONS[t.kind],
   })),
 )
 
@@ -271,6 +272,9 @@ function openCtx(t: QueryTabInfo) {
         <button class="tab-btn" :title="$t('tabBar.hiddenTabs')" :aria-label="$t('tabBar.hiddenTabs')">
           <AppIcon :src="chevronDownIcon" :size="13" />
         </button>
+        <template #icon="{ option }">
+          <AppIcon v-if="option.icon" :src="option.icon" :size="13" />
+        </template>
       </CDropdown>
       <button class="tab-btn" :title="$t('tabBar.newQuery')" :aria-label="$t('tabBar.newQuery')" @click="addTab">
         <AppIcon :src="plusIcon" :size="13" />

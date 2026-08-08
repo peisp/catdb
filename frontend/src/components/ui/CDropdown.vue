@@ -11,6 +11,8 @@ export interface DropdownOption {
   disabled?: boolean
   danger?: boolean
   type?: 'divider'
+  /** 消费方自定义图标数据(如 svg src),由 #icon 作用域插槽渲染。 */
+  icon?: string
 }
 
 interface Props {
@@ -89,6 +91,7 @@ onBeforeUnmount(close)
           :class="{ disabled: o.disabled, danger: o.danger }"
           @click="pick(o)"
         >
+          <span v-if="$slots.icon" class="mi-icon"><slot name="icon" :option="o" /></span>
           {{ o.label }}
         </div>
       </template>
@@ -136,6 +139,12 @@ onBeforeUnmount(close)
 }
 .item.disabled {
   opacity: 0.4;
+}
+.mi-icon {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 7px;
+  flex: none;
 }
 .div {
   height: 1px;

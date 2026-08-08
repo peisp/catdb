@@ -460,12 +460,19 @@ const newApplyDisabled = computed(() => {
   min-width: 0;
   min-height: 0;
 }
-/* 分段轨（CTabs 自带 DESIGN.md segmented control 外观）——这里只调布局：
-   窄宽场景下轨道不低于分段内容宽度，防止标签挤变形。 */
+/* 分段轨（CTabs 自带 DESIGN.md segmented control 外观）。railbar 覆写成
+   36px view bar 带：chrome 底 + 底边 hairline（DESIGN.md「view bar」，各
+   tab 类型高度统一）；窄宽场景轨道不低于分段内容宽度，防止标签挤变形。 */
+.group-tabs :deep(.railbar) {
+  height: var(--catdb-viewbar-height);
+  align-items: center;
+  background: var(--catdb-surface-chrome);
+  border-bottom: 1px solid var(--catdb-separator);
+  margin-bottom: 0;
+  overflow-x: auto;
+}
 .group-tabs :deep(.rail) {
   min-width: max-content;
-  margin: 5px auto;
-  flex: 0 0 auto;
 }
 .group-tabs :deep(.body) {
   flex: 1;
