@@ -372,7 +372,6 @@ export default {
     themeDark: 'Dark',
     themeLight: 'Light',
     themeSystemWith: 'System · {mode}',
-    themeMenuTitle: 'Switch theme',
     viewRepoOnGitHub: 'View repository on GitHub',
     viewNewVersion: 'Click to view new version v{version}',
     checkForUpdates: 'Click to check for updates',

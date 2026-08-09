@@ -364,7 +364,6 @@ export default {
     themeDark: '深色',
     themeLight: '浅色',
     themeSystemWith: '跟随系统 · {mode}',
-    themeMenuTitle: '切换主题',
     viewRepoOnGitHub: '在 GitHub 查看仓库',
     viewNewVersion: '点击查看新版本 v{version}',
     checkForUpdates: '点击检查更新',
