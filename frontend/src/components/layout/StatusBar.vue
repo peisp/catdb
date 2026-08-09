@@ -4,7 +4,7 @@
 // connection name, connection status, current database, server version/user,
 // theme mode, and build tag.
 import { computed, ref, watch } from 'vue'
-import { useMessage } from '../ui'
+import { CDropdown, useMessage } from '../ui'
 import { connections as connectionsApi, system as systemApi } from '../../api'
 import { useConnectionsStore } from '../../stores/connections'
 import { useQueryStore } from '../../stores/query'
@@ -12,6 +12,7 @@ import { useThemeStore } from '../../stores/theme'
 import { useUpdatesStore } from '../../stores/updates'
 import { t } from '../../i18n'
 import type { ConnectionProfile, ServerInfo } from '../../api/connections'
+import type { ThemePreference } from '../../api/settings'
 
 const props = defineProps<{ activeConn: ConnectionProfile | null }>()
 
@@ -53,7 +54,24 @@ watch(liveConnId, async (id) => {
   }
 }, { immediate: true })
 
-const mode = computed(() => (theme.mode === 'dark' ? 'statusBar.themeDark' : 'statusBar.themeLight'))
+// 主题槽位:点击弹出 浅色/深色/跟随系统 三选一。跟随系统时额外标出当前生效模式。
+const THEME_OPTIONS = computed(() => [
+  { key: 'light', label: t('common.themeLight') },
+  { key: 'dark', label: t('common.themeDark') },
+  { key: 'system', label: t('common.themeSystem') },
+])
+const effectiveModeLabel = computed(() =>
+  theme.mode === 'dark' ? t('statusBar.themeDark') : t('statusBar.themeLight'),
+)
+const themeLabel = computed(() =>
+  theme.preference === 'system'
+    ? t('statusBar.themeSystemWith', { mode: effectiveModeLabel.value })
+    : effectiveModeLabel.value,
+)
+function onThemeSelect(key: string | number) {
+  theme.setPreference(key as ThemePreference)
+}
+
 const appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
 
 // Click handler on the version slot: if an update is already known, open the
@@ -108,7 +126,18 @@ const versionTitle = computed(() => {
     <span v-if="serverInfo" class="sep" />
     <span v-if="serverInfo" class="slot mono">{{ serverInfo.user }}</span>
     <span class="grow" />
-    <span class="slot mono">{{ $t(mode) }}</span>
+    <CDropdown
+      placement="top-end"
+      :options="THEME_OPTIONS"
+      @select="onThemeSelect"
+    >
+      <button type="button" class="theme-btn" :title="$t('statusBar.themeMenuTitle')">
+        {{ themeLabel }}
+      </button>
+      <template #icon="{ option }">
+        <span class="theme-check">{{ option.key === theme.preference ? '✓' : '' }}</span>
+      </template>
+    </CDropdown>
     <span class="sep" />
     <button
       type="button"
@@ -160,6 +189,29 @@ const versionTitle = computed(() => {
 .slot { white-space: nowrap; }
 .sep { width: 1px; height: 12px; background: currentColor; opacity: 0.15; }
 .grow { flex: 1 1 auto; }
+
+.theme-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 5px;
+  margin: 0;
+  border: none;
+  border-radius: var(--catdb-rounded-xs);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--catdb-fs-small);
+  white-space: nowrap;
+  cursor: default;
+  transition: background 80ms ease;
+}
+.theme-btn:hover { background: var(--catdb-hover-fill); }
+.theme-check {
+  display: inline-block;
+  width: 10px;
+  text-align: center;
+}
 
 .icon-btn {
   display: inline-flex;

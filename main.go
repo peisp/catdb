@@ -107,6 +107,12 @@ func main() {
 	if loc, err := settingsSvc.GetLocale(context.Background()); err == nil {
 		wailsbridge.InitMenuLocale(loc)
 	}
+	// Same ordering rule for the theme: seed it before any window is created so
+	// the native appearance (titlebar, backdrop, webview colour scheme) is right
+	// from the first frame instead of flashing the system theme.
+	if theme, err := settingsSvc.GetTheme(context.Background()); err == nil {
+		wailsbridge.InitTheme(theme)
+	}
 	app.Menu.SetApplicationMenu(wailsbridge.BuildApplicationMenu(app))
 	wailsbridge.RegisterContextMenus(app)
 
@@ -121,8 +127,12 @@ func main() {
 			InvisibleTitleBarHeight: 30,
 			Backdrop:                application.MacBackdropTranslucent,
 			TitleBar:                application.MacTitleBarHiddenInset,
+			Appearance:              wailsbridge.MacAppearance(),
 		},
-		BackgroundColour: application.NewRGB(246, 246, 247),
+		Windows: application.WindowsWindow{
+			Theme: wailsbridge.WindowsTheme(),
+		},
+		BackgroundColour: wailsbridge.WindowBackground(),
 		URL:              "/",
 	})
 	wailsbridge.AttachCloseGuard(win)

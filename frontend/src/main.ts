@@ -16,8 +16,9 @@ const app = createApp(App)
 app.use(createPinia())
 app.use(i18n)
 // 引导 theme store:首次实例化即把 --catdb-* token 注入 :root 并订阅系统
-// 深浅色切换。必须在挂载前完成,所有窗口路由都依赖这组变量。
-useThemeStore()
+// 深浅色切换。必须在挂载前完成,所有窗口路由都依赖这组变量。init() 再读回
+// 持久化的 浅色/深色/跟随系统 偏好并订阅跨窗口同步。
+useThemeStore().init()
 // Subscribe once to Wails native context-menu actions.
 installConnectionContextMenuListener()
 installGridContextMenuListener()

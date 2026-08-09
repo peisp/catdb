@@ -10,7 +10,9 @@ import { Window } from '@wailsio/runtime'
 import { CButton, CSpin, useMessage } from '../ui'
 import { settings as settingsApi } from '../../api'
 import type { UpdateChannel } from '../../api/update'
+import type { ThemePreference } from '../../api/settings'
 import { i18n, setLocale, isSupportedLocale, t as tr } from '../../i18n'
+import { useThemeStore } from '../../stores/theme'
 import { useUpdatesStore } from '../../stores/updates'
 import UpdateDialog from '../update/UpdateDialog.vue'
 import AiProvidersPanel from './AiProvidersPanel.vue'
@@ -21,6 +23,7 @@ import AiAuditPanel from './AiAuditPanel.vue'
 
 const message = useMessage()
 const updates = useUpdatesStore()
+const theme = useThemeStore()
 
 const isMac = navigator.platform.includes('Mac')
 const isWin = !isMac
@@ -38,6 +41,7 @@ function toggleMaximise() {
 
 type Category =
   | 'language'
+  | 'appearance'
   | 'ai-providers'
   | 'ai-defaults'
   | 'ai-privacy'
@@ -45,7 +49,7 @@ type Category =
   | 'ai-audit'
   | 'about'
 const category = ref<Category>('language')
-const CATEGORIES: Category[] = ['language', 'ai-providers', 'ai-defaults', 'ai-privacy', 'ai-limits', 'ai-audit', 'about']
+const CATEGORIES: Category[] = ['language', 'appearance', 'ai-providers', 'ai-defaults', 'ai-privacy', 'ai-limits', 'ai-audit', 'about']
 // The AI sub-categories share a small group label in the rail.
 const AI_CATEGORIES: Category[] = ['ai-providers', 'ai-defaults', 'ai-privacy', 'ai-limits', 'ai-audit']
 
@@ -66,6 +70,7 @@ function applyHashSection() {
 function categoryLabel(c: Category): string {
   const keys: Record<Category, string> = {
     'language': 'settingsWindow.categoryLanguage',
+    'appearance': 'settingsWindow.categoryAppearance',
     'ai-providers': 'settingsWindow.categoryAiProviders',
     'ai-defaults': 'settingsWindow.categoryAiDefaults',
     'ai-privacy': 'settingsWindow.categoryAiPrivacy',
@@ -88,6 +93,19 @@ function onLocaleChange(e: Event) {
   if (!isSupportedLocale(code)) return
   setLocale(code) // 本窗口立即切
   void settingsApi.setLocale(code) // 持久化 + 原生菜单 + 广播其他窗口
+}
+
+// --- Appearance panel ---
+// computed so the labels re-resolve on language switch (CLAUDE.md i18n 坑 #2).
+const THEME_OPTIONS = computed(() => [
+  { value: 'light' as ThemePreference, label: tr('common.themeLight') },
+  { value: 'dark' as ThemePreference, label: tr('common.themeDark') },
+  { value: 'system' as ThemePreference, label: tr('common.themeSystem') },
+])
+function onThemeChange(e: Event) {
+  const value = (e.target as HTMLSelectElement).value as ThemePreference
+  if (value !== 'light' && value !== 'dark' && value !== 'system') return
+  theme.setPreference(value) // 本窗口立即切 + 持久化 + 广播其他窗口
 }
 
 // --- About panel ---
@@ -177,6 +195,12 @@ async function onCheckUpdate() {
           :class="{ active: category === 'language' }"
           @click="category = 'language'"
         >{{ $t(categoryLabel('language')) }}</button>
+        <button
+          type="button"
+          class="rail-item"
+          :class="{ active: category === 'appearance' }"
+          @click="category = 'appearance'"
+        >{{ $t(categoryLabel('appearance')) }}</button>
         <div class="rail-group">{{ $t('settingsWindow.categoryAi') }}</div>
         <button
           v-for="c in AI_CATEGORIES"
@@ -204,6 +228,16 @@ async function onCheckUpdate() {
             </select>
           </div>
           <p class="hint">{{ $t('settingsWindow.languageHint') }}</p>
+        </template>
+
+        <template v-else-if="category === 'appearance'">
+          <div class="field">
+            <label class="field-label">{{ $t('settingsWindow.theme') }}</label>
+            <select class="native-select" :value="theme.preference" @change="onThemeChange">
+              <option v-for="o in THEME_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</option>
+            </select>
+          </div>
+          <p class="hint">{{ $t('settingsWindow.themeHint') }}</p>
         </template>
 
         <AiProvidersPanel v-else-if="category === 'ai-providers'" />
