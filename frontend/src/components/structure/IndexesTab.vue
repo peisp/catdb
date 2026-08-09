@@ -12,7 +12,7 @@
 // concept, but every field is disabled when it's selected: the source of
 // truth for PK is the column-level checkbox in ColumnsTab.
 import { computed, ref, watch } from 'vue'
-import { NCheckbox, NInput } from 'naive-ui'
+import { CCheckbox, CInput } from '../ui'
 import ResizeHandle from '../shared/ResizeHandle.vue'
 import {
   emptyIndexDraft,
@@ -279,36 +279,35 @@ const TYPE_OPTIONS = [
 
         <div class="row">
           <div class="label">{{ $t('structure.indexes.labelName') }}</div>
-          <n-input
-            :value="selectedIndex.name"
-            size="tiny"
+          <CInput
+            :model-value="selectedIndex.name"
+            size="small"
             placeholder="idx_name"
             :disabled="busy || selectedIsPrimary"
-            @update:value="(v: string) => { selectedIndex!.name = v; commit() }"
+            @update:model-value="(v: string) => { selectedIndex!.name = v; commit() }"
           />
         </div>
 
         <div class="row">
           <div class="label">{{ $t('structure.indexes.labelComment') }}</div>
-          <n-input
-            :value="selectedIndex.comment"
-            size="tiny"
+          <CInput
+            :model-value="selectedIndex.comment"
+            size="small"
             placeholder=""
             :disabled="busy || selectedIsPrimary"
-            @update:value="(v: string) => { selectedIndex!.comment = v; commit() }"
+            @update:model-value="(v: string) => { selectedIndex!.comment = v; commit() }"
           />
         </div>
 
         <div class="row">
           <div class="label"></div>
-          <label class="inline-check">
-            <n-checkbox
-              :checked="selectedIndex.unique"
-              :disabled="busy || selectedIsPrimary"
-              @update:checked="(v: boolean) => { selectedIndex!.unique = !!v; commit() }"
-            />
-            <span>{{ $t('structure.indexes.unique') }}</span>
-          </label>
+          <CCheckbox
+            :model-value="selectedIndex.unique"
+            :disabled="busy || selectedIsPrimary"
+            @update:model-value="(v: boolean) => { selectedIndex!.unique = !!v; commit() }"
+          >
+            {{ $t('structure.indexes.unique') }}
+          </CCheckbox>
         </div>
 
         <div class="row">
@@ -437,7 +436,7 @@ const TYPE_OPTIONS = [
   justify-content: space-between;
   padding: 6px 10px;
   border-bottom: 1px solid var(--catdb-separator);
-  color: var(--n-text-color-2);
+  color: var(--catdb-text-secondary);
   user-select: none;
 }
 .ix-side-tools {
@@ -453,7 +452,7 @@ const TYPE_OPTIONS = [
 .ix-empty {
   padding: 16px;
   text-align: center;
-  color: var(--n-text-color-3);
+  color: var(--catdb-text-tertiary);
 }
 .ix-item {
   display: flex;
@@ -466,15 +465,15 @@ const TYPE_OPTIONS = [
   overflow: hidden;
 }
 .ix-item:hover {
-  background: var(--n-hover-color);
+  background: var(--catdb-hover-fill);
 }
 .ix-item.selected {
-  background: var(--n-action-color, var(--n-hover-color));
+  background: var(--catdb-hover-fill);
   border-left-color: var(--catdb-accent);
 }
 .ix-item.is-new .ix-name::before {
   content: '+';
-  color: var(--n-success-color);
+  color: var(--catdb-success);
   margin-right: 2px;
 }
 .ix-icon {
@@ -483,7 +482,7 @@ const TYPE_OPTIONS = [
   text-align: center;
   font-style: italic;
   font-weight: 600;
-  color: var(--n-text-color-3);
+  color: var(--catdb-text-tertiary);
   flex: 0 0 auto;
 }
 .ix-icon.is-unique {
@@ -493,13 +492,13 @@ const TYPE_OPTIONS = [
   flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--n-text-color-1);
+  color: var(--catdb-text-primary);
 }
 .ix-detail {
   flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--n-text-color-3);
+  color: var(--catdb-text-tertiary);
   font-size: var(--catdb-fs-mini);
 }
 
@@ -516,13 +515,13 @@ const TYPE_OPTIONS = [
 }
 .ix-empty-detail {
   margin: auto;
-  color: var(--n-text-color-3);
+  color: var(--catdb-text-tertiary);
 }
 .pk-hint {
   padding: 4px 8px;
   border-radius: var(--catdb-rounded-xs);
-  background: var(--n-action-color, var(--n-hover-color));
-  color: var(--n-text-color-3);
+  background: var(--catdb-hover-fill);
+  color: var(--catdb-text-tertiary);
   font-size: var(--catdb-fs-mini);
 }
 .row {
@@ -535,16 +534,14 @@ const TYPE_OPTIONS = [
 }
 .label {
   flex: 0 0 40px;
-  color: var(--n-text-color-2);
+  color: var(--catdb-text-secondary);
   font-size: var(--catdb-fs-small);
 }
-.inline-check {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  user-select: none;
+/* CInput is inline-flex by default — stretch it across the remaining row. */
+.row :deep(.c-input) {
+  flex: 1 1 auto;
+  min-width: 0;
 }
-
 /* ---- column editor (split) ---- */
 .col-wrapper {
   flex: 1 1 auto;
@@ -554,7 +551,7 @@ const TYPE_OPTIONS = [
   min-height: 160px;
   max-height: 240px;
   overflow: hidden;
-  background: var(--n-input-color, var(--n-card-color));
+  background: var(--catdb-surface-content);
 }
 .col-left {
   border-right: 1px solid var(--catdb-separator);
@@ -580,22 +577,22 @@ const TYPE_OPTIONS = [
   border-left: 3px solid transparent;
   cursor: pointer;
   user-select: none;
-  color: var(--n-text-color-1);
+  color: var(--catdb-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .col-item:hover {
-  background: var(--n-hover-color);
+  background: var(--catdb-hover-fill);
 }
 .col-item.active {
-  background: var(--n-action-color, var(--n-hover-color));
+  background: var(--catdb-hover-fill);
   border-left-color: var(--catdb-accent);
 }
 .col-empty {
   padding: 12px;
   text-align: center;
-  color: var(--n-text-color-3);
+  color: var(--catdb-text-tertiary);
   font-size: var(--catdb-fs-mini);
 }
 .col-right {
@@ -608,7 +605,7 @@ const TYPE_OPTIONS = [
 }
 .col-empty-detail {
   margin: auto;
-  color: var(--n-text-color-3);
+  color: var(--catdb-text-tertiary);
   font-size: var(--catdb-fs-mini);
 }
 .col-row {
@@ -618,7 +615,7 @@ const TYPE_OPTIONS = [
 }
 .col-label {
   flex: 0 0 36px;
-  color: var(--n-text-color-2);
+  color: var(--catdb-text-secondary);
 }
 
 /* ---- icon button (sidebar & col tools) ---- */
@@ -630,7 +627,7 @@ const TYPE_OPTIONS = [
   justify-content: center;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--n-text-color-2);
+  color: var(--catdb-text-secondary);
   font-size: var(--catdb-fs-body);
   line-height: 1;
   border-radius: var(--catdb-rounded-sm);
@@ -638,9 +635,9 @@ const TYPE_OPTIONS = [
   padding: 0;
 }
 .icon-btn:hover:not(:disabled) {
-  background: var(--n-hover-color);
+  background: var(--catdb-hover-fill);
   border-color: var(--catdb-separator);
-  color: var(--n-text-color-1);
+  color: var(--catdb-text-primary);
 }
 .icon-btn:disabled {
   opacity: 0.4;
@@ -656,8 +653,8 @@ const TYPE_OPTIONS = [
   padding: 2px 4px;
   border: 1px solid var(--catdb-separator);
   border-radius: var(--catdb-rounded-sm);
-  background: var(--n-input-color, var(--n-card-color));
-  color: var(--n-text-color-1);
+  background: var(--catdb-surface-content);
+  color: var(--catdb-text-primary);
   outline: none;
   box-sizing: border-box;
   cursor: pointer;

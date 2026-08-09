@@ -1,25 +1,26 @@
 ---
-version: 1.0
+version: 1.1
 name: catdb-macos-native
 description: catdb 的 UI 设计规范 —— macOS 官方应用(Finder/备忘录/Xcode 检查器)的设计语言,适配数据库管理工具的高密度桌面形态。单一系统蓝强调色、系统字体 13px 桌面字阶、hairline 分隔、克制的圆角与阴影。所有 token 定义 light/dark 双值,是前端 styles/tokens.ts 的唯一来源。
 colors:
   light:
     accent: "#007aff"              # macOS 系统蓝 controlAccentColor —— 唯一强调色
     accent-pressed: "#0062cc"      # 按下态(蓝加深)
-    accent-soft: "rgba(0, 122, 255, 0.12)"   # 强调色弱底(选中 chip、active 侧栏项)
-    text-primary: "rgba(0, 0, 0, 0.85)"      # labelColor —— 正文/控件文字
-    text-secondary: "rgba(0, 0, 0, 0.5)"     # secondaryLabelColor —— 辅助说明
-    text-tertiary: "rgba(0, 0, 0, 0.26)"     # tertiaryLabel —— 占位符/禁用/NULL
+    accent-soft: "rgba(0, 122, 255, 0.1)"   # 强调色弱底(选中 chip、active 侧栏项)
+    text-primary: "rgba(0, 0, 0, 0.88)"      # labelColor —— 正文/控件文字
+    text-secondary: "rgba(0, 0, 0, 0.52)"     # secondaryLabelColor —— 辅助说明
+    text-tertiary: "rgba(0, 0, 0, 0.28)"     # tertiaryLabel —— 占位符/禁用/NULL
     text-on-accent: "#ffffff"
-    surface-chrome: "#f3f3f3"      # 窗口铬:标题栏/工具栏/状态栏/tab 条
-    surface-sidebar: "#ececec"     # 侧栏(连接列表 + 对象树)
+    surface-chrome: "#f6f6f7"      # 窗口铬:标题栏/工具栏/状态栏/tab 条
+    surface-sidebar: "#eeeef0"     # 侧栏(连接列表 + 对象树)
     surface-content: "#ffffff"     # 内容面:SQL 编辑器/数据网格/表单
     surface-raised: "#ffffff"      # 浮层:菜单/popover/对话框
-    row-alternate: "#f7f7f7"       # 表格斑马纹偶数行
+    row-alternate: "#f7f8fa"       # 表格斑马纹偶数行
     selection-focused: "#007aff"   # 列表/树/表格选中行(拥有焦点)
-    selection-unfocused: "#dcdcdc" # 选中行(失焦)—— 灰,不抢焦点所在面板的戏
-    separator: "rgba(0, 0, 0, 0.12)"   # NSColor.separatorColor —— 面板分隔 hairline
-    control-border: "rgba(0, 0, 0, 0.18)"  # 按钮/输入框描边
+    selection-unfocused: "#e1e1e4" # 选中行(失焦)—— 灰,不抢焦点所在面板的戏
+    separator: "rgba(0, 0, 0, 0.1)"   # NSColor.separatorColor —— 面板分隔 hairline
+    control-border: "rgba(0, 0, 0, 0.15)"  # 输入框描边
+    control-bg: "#ffffff"          # 按钮/输入控件底
     hover-fill: "rgba(0, 0, 0, 0.05)"      # 无边框控件 hover 底
     pressed-fill: "rgba(0, 0, 0, 0.1)"     # 无边框控件按下底
     scrim: "rgba(0, 0, 0, 0.25)"   # 模态遮罩
@@ -29,20 +30,21 @@ colors:
   dark:
     accent: "#0a84ff"
     accent-pressed: "#409cff"
-    accent-soft: "rgba(10, 132, 255, 0.22)"
-    text-primary: "rgba(255, 255, 255, 0.85)"
+    accent-soft: "rgba(10, 132, 255, 0.2)"
+    text-primary: "rgba(255, 255, 255, 0.9)"
     text-secondary: "rgba(255, 255, 255, 0.55)"
-    text-tertiary: "rgba(255, 255, 255, 0.25)"
+    text-tertiary: "rgba(255, 255, 255, 0.28)"
     text-on-accent: "#ffffff"
-    surface-chrome: "#3d3d3d"
-    surface-sidebar: "#373737"
-    surface-content: "#333333"     # DataGrip 风格编辑面(沿用既有决策)
-    surface-raised: "#404040"
+    surface-chrome: "#2c2c2e"
+    surface-sidebar: "#242428"
+    surface-content: "#1d1d20"     # 内容面最深 —— 暗色靠明度差分层,编辑面下沉
+    surface-raised: "#323236"
     row-alternate: "rgba(255, 255, 255, 0.03)"
     selection-focused: "#0a84ff"
-    selection-unfocused: "#464646"
-    separator: "rgba(255, 255, 255, 0.14)"
-    control-border: "rgba(255, 255, 255, 0.2)"
+    selection-unfocused: "#3a3a3f"
+    separator: "rgba(255, 255, 255, 0.12)"
+    control-border: "rgba(255, 255, 255, 0.16)"
+    control-bg: "rgba(255, 255, 255, 0.09)"  # 暗色按钮浮起白底,不再与内容面同色
     hover-fill: "rgba(255, 255, 255, 0.07)"
     pressed-fill: "rgba(255, 255, 255, 0.12)"
     scrim: "rgba(0, 0, 0, 0.45)"
@@ -61,10 +63,10 @@ typography:
   mono:            { fontSize: 12px, fontWeight: 400, lineHeight: 1.5 }   # SQL 编辑器/数据单元格
   mono-small:      { fontSize: 11px, fontWeight: 400, lineHeight: 1.4 }   # 网格密集模式/行号
 rounded:
-  xs: 3px       # 行内徽标、类型 tag
-  sm: 5px       # 按钮/输入框/segmented control —— macOS 控件标准圆角
-  md: 8px       # 菜单/popover/卡片式分组
-  lg: 10px      # 对话框/sheet/设置窗口分组卡片
+  xs: 4px       # 行内徽标、类型 tag
+  sm: 6px       # 按钮/输入框/segmented control —— macOS 控件标准圆角
+  md: 10px       # 菜单/popover/卡片式分组
+  lg: 12px      # 对话框/sheet/设置窗口分组卡片
   pill: 9999px  # 计数徽标、过滤 chip
 spacing:
   xxs: 2px
@@ -87,8 +89,10 @@ metrics:
   grid-header-height: 26px
   sidebar-default-width: 210px
   focus-ring: "0 0 0 3px rgba(0, 122, 255, 0.35)"        # dark 用 rgba(10,132,255,0.4)
-  shadow-menu: "0 4px 16px rgba(0, 0, 0, 0.18)"
-  shadow-modal: "0 12px 40px rgba(0, 0, 0, 0.25)"
+  control-shadow: "0 0 0 1px rgba(0, 0, 0, 0.1), 0 0.5px 1.5px rgba(0, 0, 0, 0.1)"   # 按钮描边环+微投影;dark 用 "0 0 0 1px rgba(255,255,255,0.13), 0 0.5px 1.5px rgba(0,0,0,0.25)"
+  control-shadow-primary: "inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 0.5px 1.5px rgba(0, 0, 0, 0.18)"  # primary 顶部内高光+微投影,light/dark 同值
+  shadow-menu: "0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 10px 32px rgba(0, 0, 0, 0.16)"   # dark 用 "0 0 0 0.5px rgba(0,0,0,0.55), 0 10px 32px rgba(0,0,0,0.5)"
+  shadow-modal: "0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 24px 64px rgba(0, 0, 0, 0.28)"  # dark 用 "0 0 0 0.5px rgba(0,0,0,0.6), 0 24px 64px rgba(0,0,0,0.6)"
 ---
 
 # catdb UI 设计规范(macOS 原生风格)
@@ -103,7 +107,7 @@ catdb 的外观目标是:**放在 macOS 上像一个 Apple 官方出品的专业
 - **单一强调色**。所有"可点/已选/焦点"信号都是 `accent`(系统蓝)。禁止引入第二强调色;绿色/橙色/红色只作语义反馈(测试连接成功、警告、错误),不作装饰。
 - **原生桌面密度**。13px 基准字号、24px 行高的树与网格、28px 控件。这是专业数据库工具的信息密度,不做网页式的大留白。
 - **hairline 分隔,而非阴影分隔**。面板之间用 1px `separator` 分界;阴影只出现在真正浮起的东西上(菜单、popover、对话框)。
-- **深浅双模式同权**。每个颜色 token 都有 light/dark 双值,跟随系统 `prefers-color-scheme`,无独立开关。
+- **深浅双模式同权**。每个颜色 token 都有 light/dark 双值。用户偏好三态:浅色 / 深色 / 跟随系统(持久化在 `app_settings["ui.theme"]`,默认跟随系统,此时按 `prefers-color-scheme` 实时切换)。状态栏与设置窗口都可切换,改动即时广播到所有窗口。切换同时应用**原生外观**(macOS 走 NSAppearance,Windows 走 DWM 深色标题栏),避免只换 CSS 造成的原生铬与网页内容"阴阳脸"。
 
 **平台策略**:Windows 上不模拟 Windows 风格,统一走本规范(macOS 语言),仅字体回退到 Segoe UI。这保证跨平台品牌一致,也避免维护两套规范。
 
@@ -111,7 +115,7 @@ catdb 的外观目标是:**放在 macOS 上像一个 Apple 官方出品的专业
 
 ### 表面(Surface)层次
 
-从外到内三层灰阶,亮色模式下**越靠近数据越亮**,暗色模式下 chrome 比 content 略亮(DataGrip 惯例,让编辑面下沉):
+从外到内三层灰阶,亮色模式下**越靠近数据越亮**;暗色模式下**内容面最深、浮层最亮**,chrome 居于其间(编辑面下沉、海拔越高越亮,DataGrip 惯例):
 
 | 层 | token | 用于 |
 |---|---|---|
@@ -151,8 +155,8 @@ catdb 的外观目标是:**放在 macOS 上像一个 Apple 官方出品的专业
 
 ## 形状与深度
 
-- **圆角语法**(只有四档 + pill,不得混用中间值):`xs`(3px)行内徽标 → `sm`(5px)一切按钮/输入框 → `md`(8px)菜单与 popover → `lg`(10px)对话框。
-- **阴影只给浮层**:菜单/popover 用 `shadow-menu`,对话框用 `shadow-modal`,且都同时带 1px `separator` 描边(暗色模式下阴影不够,描边承担分离感)。按钮、卡片、工具栏、tab **永远没有阴影**。
+- **圆角语法**(只有四档 + pill,不得混用中间值):`xs`(4px)行内徽标 → `sm`(6px)一切按钮/输入框 → `md`(10px)菜单与 popover → `lg`(12px)对话框。
+- **阴影只给浮层**:菜单/popover 用 `shadow-menu`,对话框用 `shadow-modal`。阴影 token 分 light/dark 双值,且第一段自带 0.5px 描边环(暗色模式下阴影不够,由描边承担分离感),消费方**不再**额外叠 `separator` 描边。按钮用 `control-shadow`(1px 描边环 + 0.5px 微投影)作为描边实现,这是控件的"描边"而非阴影层级;卡片、工具栏、tab **永远没有阴影**。
 - **无装饰渐变**。任何表面都是纯色。**唯一例外是"玻璃材质"**(见下)。
 - **玻璃材质(Liquid Glass)**:半透明渐变 + 内侧高光的磨砂玻璃质感,对齐当前 macOS 的 Liquid Glass 语言。**只允许**用于 chrome 层的小面积分段/开关控件(侧栏开关、分段 tab 轨),整面板、卡片、按钮一律禁止。该材质是组件局部实现(多段 rgba 渐变 + inset 高光,light/dark 各一套 + `@supports` 回退),**不 token 化**;现有实现见 AppShell 侧栏开关、ConnectionForm 分组 tab、TableStructure tab 轨,新增玻璃控件以它们为准。
 - **模态遮罩**用 `scrim` token(light 黑 25% / dark 黑 45%),不自造遮罩灰。
@@ -191,8 +195,8 @@ catdb 的外观目标是:**放在 macOS 上像一个 Apple 官方出品的专业
 
 | 变体 | 形态 | 用于 |
 |---|---|---|
-| button-primary | `accent` 实底、白字、`sm` 圆角、高 28px、内边距 0 12px;按下 `accent-pressed` | 对话框默认动作、表单主动作(每个视图最多一个) |
-| button-standard | `surface-content` 底 + 1px `control-border`、`text-primary`、`sm` 圆角、高 28px | 普通动作(取消、次要操作) |
+| button-primary | `accent` 实底、白字、`sm` 圆角、高 28px、内边距 0 12px、`control-shadow-primary`(顶部内高光);按下 `accent-pressed` | 对话框默认动作、表单主动作(每个视图最多一个) |
+| button-standard | `control-bg` 底 + `control-shadow`(描边环替代 border)、`text-primary`、`sm` 圆角、高 28px | 普通动作(取消、次要操作) |
 | button-toolbar | 无边框图标钮 24×24,hover `hover-fill`、按下 `pressed-fill`、`sm` 圆角;开关型 active 态图标染 `accent` + `accent-soft` 垫底 | 工具栏、面板角落的动作 |
 | button-danger | 形同 standard,文字与图标 `error`;仅确认对话框中的破坏性动作可用 `error` 实底 | 删除连接/表/行 |
 
@@ -202,7 +206,7 @@ catdb 的外观目标是:**放在 macOS 上像一个 Apple 官方出品的专业
 
 - **input / select**:高 28px(表单)或 24px(工具栏/过滤栏内),`surface-content` 底 + 1px `control-border`,圆角 `sm`;focus 时边框转 `accent` + focus-ring;错误时边框 `error`。占位符 `text-tertiary`。
 - **搜索框**:同 input,前置 14px 放大镜图标(`text-tertiary`);macOS 风格圆角仍为 `sm`,不做 pill。
-- **checkbox / radio / switch**:交给 Naive UI,主题色映射 `accent`,尺寸 14px。
+- **checkbox / radio / switch**:自研(`components/ui`)。checkbox 14px、圆角 `xs`,选中 `accent` 实底 + 白勾;switch 轨道选中 `accent`、未选中中性灰,白色旋钮带微投影。radio 同 checkbox 规则取圆形。
 - **segmented control**:整体 `hover-fill` 底、`sm` 圆角,选中段 `surface-content` 底 + hairline 描边(macOS Big Sur 之后的形态),高 24px。
 
 ### 数据网格(canvas 自绘)
@@ -261,7 +265,8 @@ catdb 的外观目标是:**放在 macOS 上像一个 Apple 官方出品的专业
 
 ## 实现映射(给 Claude Code 的落地指引)
 
-- **单一来源链**:本文件 frontmatter → `frontend/src/styles/tokens.ts`(TS 常量,light/dark 双套)→ ① 启动时注入 `:root` CSS 变量(`--catdb-*`,theme store 切换时整组替换);② `styles/theme.ts` 由 token 生成 Naive `GlobalThemeOverrides`(`primaryColor` ← accent、`borderRadius` ← rounded.sm、字号/控件高 ← typography/metrics);③ canvas 网格与 CodeMirror 主题直接 import TS 常量。
-- 组件 scoped 样式一律 `var(--catdb-*)`;Naive 注入的 `--n-*` 变量仅在覆写 Naive 内部样式时使用。
+- **单一来源链**:本文件 frontmatter → `frontend/src/styles/tokens.ts`(TS 常量,light/dark 双套)→ ① 启动时注入 `:root` CSS 变量(`--catdb-*`,main.ts 挂载前引导,theme store 切换时整组替换);② 自研控件库与组件 scoped 样式消费 `var(--catdb-*)`;③ canvas 网格与 CodeMirror 主题直接 import TS 常量。
+- 组件 scoped 样式一律 `var(--catdb-*)`;`--n-*` 变量已随 Naive UI 移除,禁止再出现。
+- **自研控件库** `frontend/src/components/ui/`(CButton/CInput/CCheckbox/CSwitch,逐步补齐 CSelect/CSegmented):叶子控件形态的唯一实现,样式只用 `var(--catdb-*)`;Naive 只留机械结构(树虚拟化、浮层定位、modal、spin),新代码禁止新增 Naive 叶子控件。
 - 旧的 `--app-content-bg`、`editorSurface` 由 `surface-content` token 取代。
 - token 有增改时:先改本文件 frontmatter,再同步 `tokens.ts`,两处漂移视为 bug。

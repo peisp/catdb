@@ -17,7 +17,7 @@
 // Only ONE grid context can be active at a time — the latest right-click wins.
 // Context menus are inherently modal-ish (clicking elsewhere dismisses), so
 // a "stale" context is essentially impossible in practice.
-import { createDiscreteApi } from 'naive-ui'
+import { message } from '../components/ui'
 import { t } from '../i18n'
 import { useTableSelection, type SelectionRange } from '../composables/useTableSelection'
 import { genericUIDialect, uiDialectForConnection, type UIDialect } from './dialect'
@@ -103,8 +103,6 @@ export function installGridContextMenuListener(): void {
   on('ctx:grid-set-null', async () => {
     const { rows, columnNames, pkColumns, connId, db, table } = ctxState
     const sel = ctxSel.selection.value
-    const { message } = createDiscreteApi(['message'])
-
     // Can't edit from SQL results (no connId/db/table context)
     if (!sel || !connId || !db || !table || !rows.length) return
 

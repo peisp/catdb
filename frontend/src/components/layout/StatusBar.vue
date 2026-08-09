@@ -4,7 +4,11 @@
 // connection name, connection status, current database, server version/user,
 // theme mode, and build tag.
 import { computed, ref, watch } from 'vue'
-import { useMessage } from 'naive-ui'
+import { useMessage } from '../ui'
+import AppIcon from '../shared/AppIcon.vue'
+import sunIcon from '../../assets/icons/sun.svg?raw'
+import moonIcon from '../../assets/icons/moon.svg?raw'
+import monitorIcon from '../../assets/icons/monitor.svg?raw'
 import { connections as connectionsApi, system as systemApi } from '../../api'
 import { useConnectionsStore } from '../../stores/connections'
 import { useQueryStore } from '../../stores/query'
@@ -12,6 +16,7 @@ import { useThemeStore } from '../../stores/theme'
 import { useUpdatesStore } from '../../stores/updates'
 import { t } from '../../i18n'
 import type { ConnectionProfile, ServerInfo } from '../../api/connections'
+import type { ThemePreference } from '../../api/settings'
 
 const props = defineProps<{ activeConn: ConnectionProfile | null }>()
 
@@ -53,7 +58,31 @@ watch(liveConnId, async (id) => {
   }
 }, { immediate: true })
 
-const mode = computed(() => (theme.mode === 'dark' ? 'statusBar.themeDark' : 'statusBar.themeLight'))
+// 主题槽位:点击图标循环 浅色 → 深色 → 跟随系统。图标表意当前偏好,
+// title 里给完整说明(跟随系统时附实际生效模式)。
+const THEME_ICONS: Record<ThemePreference, string> = {
+  light: sunIcon,
+  dark: moonIcon,
+  system: monitorIcon,
+}
+const THEME_CYCLE: Record<ThemePreference, ThemePreference> = {
+  light: 'dark',
+  dark: 'system',
+  system: 'light',
+}
+const themeIcon = computed(() => THEME_ICONS[theme.preference])
+const effectiveModeLabel = computed(() =>
+  theme.mode === 'dark' ? t('statusBar.themeDark') : t('statusBar.themeLight'),
+)
+const themeLabel = computed(() =>
+  theme.preference === 'system'
+    ? t('statusBar.themeSystemWith', { mode: effectiveModeLabel.value })
+    : effectiveModeLabel.value,
+)
+function cycleTheme() {
+  theme.setPreference(THEME_CYCLE[theme.preference])
+}
+
 const appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
 
 // Click handler on the version slot: if an update is already known, open the
@@ -108,7 +137,9 @@ const versionTitle = computed(() => {
     <span v-if="serverInfo" class="sep" />
     <span v-if="serverInfo" class="slot mono">{{ serverInfo.user }}</span>
     <span class="grow" />
-    <span class="slot mono">{{ $t(mode) }}</span>
+    <button type="button" class="icon-btn" :title="themeLabel" @click="cycleTheme">
+      <AppIcon :src="themeIcon" :size="13" />
+    </button>
     <span class="sep" />
     <button
       type="button"

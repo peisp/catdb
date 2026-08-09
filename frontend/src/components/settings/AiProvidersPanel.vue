@@ -5,7 +5,7 @@
 // HasProviderKey reports a boolean "configured" state and the key itself is
 // never read back into the UI.
 import { computed, onMounted, reactive, ref } from 'vue'
-import { NButton, NInput, NInputNumber, NSelect, NCheckbox, NVirtualList, useMessage } from 'naive-ui'
+import { CButton, CCheckbox, CInput, CInputNumber, CSelect, CSpin, CVirtualList, useMessage } from '../ui'
 import { agentSettings, dialogs } from '../../api'
 import type { ProviderConfig, ModelInfo } from '../../api/agentSettings'
 import { t as tr } from '../../i18n'
@@ -95,6 +95,11 @@ function cancelEdit() {
 function addModelRow() {
   modelFilter.value = ''
   editing.value?.models.push({ key: ++modelUid, ID: '', ContextWindow: 128000, SupportsTools: true })
+}
+// CVirtualList hands the slot its item as `unknown`; narrow it back to the row
+// type (same reactive object, so v-model writes still land on the draft).
+function asModel(v: unknown): DraftModel {
+  return v as DraftModel
 }
 function removeModel(m: DraftModel) {
   const d = editing.value
@@ -227,7 +232,7 @@ async function testProvider(p: ProviderConfig) {
   <section class="section">
     <div class="section-head">
       <h3 class="section-title">{{ $t('agent.settings.providers.title') }}</h3>
-      <n-button size="small" @click="startAdd">{{ $t('agent.settings.providers.add') }}</n-button>
+      <CButton size="small" @click="startAdd">{{ $t('agent.settings.providers.add') }}</CButton>
     </div>
 
     <p v-if="providers.length === 0 && !editing" class="empty">
@@ -244,11 +249,12 @@ async function testProvider(p: ProviderConfig) {
           </span>
         </div>
         <div class="provider-actions">
-          <n-button size="tiny" :loading="testingId === p.id" @click="testProvider(p)">
+          <CButton size="mini" :disabled="testingId === p.id" @click="testProvider(p)">
+            <CSpin v-if="testingId === p.id" :size="12" />
             {{ testingId === p.id ? $t('agent.settings.providers.testing') : $t('agent.settings.providers.test') }}
-          </n-button>
-          <n-button size="tiny" @click="startEdit(p)">{{ $t('agent.settings.providers.edit') }}</n-button>
-          <n-button size="tiny" @click="removeProvider(p)">{{ $t('agent.settings.providers.delete') }}</n-button>
+          </CButton>
+          <CButton size="mini" @click="startEdit(p)">{{ $t('agent.settings.providers.edit') }}</CButton>
+          <CButton size="mini" @click="removeProvider(p)">{{ $t('agent.settings.providers.delete') }}</CButton>
         </div>
       </li>
     </ul>
@@ -261,18 +267,18 @@ async function testProvider(p: ProviderConfig) {
 
       <div class="form-field">
         <label class="form-label">{{ $t('agent.settings.form.name') }}</label>
-        <n-input v-model:value="editing.name" size="small" :placeholder="$t('agent.settings.form.namePlaceholder')" />
+        <CInput v-model="editing.name" size="small" :placeholder="$t('agent.settings.form.namePlaceholder')" />
       </div>
 
       <div class="form-field">
         <label class="form-label">{{ $t('agent.settings.form.type') }}</label>
-        <n-select v-model:value="editing.type" size="small" :options="TYPE_OPTIONS" />
+        <CSelect v-model:value="editing.type" size="small" :options="TYPE_OPTIONS" />
       </div>
 
       <div class="form-field">
         <label class="form-label">{{ $t('agent.settings.form.baseUrl') }}</label>
-        <n-input
-          v-model:value="editing.baseURL"
+        <CInput
+          v-model="editing.baseURL"
           size="small"
           :placeholder="editing.type === 'anthropic' ? $t('agent.settings.form.baseUrlPlaceholderAnthropic') : $t('agent.settings.form.baseUrlPlaceholderOpenAI')"
         />
@@ -280,10 +286,9 @@ async function testProvider(p: ProviderConfig) {
 
       <div class="form-field">
         <label class="form-label">{{ $t('agent.settings.form.apiKey') }}</label>
-        <n-input
-          v-model:value="editing.apiKey"
+        <CInput
+          v-model="editing.apiKey"
           type="password"
-          show-password-on="click"
           size="small"
           :placeholder="$t('agent.settings.form.apiKeyPlaceholder')"
         />
@@ -296,17 +301,17 @@ async function testProvider(p: ProviderConfig) {
         <div class="models-head">
           <label class="form-label">{{ $t('agent.settings.form.models') }} ({{ editing.models.length }})</label>
           <div class="models-head-actions">
-            <n-button size="tiny" :loading="fetchingModels" @click="fetchModels">
+            <CButton size="mini" :disabled="fetchingModels" @click="fetchModels">
+              <CSpin v-if="fetchingModels" :size="12" />
               {{ $t('agent.settings.form.fetchModels') }}
-            </n-button>
-            <n-button size="tiny" @click="addModelRow">{{ $t('agent.settings.form.addModel') }}</n-button>
+            </CButton>
+            <CButton size="mini" @click="addModelRow">{{ $t('agent.settings.form.addModel') }}</CButton>
           </div>
         </div>
-        <n-input
+        <CInput
           v-if="editing.models.length > 8 || modelFilter"
-          v-model:value="modelFilter"
+          v-model="modelFilter"
           size="small"
-          clearable
           :placeholder="$t('agent.settings.form.modelFilter')"
         />
         <div v-if="editing.models.length" class="model-head">
@@ -317,28 +322,27 @@ async function testProvider(p: ProviderConfig) {
         </div>
         <!-- Virtualized: fetched provider lists can hold hundreds of models —
              only the visible rows mount their (heavy) form controls. -->
-        <n-virtual-list
+        <CVirtualList
           v-if="editing.models.length"
           class="model-list-wrap"
           :style="{ maxHeight: '260px' }"
           :item-size="34"
           :items="filteredModels"
-          key-field="key"
         >
-          <template #default="{ item: m }">
-            <div :key="m.key" class="model-row">
-              <n-input v-model:value="m.ID" size="small" class="model-id" :placeholder="$t('agent.settings.form.modelIdPlaceholder')" />
-              <n-input-number v-model:value="m.ContextWindow" size="small" class="model-ctx" :min="0" :show-button="false" :placeholder="$t('agent.settings.form.contextWindow')" />
-              <n-checkbox v-model:checked="m.SupportsTools" class="model-tools" />
-              <n-button size="tiny" quaternary class="model-del" @click="removeModel(m)">{{ $t('agent.settings.form.removeModel') }}</n-button>
+          <template #default="{ item }">
+            <div class="model-row">
+              <CInput v-model="asModel(item).ID" size="small" class="model-id" :placeholder="$t('agent.settings.form.modelIdPlaceholder')" />
+              <CInputNumber v-model:value="asModel(item).ContextWindow" size="small" class="model-ctx" :min="0" :placeholder="$t('agent.settings.form.contextWindow')" />
+              <CCheckbox v-model="asModel(item).SupportsTools" class="model-tools" />
+              <CButton size="mini" class="model-del" @click="removeModel(asModel(item))">{{ $t('agent.settings.form.removeModel') }}</CButton>
             </div>
           </template>
-        </n-virtual-list>
+        </CVirtualList>
       </div>
 
       <div class="form-field">
         <label class="form-label">{{ $t('agent.settings.form.defaultModel') }}</label>
-        <n-select
+        <CSelect
           v-model:value="editing.defaultModel"
           size="small"
           filterable
@@ -347,8 +351,11 @@ async function testProvider(p: ProviderConfig) {
       </div>
 
       <div class="editor-actions">
-        <n-button size="small" @click="cancelEdit">{{ $t('common.cancel') }}</n-button>
-        <n-button size="small" type="primary" :loading="saving" @click="saveDraft">{{ $t('common.save') }}</n-button>
+        <CButton size="small" @click="cancelEdit">{{ $t('common.cancel') }}</CButton>
+        <CButton size="small" variant="primary" :disabled="saving" @click="saveDraft">
+          <CSpin v-if="saving" :size="12" />
+          {{ $t('common.save') }}
+        </CButton>
       </div>
     </div>
   </section>

@@ -4,8 +4,8 @@
 // drag-reorder, wheel scrolling with a hover-only overlay scrollbar, the
 // native tab context menu, and the "+" new-query button. Panes are rendered
 // by QueryWorkspace; this component only touches the query store.
-import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { NDropdown, useThemeVars } from 'naive-ui'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { CDropdown } from '../ui'
 import type { QueryTab as QueryTabInfo, TabKind } from '../../stores/query'
 import { useQueryStore } from '../../stores/query'
 import { setActiveTabContext } from '../../api/tabContextMenu'
@@ -43,11 +43,9 @@ function tabDbLine(t: QueryTabInfo): string {
 
 const props = defineProps<{ connId: string }>()
 const store = useQueryStore()
-const themeVars = useThemeVars()
 
 const tabs = computed(() => store.tabsForConn(props.connId))
 const activeId = computed(() => store.activeTab(props.connId)?.id ?? '')
-const accentStyle = computed(() => ({ '--tab-accent': themeVars.value.primaryColor }))
 
 const rootRef = ref<HTMLElement | null>(null)
 const scrollRef = ref<HTMLElement | null>(null)
@@ -99,7 +97,7 @@ function endDrag() {
 function dropStyle(id: string) {
   const d = drag.value
   if (!d.started || d.targetId !== id) return undefined
-  return { boxShadow: d.before ? 'inset 2px 0 0 0 var(--tab-accent)' : 'inset -2px 0 0 0 var(--tab-accent)' }
+  return { boxShadow: d.before ? 'inset 2px 0 0 0 var(--catdb-accent)' : 'inset -2px 0 0 0 var(--catdb-accent)' }
 }
 
 // --- overlay scrollbar (native one would claim layout height in the strip) ---
@@ -166,7 +164,7 @@ const overflowOptions = computed(() =>
   hiddenTabs.value.map((t) => ({
     key: t.id,
     label: tabTitle(t.title),
-    icon: () => h(AppIcon, { src: TAB_ICONS[t.kind], size: 13 }),
+    icon: TAB_ICONS[t.kind],
   })),
 )
 
@@ -221,7 +219,7 @@ function openCtx(t: QueryTabInfo) {
 </script>
 
 <template>
-  <div ref="rootRef" class="tabbar" :style="accentStyle" role="tablist">
+  <div ref="rootRef" class="tabbar" role="tablist">
     <div class="tabbar-strip">
     <div ref="scrollRef" class="tabbar-scroll" @scroll="updateThumb" @wheel="onWheel" @dblclick.self="addTab">
       <div
@@ -264,18 +262,20 @@ function openCtx(t: QueryTabInfo) {
     </div>
     </div>
     <div class="tabbar-controls">
-      <n-dropdown
+      <CDropdown
         v-if="thumb.show"
-        trigger="click"
         placement="bottom-end"
         :options="overflowOptions"
-        @select="onOverflowSelect"
+        @select="onOverflowSelect($event as string)"
         @update:show="onOverflowShow"
       >
         <button class="tab-btn" :title="$t('tabBar.hiddenTabs')" :aria-label="$t('tabBar.hiddenTabs')">
           <AppIcon :src="chevronDownIcon" :size="13" />
         </button>
-      </n-dropdown>
+        <template #icon="{ option }">
+          <AppIcon v-if="option.icon" :src="option.icon" :size="13" />
+        </template>
+      </CDropdown>
       <button class="tab-btn" :title="$t('tabBar.newQuery')" :aria-label="$t('tabBar.newQuery')" @click="addTab">
         <AppIcon :src="plusIcon" :size="13" />
       </button>
@@ -355,7 +355,7 @@ function openCtx(t: QueryTabInfo) {
   opacity: 0.45;
 }
 .tab:focus-visible {
-  box-shadow: inset 0 0 0 1px var(--tab-accent);
+  box-shadow: inset 0 0 0 1px var(--catdb-accent);
 }
 
 .tab-text {

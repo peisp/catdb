@@ -2,7 +2,7 @@
 // AiLimitsPanel — the "限额与压缩" settings category: agent runtime limits,
 // context compaction, and the model pricing table used for cost estimates.
 import { onMounted, ref } from 'vue'
-import { NButton, NInput, NInputNumber, NSwitch, useMessage } from 'naive-ui'
+import { CButton, CInput, CInputNumber, CSwitch, useMessage } from '../ui'
 import { useAgentRuntimeSettings } from './agentRuntime'
 import type { AgentSettings } from '../../api/agentSettings'
 import { t as tr } from '../../i18n'
@@ -68,39 +68,36 @@ async function saveLimits() {
 
     <div class="limit-row">
       <label class="form-label">{{ $t('agent.settings.limits.maxIterations') }}</label>
-      <n-input-number v-model:value="settings.maxIterations" size="small" class="limit-input" :min="1" />
+      <CInputNumber v-model:value="settings.maxIterations" size="small" class="limit-input" :min="1" />
     </div>
     <div class="limit-row">
       <label class="form-label">{{ $t('agent.settings.limits.stmtTimeout') }}</label>
-      <n-input-number v-model:value="settings.stmtTimeoutSec" size="small" class="limit-input" :min="1">
-        <template #suffix>{{ $t('agent.settings.limits.secondsUnit') }}</template>
-      </n-input-number>
+      <CInputNumber v-model:value="settings.stmtTimeoutSec" size="small" class="limit-input" :min="1" />
+      <span class="unit-hint">{{ $t('agent.settings.limits.secondsUnit') }}</span>
     </div>
     <div class="limit-row">
       <label class="form-label">{{ $t('agent.settings.limits.txIdleTimeout') }}</label>
-      <n-input-number v-model:value="settings.txIdleTimeoutSec" size="small" class="limit-input" :min="1">
-        <template #suffix>{{ $t('agent.settings.limits.secondsUnit') }}</template>
-      </n-input-number>
+      <CInputNumber v-model:value="settings.txIdleTimeoutSec" size="small" class="limit-input" :min="1" />
+      <span class="unit-hint">{{ $t('agent.settings.limits.secondsUnit') }}</span>
     </div>
     <div class="limit-row">
       <label class="form-label">{{ $t('agent.settings.limits.llmResultRows') }}</label>
-      <n-input-number v-model:value="settings.llmResultRows" size="small" class="limit-input" :min="1">
-        <template #suffix>{{ $t('agent.settings.limits.rowsUnit') }}</template>
-      </n-input-number>
+      <CInputNumber v-model:value="settings.llmResultRows" size="small" class="limit-input" :min="1" />
+      <span class="unit-hint">{{ $t('agent.settings.limits.rowsUnit') }}</span>
     </div>
     <div class="limit-row">
       <label class="form-label">{{ $t('agent.settings.limits.sessionTokenBudget') }}</label>
-      <n-input-number v-model:value="settings.sessionTokenBudget" size="small" class="limit-input" :min="0" />
+      <CInputNumber v-model:value="settings.sessionTokenBudget" size="small" class="limit-input" :min="0" />
       <span class="unit-hint">{{ $t('agent.settings.limits.sessionTokenBudgetHint') }}</span>
     </div>
 
     <div class="switch-row">
-      <n-switch v-model:value="settings.compactAuto" size="small" />
+      <CSwitch v-model="settings.compactAuto" />
       <span class="switch-label">{{ $t('agent.settings.limits.compactAuto') }}</span>
     </div>
     <div class="limit-row">
       <label class="form-label">{{ $t('agent.settings.limits.compactThreshold') }}</label>
-      <n-input-number
+      <CInputNumber
         v-model:value="settings.compactThreshold"
         size="small"
         class="limit-input"
@@ -115,7 +112,7 @@ async function saveLimits() {
     <div class="pricing-block">
       <div class="models-head">
         <label class="form-label">{{ $t('agent.settings.pricing.title') }}</label>
-        <n-button size="tiny" @click="addPricingRow">{{ $t('agent.settings.pricing.addRow') }}</n-button>
+        <CButton size="mini" @click="addPricingRow">{{ $t('agent.settings.pricing.addRow') }}</CButton>
       </div>
       <p class="hint">{{ $t('agent.settings.pricing.hint') }}</p>
       <p v-if="pricingRows.length === 0" class="empty">{{ $t('agent.settings.pricing.empty') }}</p>
@@ -127,17 +124,17 @@ async function saveLimits() {
         <span class="pc-del"></span>
       </div>
       <div v-for="(r, i) in pricingRows" :key="i" class="pricing-row">
-        <n-input v-model:value="r.model" size="small" class="pc-model" :placeholder="$t('agent.settings.pricing.modelPlaceholder')" />
-        <n-input-number v-model:value="r.inputPer1M" size="small" class="pc-num" :min="0" :show-button="false" />
-        <n-input-number v-model:value="r.outputPer1M" size="small" class="pc-num" :min="0" :show-button="false" />
-        <n-input-number v-model:value="r.cacheReadPer1M" size="small" class="pc-num" :min="0" :show-button="false" />
-        <n-button size="tiny" quaternary class="pc-del" @click="removePricingRow(i)">{{ $t('agent.settings.pricing.remove') }}</n-button>
+        <CInput v-model="r.model" size="small" class="pc-model" :placeholder="$t('agent.settings.pricing.modelPlaceholder')" />
+        <CInputNumber v-model:value="r.inputPer1M" size="small" class="pc-num" :min="0" />
+        <CInputNumber v-model:value="r.outputPer1M" size="small" class="pc-num" :min="0" />
+        <CInputNumber v-model:value="r.cacheReadPer1M" size="small" class="pc-num" :min="0" />
+        <CButton size="mini" class="pc-del" @click="removePricingRow(i)">{{ $t('agent.settings.pricing.remove') }}</CButton>
       </div>
       <p v-if="pricingRows.length" class="unit-hint">{{ $t('agent.settings.pricing.perMillion') }}</p>
     </div>
 
     <div class="editor-actions">
-      <n-button size="small" @click="saveLimits">{{ $t('common.save') }}</n-button>
+      <CButton size="small" @click="saveLimits">{{ $t('common.save') }}</CButton>
     </div>
   </section>
 </template>

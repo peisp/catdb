@@ -14,7 +14,7 @@
 // this window is a focused editor, not another shell instance.
 import { computed, onMounted, ref } from 'vue'
 import { Window } from '@wailsio/runtime'
-import { NSpin, useMessage } from 'naive-ui'
+import { CSpin, useMessage } from '../ui'
 import ConnectionForm from './ConnectionForm.vue'
 import { useConnectionsStore } from '../../stores/connections'
 import { connections as connectionsApi, system as systemApi } from '../../api'
@@ -140,7 +140,7 @@ function toggleMaximise() {
     </header>
     <main class="body">
       <div v-if="loading" class="loading">
-        <n-spin size="small" />
+        <CSpin :size="14" />
         <span>{{ $t('connectionEditor.loading') }}</span>
       </div>
       <div v-else-if="errorMessage" class="error">
@@ -166,7 +166,7 @@ function toggleMaximise() {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--n-color);
+  background: var(--catdb-surface-content);
 }
 /* Titlebar — flush with the form below (no hard border) so the entire
    window reads as one card. The platform's native traffic lights / window

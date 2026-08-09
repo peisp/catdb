@@ -2,7 +2,7 @@
 // AiDefaultsPanel — the "默认模型" settings category: which provider/model a
 // new agent session starts with.
 import { computed, onMounted, ref } from 'vue'
-import { NButton, NSelect, useMessage } from 'naive-ui'
+import { CButton, CSelect, useMessage } from '../ui'
 import { agentSettings } from '../../api'
 import type { ProviderConfig } from '../../api/agentSettings'
 import { t as tr } from '../../i18n'
@@ -35,7 +35,8 @@ async function load() {
 }
 onMounted(load)
 
-function onDefaultProviderChange(v: string) {
+function onDefaultProviderChange(value: string | number | null) {
+  const v = String(value ?? '')
   defaultProviderId.value = v
   // Reset the model to the provider's default (or first) so the pair stays valid.
   const p = providers.value.find((x) => x.id === v)
@@ -60,14 +61,14 @@ async function saveDefaults() {
     <p class="hint">{{ $t('agent.settings.defaults.hint') }}</p>
     <div class="form-field">
       <label class="form-label">{{ $t('agent.settings.defaults.provider') }}</label>
-      <n-select :value="defaultProviderId" size="small" filterable :options="defaultProviderOptions" @update:value="onDefaultProviderChange" />
+      <CSelect :value="defaultProviderId" size="small" filterable :options="defaultProviderOptions" @update:value="onDefaultProviderChange" />
     </div>
     <div class="form-field">
       <label class="form-label">{{ $t('agent.settings.defaults.model') }}</label>
-      <n-select v-model:value="defaultModel" size="small" filterable :options="defaultModelOptions" :disabled="!defaultProviderId" />
+      <CSelect v-model:value="defaultModel" size="small" filterable :options="defaultModelOptions" :disabled="!defaultProviderId" />
     </div>
     <div class="editor-actions">
-      <n-button size="small" @click="saveDefaults">{{ $t('common.save') }}</n-button>
+      <CButton size="small" @click="saveDefaults">{{ $t('common.save') }}</CButton>
     </div>
   </section>
 </template>

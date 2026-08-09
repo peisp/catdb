@@ -8,7 +8,7 @@
 // the checked statements on the target with per-statement progress.
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Window } from '@wailsio/runtime'
-import { NButton, NCheckbox, NProgress, NSpin, useMessage } from 'naive-ui'
+import { CButton, CCheckbox, CProgress, CSpin, useMessage } from '../ui'
 import { useConnectionsStore } from '../../stores/connections'
 import { sync as syncApi, metadata as metadataApi, dialogs, connections as connectionsApi } from '../../api'
 import type { SchemaObjectDiff } from '../../api/sync'
@@ -399,7 +399,7 @@ function statusLabel(s: string): string {
       </div>
     </header>
     <main class="body">
-      <div v-if="loading" class="loading"><n-spin size="small" /></div>
+      <div v-if="loading" class="loading"><CSpin :size="14" /></div>
       <div v-else-if="loadError" class="error">{{ loadError }}</div>
       <template v-else>
         <div class="wrapper">
@@ -494,10 +494,8 @@ function statusLabel(s: string): string {
 
             <!-- Execution progress -->
             <div v-if="isExecuting" class="progress-row">
-              <n-progress
-                type="line"
+              <CProgress
                 :percentage="execProgress.total ? Math.round((execProgress.index / execProgress.total) * 100) : 0"
-                :show-indicator="false" :height="4" :border-radius="2"
               />
               <span class="progress-text">{{ $t('structSync.executing', { done: execProgress.index, total: execProgress.total }) }}</span>
             </div>
@@ -513,31 +511,32 @@ function statusLabel(s: string): string {
 
           <!-- Footer -->
           <div class="footer">
-            <n-checkbox v-model:checked="stopOnError" :disabled="isExecuting" size="small">
+            <CCheckbox v-model="stopOnError" :disabled="isExecuting">
               {{ $t('structSync.stopOnError') }}
-            </n-checkbox>
+            </CCheckbox>
             <span v-if="compared" class="footer-info">
               {{ $t('structSync.selectedStatements', { n: selectedStatements.length }) }}
             </span>
             <span class="footer-spacer" />
-            <n-button v-if="isComparing || isExecuting" type="error" size="small" @click="cancelRun">
+            <CButton v-if="isComparing || isExecuting" variant="danger" size="small" @click="cancelRun">
               {{ $t('common.cancel') }}
-            </n-button>
-            <n-button v-else size="small" @click="onClose">{{ $t('common.close') }}</n-button>
-            <n-button
-              type="default" size="small"
-              :disabled="!canCompare" :loading="isComparing"
+            </CButton>
+            <CButton v-else size="small" @click="onClose">{{ $t('common.close') }}</CButton>
+            <CButton
+              size="small"
+              :disabled="!canCompare"
               @click="runCompare"
             >
+              <CSpin v-if="isComparing" :size="12" />
               {{ $t('structSync.compare') }}
-            </n-button>
-            <n-button
-              type="primary" size="small"
+            </CButton>
+            <CButton
+              variant="primary" size="small"
               :disabled="!compared || selectedStatements.length === 0 || isExecuting || isComparing"
               @click="runExecute"
             >
               {{ $t('structSync.execute') }}
-            </n-button>
+            </CButton>
           </div>
         </div>
       </template>

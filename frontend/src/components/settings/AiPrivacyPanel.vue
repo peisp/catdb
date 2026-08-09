@@ -2,7 +2,7 @@
 // AiPrivacyPanel — the "Agent 隐私" settings category: whether run_sql row
 // data is sent to the model (AGENT_DESIGN.md §7).
 import { onMounted } from 'vue'
-import { NButton, NSwitch, useMessage } from 'naive-ui'
+import { CButton, CSwitch, useMessage } from '../ui'
 import { useAgentRuntimeSettings } from './agentRuntime'
 import { t as tr } from '../../i18n'
 
@@ -29,12 +29,12 @@ async function savePrivacy() {
       <h3 class="section-title">{{ $t('agent.settings.privacy.title') }}</h3>
     </div>
     <div class="switch-row">
-      <n-switch v-model:value="settings.privacySendRowData" size="small" />
+      <CSwitch v-model="settings.privacySendRowData" />
       <span class="switch-label">{{ $t('agent.settings.privacy.sendRowData') }}</span>
     </div>
     <p class="hint">{{ $t('agent.settings.privacy.sendRowDataHint') }}</p>
     <div class="editor-actions">
-      <n-button size="small" @click="savePrivacy">{{ $t('common.save') }}</n-button>
+      <CButton size="small" @click="savePrivacy">{{ $t('common.save') }}</CButton>
     </div>
   </section>
 </template>

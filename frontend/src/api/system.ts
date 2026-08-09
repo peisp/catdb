@@ -63,6 +63,11 @@ export function onLocaleChanged(cb: (p: LocaleChangedPayload) => void): () => vo
   return on<LocaleChangedPayload>('app:locale-changed', cb)
 }
 
+export type ThemeChangedPayload = { theme: string }
+export function onThemeChanged(cb: (p: ThemeChangedPayload) => void): () => void {
+  return on<ThemeChangedPayload>('app:theme-changed', cb)
+}
+
 export type ConnectionSavedPayload = { id: string }
 export function onConnectionSaved(cb: (p: ConnectionSavedPayload) => void): () => void {
   return on<ConnectionSavedPayload>('connection:saved', cb)

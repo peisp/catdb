@@ -49,20 +49,24 @@ func OpenChildWindow(name, title, url string, width, height int) {
 	}
 
 	w := a.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:             name,
-		Title:            title,
-		Width:            width,
-		Height:           height,
-		MinWidth:         600,
-		MinHeight:        500,
-		InitialPosition:  application.WindowCentered,
-		Frameless:        runtime.GOOS == "windows",
+		Name:            name,
+		Title:           title,
+		Width:           width,
+		Height:          height,
+		MinWidth:        600,
+		MinHeight:       500,
+		InitialPosition: application.WindowCentered,
+		Frameless:       runtime.GOOS == "windows",
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 30,
 			Backdrop:                application.MacBackdropTranslucent,
 			TitleBar:                application.MacTitleBarHiddenInset,
+			Appearance:              MacAppearance(),
 		},
-		BackgroundColour: application.NewRGB(245, 245, 247),
+		Windows: application.WindowsWindow{
+			Theme: WindowsTheme(),
+		},
+		BackgroundColour: WindowBackground(),
 		URL:              url,
 	})
 

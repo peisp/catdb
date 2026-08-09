@@ -6,7 +6,7 @@
 // Agent-mode grants / approvals / transaction bar are a later milestone; the
 // structure (mode toggle, tool cards) is left open for them.
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref } from 'vue'
-import { useMessage } from 'naive-ui'
+import { useMessage } from '../ui'
 import AgentSessionHeader from './AgentSessionHeader.vue'
 import AgentHistoryView from './AgentHistoryView.vue'
 import AgentMessage from './AgentMessage.vue'
