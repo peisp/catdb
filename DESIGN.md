@@ -267,6 +267,6 @@ catdb 的外观目标是:**放在 macOS 上像一个 Apple 官方出品的专业
 
 - **单一来源链**:本文件 frontmatter → `frontend/src/styles/tokens.ts`(TS 常量,light/dark 双套)→ ① 启动时注入 `:root` CSS 变量(`--catdb-*`,main.ts 挂载前引导,theme store 切换时整组替换);② 自研控件库与组件 scoped 样式消费 `var(--catdb-*)`;③ canvas 网格与 CodeMirror 主题直接 import TS 常量。
 - 组件 scoped 样式一律 `var(--catdb-*)`;`--n-*` 变量已随 Naive UI 移除,禁止再出现。
-- **自研控件库** `frontend/src/components/ui/`(CButton/CInput/CCheckbox/CSwitch,逐步补齐 CSelect/CSegmented):叶子控件形态的唯一实现,样式只用 `var(--catdb-*)`;Naive 只留机械结构(树虚拟化、浮层定位、modal、spin),新代码禁止新增 Naive 叶子控件。
+- **自研控件库** `frontend/src/components/ui/`(叶子控件 CButton/CInput/CCheckbox/CSwitch/CSelect…,机械结构 CTree/CModal/CPopover/CSpin/CVirtualList/toast):所有控件形态的唯一实现,样式只用 `var(--catdb-*)`;Naive UI 已完全移除,禁止重新引入任何第三方 UI 组件库,缺控件在 `ui/` 里补。
 - 旧的 `--app-content-bg`、`editorSurface` 由 `surface-content` token 取代。
 - token 有增改时:先改本文件 frontmatter,再同步 `tokens.ts`,两处漂移视为 bug。
