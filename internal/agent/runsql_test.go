@@ -250,6 +250,11 @@ func TestRunSQLReadNoApproval(t *testing.T) {
 	if log.count("agent:result") != 1 {
 		t.Fatal("user-path result event missing")
 	}
+	// The result carries its tool-call ID so the panel can dock the table under
+	// the matching run_sql card ("t" is the call ID toolRound emits).
+	if got := log.first("agent:result")["callId"]; got != "t" {
+		t.Fatalf("agent:result callId = %v, want \"t\"", got)
+	}
 	r := lastToolResult(t, store, sessID)
 	if r.IsError || !strings.Contains(r.Content, `"id"`) {
 		t.Fatalf("tool result = %+v", r)

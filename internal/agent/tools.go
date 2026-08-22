@@ -27,6 +27,19 @@ type Tool struct {
 	Run        func(ctx context.Context, args json.RawMessage) (string, error)
 }
 
+// toolCallIDKey carries the llm tool-call ID through ctx so tools that emit
+// user-path events (run_sql → agent:result) can tag them for card pairing.
+type toolCallIDKey struct{}
+
+func withToolCallID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, toolCallIDKey{}, id)
+}
+
+func toolCallID(ctx context.Context) string {
+	s, _ := ctx.Value(toolCallIDKey{}).(string)
+	return s
+}
+
 // toolEnv is everything tool implementations need for one session.
 type toolEnv struct {
 	conn    dbdriver.Connection

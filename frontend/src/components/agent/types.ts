@@ -93,6 +93,8 @@ export interface PlanEntry {
 export interface ResultEntry {
   kind: 'result'
   id: string
+  /** Tool-call ID of the run_sql card this table belongs under. */
+  callId?: string
   columns: string[]
   rows: unknown[][]
   truncated: boolean

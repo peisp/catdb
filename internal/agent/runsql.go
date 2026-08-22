@@ -286,7 +286,7 @@ func (rs *runState) execRead(ctx context.Context, db string, st sqlclass.Classif
 		return "", err
 	}
 	rs.em.send("agent:result", map[string]any{
-		"sessId": rs.sessID, "columns": cols, "rows": userRows,
+		"sessId": rs.sessID, "callId": toolCallID(ctx), "columns": cols, "rows": userRows,
 		"truncated": len(userRows) >= userResultRowCap, "done": true,
 	})
 	rs.auditRows(ctx, st, "n/a", rows, &started, "ok", "")
