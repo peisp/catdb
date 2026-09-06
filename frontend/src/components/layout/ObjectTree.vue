@@ -1124,4 +1124,6 @@ onBeforeUnmount(() => {
 }
 /* Search match — only the matched substring goes bold (no underline). */
 .tree-match { font-weight: 600; color: var(--catdb-accent); }
+/* 聚焦选中行背景就是 accent 蓝,匹配字符改用 on-accent 白,靠加粗区分。 */
+.c-tree:focus-within .row.selected .tree-match { color: var(--catdb-text-on-accent); }
 </style>
