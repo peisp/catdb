@@ -195,6 +195,8 @@ async function load() {
   deletedRows.value = new Set()
   dmlSql.value = ''
   dmlLabel.value = ''
+  // 先清空行数据（保留列头），让用户感知到刷新动作——即使新数据和旧数据一样
+  if (browse.value) browse.value = { ...browse.value, rows: [] }
   loading.value = true
   try {
     const isAll = pageSize.value === ALL_ROWS
