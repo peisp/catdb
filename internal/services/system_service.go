@@ -12,10 +12,32 @@ import (
 // SystemService exposes a small set of OS-level helpers to the front-end:
 // native file dialogs, message dialogs. Routes through wailsbridge so the
 // Wails alpha API never leaks into the components directly.
-type SystemService struct{}
+type SystemService struct {
+	// pending is the cold-start command-line hand-off; nil when the build has
+	// no launcher wired (tests).
+	pending PendingLaunch
+}
 
-func NewSystemService() *SystemService       { return &SystemService{} }
+// NewSystemService wires the service. pending may be nil — ConsumePendingLaunch
+// then always reports "nothing to do".
+func NewSystemService(pending PendingLaunch) *SystemService {
+	return &SystemService{pending: pending}
+}
 func (s *SystemService) ServiceName() string { return "SystemService" }
+
+// ConsumePendingLaunch executes the `-con` request this process was started
+// with, if any, and clears it. The front-end calls it once the main window has
+// mounted: Wails drops events emitted before a window is ready, so the cold
+// start pulls instead of being pushed (docs/CLI_CON_DESIGN.md §4.5). A second
+// instance takes the other path — `connection:open-request`.
+//
+// Returns the zero outcome when nothing is pending, which is the normal case.
+func (s *SystemService) ConsumePendingLaunch(ctx context.Context) LaunchOutcome {
+	if s.pending == nil {
+		return LaunchOutcome{}
+	}
+	return s.pending.ConsumePendingLaunch(ctx)
+}
 
 // FileFilterDescriptor is the JSON-shaped filter the front-end sends.
 type FileFilterDescriptor struct {

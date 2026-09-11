@@ -80,6 +80,12 @@ type ConnectionDraft struct {
 	SSL         *dbdriver.SSLConfig `json:"ssl,omitempty"`
 	SSHTunnel   *dbdriver.SSHConfig `json:"sshTunnel,omitempty"`
 
+	// Ephemeral requests a throwaway profile, deleted together with its
+	// keyring entry when the app exits. Only the command-line launch flow
+	// (`-con …|save=false`) sets it; the connection form always leaves it
+	// false, and it is honoured on CREATE only — see storage.SaveConnection.
+	Ephemeral bool `json:"ephemeral,omitempty"`
+
 	Password       string `json:"password,omitempty"`
 	SSHPassword    string `json:"sshPassword,omitempty"`
 	SSHKeyPassword string `json:"sshKeyPassword,omitempty"`
@@ -125,6 +131,7 @@ func (s *ConnectionService) SaveConnection(ctx context.Context, d ConnectionDraf
 		Params:      d.Params,
 		SSL:         d.SSL,
 		SSHTunnel:   cloneSSHWithoutSecrets(d.SSHTunnel),
+		Ephemeral:   d.Ephemeral,
 	}
 	saved, err := s.store.SaveConnection(ctx, prof)
 	if err != nil {

@@ -144,7 +144,10 @@ type Metadata interface {
 // 可选扩展（类型断言探测）：BulkMetadata（整库批量元数据，加速结构同步）、
 // DatabaseEditor（建库/改库 UI：驱动自描述的选项字段目录 DatabaseOptionFields
 // —— MySQL 是字符集/排序规则、PG 是所有者/模板/编码/locale/表空间 ——
-// + map 选项渲染 CREATE/ALTER DATABASE，前端动态渲染表单，无需改前端）
+// + map 选项渲染 CREATE/ALTER DATABASE，前端动态渲染表单，无需改前端）、
+// ExternalCompat（外部工具连接词汇翻译：驱动别名表 + JDBC URL 拆解 +
+// JDBC 属性名/单位 → catdb 点分 key，供 internal/cli 做 DBeaver `-con`
+// 兼容，通用层零方言；见 docs/CLI_CON_DESIGN.md）
 
 type Dialect interface {
 	QuoteIdentifier(name string) string                // MySQL `x` / PG "x"
@@ -214,10 +217,10 @@ import _ "yourapp/plugins/mysqldrv"
 
 ### 3.4 新增一个数据库驱动的标准步骤
 
-1. 新建 `plugins/xxxdrv/` 包，实现 `Driver`/`Connection`/`Querier`/`Metadata`/`Dialect`/`Editor`，并编写 `UIDialect()` 描述符（类型目录、引号、补全函数目录等——参照 `plugins/mysqldrv/uidialect.go`）。可选实现 `BulkMetadata`（结构同步提速）、`DatabaseEditor`（建库/改库 UI）。
+1. 新建 `plugins/xxxdrv/` 包，实现 `Driver`/`Connection`/`Querier`/`Metadata`/`Dialect`/`Editor`，并编写 `UIDialect()` 描述符（类型目录、引号、补全函数目录等——参照 `plugins/mysqldrv/uidialect.go`）。可选实现 `BulkMetadata`（结构同步提速）、`DatabaseEditor`（建库/改库 UI）、`ExternalCompat`（命令行 `-con` 兼容的驱动别名/URL/属性翻译）。
 2. `init()` 里 `registry.Register(...)`。
 3. `plugins/plugins_all.go` 加匿名导入（按需加 build tag）。
-4. **跑统一契约测试套件**（见 §7），全绿才算接入完成。套件覆盖：元数据/编辑/DDL 往返、Dialect（精确列类型、NormalizeType 幂等、DefaultNamespaceSQL 可执行）、视图定义、事务生命周期（ErrTxDone 哨兵）、UIDialect 静态校验（`contract.TestUIDialect` 也可在纯单测里跑，无需真实库）。
+4. **跑统一契约测试套件**（见 §7），全绿才算接入完成。套件覆盖：元数据/编辑/DDL 往返、Dialect（精确列类型、NormalizeType 幂等、DefaultNamespaceSQL 可执行）、视图定义、事务生命周期（ErrTxDone 哨兵）、UIDialect 静态校验（`contract.TestUIDialect` 也可在纯单测里跑，无需真实库）；实现了 `ExternalCompat` 的驱动另跑 `contract.TestExternalCompat` / `contract.CheckExternalProp`（同样无需真实库）。
 5. 前端无需改动——连接表单由 `ConnectionSchema()` 渲染，功能按 `Capabilities()` 显隐（含对象树 schema 层），编辑器/补全/结构编辑器按 `UIDialect()` 适配。
 
 ### 3.5 各库扩展要点

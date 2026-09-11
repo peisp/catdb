@@ -16,6 +16,41 @@ var (
 	childWins  = make(map[string]*application.WebviewWindow)
 )
 
+// mainWin is the primary window, recorded by main() so helpers that need it
+// (currently only FocusMainWindow) don't have to guess which of the open
+// windows is the shell.
+var (
+	mainWinMu sync.Mutex
+	mainWin   *application.WebviewWindow
+)
+
+// SetMainWindow records the primary window. Called once from main().
+func SetMainWindow(w *application.WebviewWindow) {
+	mainWinMu.Lock()
+	defer mainWinMu.Unlock()
+	mainWin = w
+}
+
+// FocusMainWindow brings the shell window to the front, un-minimising it if
+// needed. Used when a second instance forwards its command line to us — the
+// user ran the app again and expects to see it (docs/CLI_CON_DESIGN.md §4.3).
+//
+// Native window calls must run on the main thread, so this hops through
+// application.InvokeAsync exactly like SetMenuLocale does.
+func FocusMainWindow() {
+	mainWinMu.Lock()
+	w := mainWin
+	mainWinMu.Unlock()
+	if w == nil {
+		return
+	}
+	application.InvokeAsync(func() {
+		w.Show()
+		w.UnMinimise()
+		w.Focus()
+	})
+}
+
 // OpenChildWindow opens (or focuses) a child WebviewWindow with the given
 // logical name. If a window with that name is already open it is brought to
 // front and re-pointed at url; otherwise a fresh window is created with the

@@ -18,6 +18,7 @@ declare module "@wailsio/runtime" {
             "agent:tool": { [_ in string]?: any };
             "agent:tx-pending": { [_ in string]?: any };
             "agent:usage": { [_ in string]?: any };
+            "connection:open-request": { [_ in string]?: any };
             "connection:saved": { [_ in string]?: any };
             "custom:switch-english-input": { [_ in string]?: any };
             "transfer:progress": { [_ in string]?: any };

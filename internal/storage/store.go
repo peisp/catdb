@@ -91,6 +91,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			params_json TEXT NOT NULL DEFAULT '',
 			ssl_json TEXT NOT NULL DEFAULT '',
 			ssh_json TEXT NOT NULL DEFAULT '',
+			ephemeral INTEGER NOT NULL DEFAULT 0,
 			created_at INTEGER NOT NULL,
 			updated_at INTEGER NOT NULL,
 			FOREIGN KEY (group_id) REFERENCES connection_group(id) ON DELETE SET NULL
@@ -192,6 +193,21 @@ func (s *Store) migrate(ctx context.Context) error {
 	if hasEnvCol == 0 {
 		if _, err := s.db.ExecContext(ctx,
 			`ALTER TABLE connection ADD COLUMN environment TEXT NOT NULL DEFAULT ''`,
+		); err != nil {
+			return fmt.Errorf("storage: migrate: %w", err)
+		}
+	}
+	// Additive column for CLI-created throwaway connections (`-con …|save=false`,
+	// docs/CLI_CON_DESIGN.md §4.4). 0 = normal profile. Same probe pattern.
+	var hasEphemeralCol int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pragma_table_info('connection') WHERE name='ephemeral'`,
+	).Scan(&hasEphemeralCol); err != nil {
+		return fmt.Errorf("storage: migrate: %w", err)
+	}
+	if hasEphemeralCol == 0 {
+		if _, err := s.db.ExecContext(ctx,
+			`ALTER TABLE connection ADD COLUMN ephemeral INTEGER NOT NULL DEFAULT 0`,
 		); err != nil {
 			return fmt.Errorf("storage: migrate: %w", err)
 		}
@@ -309,7 +325,7 @@ func (s *Store) MoveConnection(ctx context.Context, id, groupID string) error {
 func (s *Store) ListConnections(ctx context.Context) ([]ConnectionProfile, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, name, driver, group_id, host, port, user, "database", environment,
-		       params_json, ssl_json, ssh_json, created_at, updated_at
+		       params_json, ssl_json, ssh_json, ephemeral, created_at, updated_at
 		FROM connection ORDER BY name`)
 	if err != nil {
 		return nil, err
@@ -330,7 +346,7 @@ func (s *Store) ListConnections(ctx context.Context) ([]ConnectionProfile, error
 func (s *Store) GetConnection(ctx context.Context, id string) (ConnectionProfile, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, name, driver, group_id, host, port, user, "database", environment,
-		       params_json, ssl_json, ssh_json, created_at, updated_at
+		       params_json, ssl_json, ssh_json, ephemeral, created_at, updated_at
 		FROM connection WHERE id=?`, id)
 	p, err := scanConnection(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -365,11 +381,11 @@ func (s *Store) SaveConnection(ctx context.Context, p ConnectionProfile) (Connec
 		p.UpdatedAt = now
 		_, err := s.db.ExecContext(ctx, `
 			INSERT INTO connection(id, name, driver, group_id, host, port, user, "database", environment,
-			                       params_json, ssl_json, ssh_json, created_at, updated_at)
-			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			                       params_json, ssl_json, ssh_json, ephemeral, created_at, updated_at)
+			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			p.ID, p.Name, p.Driver, nilIfEmpty(p.GroupID),
 			p.Host, p.Port, p.User, p.Database, p.Environment,
-			string(paramsJSON), sslJSON, sshJSON,
+			string(paramsJSON), sslJSON, sshJSON, boolToInt(p.Ephemeral),
 			p.CreatedAt.Unix(), p.UpdatedAt.Unix())
 		if err != nil {
 			return ConnectionProfile{}, err
@@ -378,6 +394,10 @@ func (s *Store) SaveConnection(ctx context.Context, p ConnectionProfile) (Connec
 	}
 
 	p.UpdatedAt = now
+	// `ephemeral` is deliberately absent from the UPDATE: the flag is decided
+	// when the profile is created (CLI `save=false`) and must not be flipped by
+	// a later edit — the connection form has no such field and would otherwise
+	// silently clear it. The stored value is read back below.
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE connection SET name=?, driver=?, group_id=?, host=?, port=?, user=?, "database"=?, environment=?,
 		                     params_json=?, ssl_json=?, ssh_json=?, updated_at=?
@@ -392,7 +412,44 @@ func (s *Store) SaveConnection(ctx context.Context, p ConnectionProfile) (Connec
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ConnectionProfile{}, ErrNotFound
 	}
+	var eph int
+	if err := s.db.QueryRowContext(ctx, `SELECT ephemeral FROM connection WHERE id=?`, p.ID).Scan(&eph); err == nil {
+		p.Ephemeral = eph != 0
+	}
 	return p, nil
+}
+
+// DeleteEphemeralConnections removes every profile flagged ephemeral and
+// returns the deleted IDs so the caller can drop the matching keyring entries
+// (CLI `-con …|save=false`; see docs/CLI_CON_DESIGN.md §4.4). Called at startup
+// — to sweep leftovers from an abnormal exit — and again on shutdown.
+func (s *Store) DeleteEphemeralConnections(ctx context.Context) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM connection WHERE ephemeral<>0`)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM connection WHERE ephemeral<>0`); err != nil {
+		return nil, err
+	}
+	return ids, nil
 }
 
 // --- settings (key/value blobs, e.g. skipped update version) ---
@@ -529,13 +586,15 @@ func scanConnection(r rowScanner) (ConnectionProfile, error) {
 		paramsJSON string
 		sslJSON    string
 		sshJSON    string
+		ephemeral  int
 		created    int64
 		updated    int64
 	)
 	if err := r.Scan(&p.ID, &p.Name, &p.Driver, &groupID, &p.Host, &p.Port, &p.User, &p.Database,
-		&p.Environment, &paramsJSON, &sslJSON, &sshJSON, &created, &updated); err != nil {
+		&p.Environment, &paramsJSON, &sslJSON, &sshJSON, &ephemeral, &created, &updated); err != nil {
 		return ConnectionProfile{}, err
 	}
+	p.Ephemeral = ephemeral != 0
 	p.GroupID = groupID.String
 	p.CreatedAt = time.Unix(created, 0)
 	p.UpdatedAt = time.Unix(updated, 0)

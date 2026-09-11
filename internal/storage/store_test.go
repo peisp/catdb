@@ -184,3 +184,60 @@ func TestSavedQueryCascadeOnConnectionDelete(t *testing.T) {
 		t.Fatalf("expected cascade delete, got %d (err=%v)", len(list), err)
 	}
 }
+
+func TestEphemeralConnections(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	keep, err := s.SaveConnection(ctx, ConnectionProfile{Name: "keep", Driver: "mysql"})
+	if err != nil {
+		t.Fatalf("SaveConnection: %v", err)
+	}
+	tmp, err := s.SaveConnection(ctx, ConnectionProfile{Name: "tmp", Driver: "mysql", Ephemeral: true})
+	if err != nil {
+		t.Fatalf("SaveConnection: %v", err)
+	}
+	if !tmp.Ephemeral {
+		t.Fatal("Ephemeral should be reported back on create")
+	}
+	got, err := s.GetConnection(ctx, tmp.ID)
+	if err != nil {
+		t.Fatalf("GetConnection: %v", err)
+	}
+	if !got.Ephemeral {
+		t.Fatal("Ephemeral should round-trip through SQLite")
+	}
+
+	// An edit must never flip the flag: the connection form has no such field
+	// and would otherwise clear it on every save.
+	edited := got
+	edited.Ephemeral = false
+	edited.Host = "example.test"
+	saved, err := s.SaveConnection(ctx, edited)
+	if err != nil {
+		t.Fatalf("SaveConnection (update): %v", err)
+	}
+	if !saved.Ephemeral {
+		t.Fatal("update should preserve the ephemeral flag and report it")
+	}
+
+	ids, err := s.DeleteEphemeralConnections(ctx)
+	if err != nil {
+		t.Fatalf("DeleteEphemeralConnections: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != tmp.ID {
+		t.Fatalf("deleted ids = %v, want [%s]", ids, tmp.ID)
+	}
+	if _, err := s.GetConnection(ctx, tmp.ID); err == nil {
+		t.Fatal("ephemeral connection should be gone")
+	}
+	if _, err := s.GetConnection(ctx, keep.ID); err != nil {
+		t.Fatalf("normal connection should survive: %v", err)
+	}
+
+	// Idempotent: a second sweep finds nothing.
+	ids, err = s.DeleteEphemeralConnections(ctx)
+	if err != nil || len(ids) != 0 {
+		t.Fatalf("second sweep = %v, %v; want no ids, no error", ids, err)
+	}
+}

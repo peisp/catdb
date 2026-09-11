@@ -8,13 +8,19 @@ package main
 import (
 	"context"
 	"embed"
+	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"catdb/internal/agent"
+	"catdb/internal/cli"
 	"catdb/internal/core/session"
+	"catdb/internal/launch"
 	"catdb/internal/llm"
 	"catdb/internal/llmconfig"
 	"catdb/internal/platform"
@@ -32,6 +38,7 @@ func init() {
 	application.RegisterEvent[map[string]any]("window:close-blocked")
 	application.RegisterEvent[map[string]any]("custom:switch-english-input")
 	application.RegisterEvent[map[string]any]("connection:saved")
+	application.RegisterEvent[map[string]any]("connection:open-request")
 	application.RegisterEvent[map[string]any]("update:progress")
 	application.RegisterEvent[map[string]any]("agent:delta")
 	application.RegisterEvent[map[string]any]("agent:thinking")
@@ -69,17 +76,33 @@ func main() {
 	// (default 15 days) once per launch, off the startup path.
 	go agentSettingsSvc.AutoCleanAudit(context.Background())
 
+	// Command line (DBeaver `-con` compatibility, docs/CLI_CON_DESIGN.md).
+	// A request is parked, not executed: Wails discards events emitted before a
+	// window exists, so the front-end pulls it after mounting
+	// (SystemService.ConsumePendingLaunch).
+	connSvc := services.NewConnectionService(store, secrets, mgr)
+	launcher := launch.New(connSvc, store, secrets)
+	// Sweep throwaway connections left behind by an abnormal exit before
+	// anything reads the profile list.
+	launcher.CleanupEphemeral(context.Background())
+	if req, err := cli.ParseArgs(os.Args[1:], builtinVars(store)); err != nil {
+		// A command line we cannot read must not stop a double-click launch.
+		fmt.Fprintf(os.Stderr, "catdb: %v\n%s", err, cliUsage)
+	} else {
+		launcher.SetPending(req)
+	}
+
 	app := application.New(application.Options{
 		Name:        "catdb",
 		Description: "Cross-platform database management tool",
 		Services: []application.Service{
-			application.NewService(services.NewConnectionService(store, secrets, mgr)),
+			application.NewService(connSvc),
 			application.NewService(services.NewQueryService(mgr)),
 			application.NewService(services.NewMetadataService(mgr)),
 			application.NewService(services.NewEditService(mgr)),
 			application.NewService(services.NewTransferService(mgr)),
 			application.NewService(services.NewSyncService(mgr)),
-			application.NewService(services.NewSystemService()),
+			application.NewService(services.NewSystemService(launcher)),
 			application.NewService(services.NewSavedQueryService(store)),
 			application.NewService(services.NewUpdateService(store, "")),
 			application.NewService(settingsSvc),
@@ -92,6 +115,16 @@ func main() {
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
+		},
+		// One instance owns the app data (SQLite + keyring), so a second launch
+		// forwards its command line here and exits. The id is namespaced by the
+		// build-tag app name so a dev build never hijacks a production
+		// instance's `-con` (docs/CLI_CON_DESIGN.md §4.3).
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: "app." + storage.AppName(),
+			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
+				onSecondInstance(launcher, builtinVars(store), data)
+			},
 		},
 	})
 
@@ -136,8 +169,64 @@ func main() {
 		URL:              "/",
 	})
 	wailsbridge.AttachCloseGuard(win)
+	wailsbridge.SetMainWindow(win)
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// cliUsage is printed to stderr when the command line cannot be parsed. It is
+// technical output, deliberately English and un-localized (CLAUDE.md i18n:
+// user-visible UI copy goes through i18n, launch diagnostics do not).
+const cliUsage = `usage: catdb [-con <spec>]... [-vars <file>]
+  -con <spec>   connection specification, DBeaver syntax:
+                "driver=mysql|host=localhost|port=3306|database=app|user=root|password=secret"
+                or an existing connection's name/id: "-con MyConnection"
+  -vars <file>  Java properties file feeding ${variable} expansion
+`
+
+// builtinVars supplies the ${…} names catdb can answer on its own.
+// ${application.version} is left to the -vars file or the environment: the Go
+// binary carries no version constant (the updater compares the front-end's
+// VITE_APP_VERSION), so inventing one here would only lie.
+func builtinVars(store *storage.Store) cli.VarResolver {
+	return cli.NewBuiltinResolver(cli.Environment{
+		Workspace: filepath.Dir(store.Path()),
+	})
+}
+
+// onSecondInstance handles a command line forwarded by a second process: the
+// app is already up and its window is ready, so the request runs immediately
+// and the result is pushed to the front-end — the opposite of the cold-start
+// path, which parks the request for the front-end to pull.
+func onSecondInstance(launcher *launch.Launcher, vars cli.VarResolver, data application.SecondInstanceData) {
+	req, err := cli.ParseArgs(stripProgramName(data.Args), vars)
+	if err != nil {
+		log.Printf("catdb: second instance: %v", err)
+		wailsbridge.FocusMainWindow()
+		return
+	}
+	if req.IsEmpty() {
+		// Plain re-launch (double-click while running) — just come forward.
+		wailsbridge.FocusMainWindow()
+		return
+	}
+	outcome := launcher.ExecuteLaunch(context.Background(), req)
+	wailsbridge.Emit("connection:open-request", map[string]any{
+		"connectionIds": outcome.ConnectionIDs,
+		"consoleIds":    outcome.ConsoleIDs,
+		"errors":        outcome.Errors,
+	})
+	wailsbridge.FocusMainWindow()
+}
+
+// stripProgramName drops argv[0]. Wails forwards the second instance's full
+// os.Args, and cli.ParseArgs expects os.Args[1:]; the check keeps a
+// already-trimmed slice (or a future Wails change) working.
+func stripProgramName(args []string) []string {
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		return args[1:]
+	}
+	return args
 }

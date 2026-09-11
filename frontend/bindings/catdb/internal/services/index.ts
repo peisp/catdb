@@ -58,6 +58,8 @@ export {
     ImportFormat,
     ImportOptions,
     ImportResult,
+    LaunchError,
+    LaunchOutcome,
     QueryBatchResult,
     QueryOptions,
     QueryRunResult,

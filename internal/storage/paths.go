@@ -13,6 +13,12 @@ import (
 	"path/filepath"
 )
 
+// AppName is the build-tag app identity ("catdb" in production, "catdb-dev"
+// otherwise). It already namespaces the config dir and the keyring service;
+// exported so the single-instance lock can be namespaced the same way and a
+// dev build never intercepts a production instance's command line.
+func AppName() string { return appName }
+
 // AppConfigDir returns the platform-appropriate user-config dir for catdb and
 // ensures it exists. Used for the SQLite database, future preferences, etc.
 // Dev builds use "catdb-dev" instead (see appname_dev.go) so development data

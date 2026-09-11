@@ -607,6 +607,15 @@ export default {
       'tx-pending-block': '请先提交或回滚待处理的事务',
       'model-no-tools': '所选模型不支持工具调用',
     },
+    // 命令行启动错误 slug（docs/CLI_CON_DESIGN.md §4.6）。
+    launch: {
+      'not-found': '没有名为「{name}」的已保存连接',
+      'driver-missing': '无法创建「{name}」：未指定受支持的数据库驱动',
+      'lookup-failed': '查找「{name}」失败：{error}',
+      'save-failed': '保存「{name}」失败：{error}',
+      'connect-failed': '连接「{name}」失败：{error}',
+      'file-unreadable': '无法读取文件「{name}」：{error}',
+    },
   },
   // 结果网格右键模块（api/gridContextMenu.ts）。
   grid: {

@@ -44,6 +44,21 @@ export function BroadcastDatabaseSaved(connID: string, dbName: string): $Cancell
 }
 
 /**
+ * ConsumePendingLaunch executes the `-con` request this process was started
+ * with, if any, and clears it. The front-end calls it once the main window has
+ * mounted: Wails drops events emitted before a window is ready, so the cold
+ * start pulls instead of being pushed (docs/CLI_CON_DESIGN.md §4.5). A second
+ * instance takes the other path — `connection:open-request`.
+ * 
+ * Returns the zero outcome when nothing is pending, which is the normal case.
+ */
+export function ConsumePendingLaunch(): $CancellablePromise<$models.LaunchOutcome> {
+    return $Call.ByName("catdb/internal/services.SystemService.ConsumePendingLaunch").then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
+/**
  * CopyToClipboard writes text to the native system clipboard. The WebView's
  * own navigator.clipboard is permission-gated (WKWebView denies it), so the
  * front-end's copy actions call this instead (api/system.copyText).
@@ -155,3 +170,6 @@ export function ShowError(title: string, message: string): $CancellablePromise<v
 export function ShowInfo(title: string, message: string): $CancellablePromise<void> {
     return $Call.ByName("catdb/internal/services.SystemService.ShowInfo", title, message);
 }
+
+// Private type creation functions
+const $$createType0 = $models.LaunchOutcome.createFrom;

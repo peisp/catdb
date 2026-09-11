@@ -216,6 +216,15 @@ export class ConnectionProfile {
     "params"?: { [_ in string]?: string };
     "ssl"?: dbdriver$0.SSLConfig | null;
     "sshTunnel"?: dbdriver$0.SSHConfig | null;
+
+    /**
+     * Ephemeral marks a throwaway profile created by the command line with
+     * `save=false` (docs/CLI_CON_DESIGN.md §4.4). It lives in SQLite like any
+     * other connection so the whole app works with it unchanged, but it is
+     * deleted — together with its keyring entry — on shutdown and swept again
+     * at the next startup. Set at creation only; edits never change it.
+     */
+    "ephemeral"?: boolean;
     "createdAt": string;
     "updatedAt": string;
 

@@ -616,6 +616,15 @@ export default {
       'tx-pending-block': 'Commit or roll back the pending transaction first',
       'model-no-tools': 'The selected model does not support tool calls',
     },
+    // Command-line launch slugs (docs/CLI_CON_DESIGN.md §4.6).
+    launch: {
+      'not-found': 'No saved connection named “{name}”',
+      'driver-missing': 'Cannot create “{name}”: no supported database driver was given',
+      'lookup-failed': 'Could not look up “{name}”: {error}',
+      'save-failed': 'Could not save “{name}”: {error}',
+      'connect-failed': 'Could not connect to “{name}”: {error}',
+      'file-unreadable': 'Could not read the file “{name}”: {error}',
+    },
   },
   // Result-grid right-click module (api/gridContextMenu.ts).
   grid: {

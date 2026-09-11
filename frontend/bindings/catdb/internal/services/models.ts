@@ -448,6 +448,14 @@ export class ConnectionDraft {
     "params"?: { [_ in string]?: string };
     "ssl"?: dbdriver$0.SSLConfig | null;
     "sshTunnel"?: dbdriver$0.SSHConfig | null;
+
+    /**
+     * Ephemeral requests a throwaway profile, deleted together with its
+     * keyring entry when the app exits. Only the command-line launch flow
+     * (`-con …|save=false`) sets it; the connection form always leaves it
+     * false, and it is honoured on CREATE only — see storage.SaveConnection.
+     */
+    "ephemeral"?: boolean;
     "password"?: string;
     "sshPassword"?: string;
     "sshKeyPassword"?: string;
@@ -1193,6 +1201,94 @@ export class ImportResult {
 }
 
 /**
+ * LaunchError is one user-visible failure from a `-con` specification. Slug is
+ * a stable identifier the front-end maps to `error.launch.<slug>` (CLAUDE.md's
+ * i18n rule: no localized text crosses the Go boundary); Name is the
+ * connection the failure concerns and Detail the raw technical message, both
+ * fed to the message as {name} / {error}.
+ */
+export class LaunchError {
+    "slug": string;
+    "name"?: string;
+    "detail"?: string;
+
+    /** Creates a new LaunchError instance. */
+    constructor($$source: Partial<LaunchError> = {}) {
+        if (!("slug" in $$source)) {
+            this["slug"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new LaunchError instance from a string or object.
+     */
+    static createFrom($$source: any = {}): LaunchError {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new LaunchError($$parsedSource as Partial<LaunchError>);
+    }
+}
+
+/**
+ * LaunchOutcome is what the front-end needs to act on a processed command
+ * line: which connections to show, which ones asked for a SQL console, and
+ * what went wrong.
+ */
+export class LaunchOutcome {
+    /**
+     * ConnectionIDs are the profiles located or created, in spec order.
+     */
+    "connectionIds": string[];
+
+    /**
+     * ConsoleIDs is the subset whose spec carried openConsole=true.
+     */
+    "consoleIds": string[];
+
+    /**
+     * Errors are the user-visible failures. Parser/translation warnings are
+     * NOT here — those are technical English and go to the log.
+     */
+    "errors": LaunchError[];
+
+    /** Creates a new LaunchOutcome instance. */
+    constructor($$source: Partial<LaunchOutcome> = {}) {
+        if (!("connectionIds" in $$source)) {
+            this["connectionIds"] = [];
+        }
+        if (!("consoleIds" in $$source)) {
+            this["consoleIds"] = [];
+        }
+        if (!("errors" in $$source)) {
+            this["errors"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new LaunchOutcome instance from a string or object.
+     */
+    static createFrom($$source: any = {}): LaunchOutcome {
+        const $$createField0_0 = $$createType2;
+        const $$createField1_0 = $$createType2;
+        const $$createField2_0 = $$createType30;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("connectionIds" in $$parsedSource) {
+            $$parsedSource["connectionIds"] = $$createField0_0($$parsedSource["connectionIds"]);
+        }
+        if ("consoleIds" in $$parsedSource) {
+            $$parsedSource["consoleIds"] = $$createField1_0($$parsedSource["consoleIds"]);
+        }
+        if ("errors" in $$parsedSource) {
+            $$parsedSource["errors"] = $$createField2_0($$parsedSource["errors"]);
+        }
+        return new LaunchOutcome($$parsedSource as Partial<LaunchOutcome>);
+    }
+}
+
+/**
  * QueryBatchResult is what FetchMore returns.
  */
 export class QueryBatchResult {
@@ -1363,8 +1459,8 @@ export class QueryRunResult {
     static createFrom($$source: any = {}): QueryRunResult {
         const $$createField1_0 = $$createType10;
         const $$createField2_0 = $$createType12;
-        const $$createField8_0 = $$createType30;
-        const $$createField10_0 = $$createType32;
+        const $$createField8_0 = $$createType32;
+        const $$createField10_0 = $$createType34;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
             $$parsedSource["columns"] = $$createField1_0($$parsedSource["columns"]);
@@ -1421,8 +1517,8 @@ export class RowChange {
      * Creates a new RowChange instance from a string or object.
      */
     static createFrom($$source: any = {}): RowChange {
-        const $$createField4_0 = $$createType33;
-        const $$createField5_0 = $$createType33;
+        const $$createField4_0 = $$createType35;
+        const $$createField5_0 = $$createType35;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("pk" in $$parsedSource) {
             $$parsedSource["pk"] = $$createField4_0($$parsedSource["pk"]);
@@ -1544,7 +1640,7 @@ export class SchemaCompareResult {
      * Creates a new SchemaCompareResult instance from a string or object.
      */
     static createFrom($$source: any = {}): SchemaCompareResult {
-        const $$createField1_0 = $$createType35;
+        const $$createField1_0 = $$createType37;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("objects" in $$parsedSource) {
             $$parsedSource["objects"] = $$createField1_0($$parsedSource["objects"]);
@@ -1686,7 +1782,7 @@ export class SchemaSyncExecResult {
      * Creates a new SchemaSyncExecResult instance from a string or object.
      */
     static createFrom($$source: any = {}): SchemaSyncExecResult {
-        const $$createField3_0 = $$createType37;
+        const $$createField3_0 = $$createType39;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("results" in $$parsedSource) {
             $$parsedSource["results"] = $$createField3_0($$parsedSource["results"]);
@@ -1780,8 +1876,8 @@ export class TableSummary {
      */
     static createFrom($$source: any = {}): TableSummary {
         const $$createField0_0 = $$createType10;
-        const $$createField1_0 = $$createType39;
-        const $$createField2_0 = $$createType41;
+        const $$createField1_0 = $$createType41;
+        const $$createField2_0 = $$createType43;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columns" in $$parsedSource) {
             $$parsedSource["columns"] = $$createField0_0($$parsedSource["columns"]);
@@ -2005,16 +2101,18 @@ const $$createType25 = dbdriver$0.Capabilities.createFrom;
 const $$createType26 = dbdriver$0.ConnParamField.createFrom;
 const $$createType27 = $Create.Array($$createType26);
 const $$createType28 = dbdriver$0.UIDialect.createFrom;
-const $$createType29 = dbdriver$0.ExecResult.createFrom;
-const $$createType30 = $Create.Nullable($$createType29);
-const $$createType31 = TableRef.createFrom;
+const $$createType29 = LaunchError.createFrom;
+const $$createType30 = $Create.Array($$createType29);
+const $$createType31 = dbdriver$0.ExecResult.createFrom;
 const $$createType32 = $Create.Nullable($$createType31);
-const $$createType33 = $Create.Map($Create.Any, $Create.Any);
-const $$createType34 = SchemaObjectDiff.createFrom;
-const $$createType35 = $Create.Array($$createType34);
-const $$createType36 = SchemaSyncStatementResult.createFrom;
+const $$createType33 = TableRef.createFrom;
+const $$createType34 = $Create.Nullable($$createType33);
+const $$createType35 = $Create.Map($Create.Any, $Create.Any);
+const $$createType36 = SchemaObjectDiff.createFrom;
 const $$createType37 = $Create.Array($$createType36);
-const $$createType38 = dbdriver$0.IndexInfo.createFrom;
+const $$createType38 = SchemaSyncStatementResult.createFrom;
 const $$createType39 = $Create.Array($$createType38);
-const $$createType40 = dbdriver$0.ForeignKeyInfo.createFrom;
+const $$createType40 = dbdriver$0.IndexInfo.createFrom;
 const $$createType41 = $Create.Array($$createType40);
+const $$createType42 = dbdriver$0.ForeignKeyInfo.createFrom;
+const $$createType43 = $Create.Array($$createType42);

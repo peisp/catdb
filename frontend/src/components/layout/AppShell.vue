@@ -23,6 +23,7 @@ import { useConnectionsStore } from '../../stores/connections'
 import { useQueryStore } from '../../stores/query'
 import { useUpdatesStore } from '../../stores/updates'
 import { system as systemApi, dialogs } from '../../api'
+import type { LaunchOutcome } from '../../api/system'
 import { t } from '../../i18n'
 import sidebarLeftIcon from '../../assets/icons/sidebar.left.svg?raw'
 
@@ -93,6 +94,14 @@ onMounted(() => {
     void store.refreshAll()
   }))
 
+  // Command-line connections (DBeaver `-con` compatibility). Two arrivals:
+  // a cold start parks the request until we pull it here, a second instance
+  // pushes its result through `connection:open-request`.
+  offHandlers.push(systemApi.onOpenConnection((outcome) => { void applyLaunch(outcome) }))
+  void systemApi.consumePendingLaunch().then(applyLaunch).catch((e) => {
+    message.error(String(e))
+  })
+
   // Auto-check for updates: once shortly after the shell mounts, then every
   // 8 hours in the background (production only — the store no-ops in dev).
   // The store keeps the badge state; the user can also trigger a check
@@ -106,6 +115,29 @@ onBeforeUnmount(() => {
   for (const off of offHandlers) off()
   offHandlers.length = 0
 })
+
+// applyLaunch reflects a processed command line in the UI: refresh the list
+// (the backend may have created profiles and opened them), select the first
+// connection, open a SQL tab for every spec that asked for a console, and
+// surface the failures. refreshAll also re-reads the live ids, so no separate
+// markLive is needed.
+async function applyLaunch(outcome: LaunchOutcome) {
+  const ids = outcome?.connectionIds ?? []
+  const consoleIds = outcome?.consoleIds ?? []
+  const errors = outcome?.errors ?? []
+  for (const e of errors) {
+    message.error(t(`error.launch.${e.slug}`, { name: e.name ?? '', error: e.detail ?? '' }))
+  }
+  if (ids.length === 0) return
+
+  await store.refreshAll()
+  const first = store.connections.find((c) => c.id === ids[0])
+  if (first) activeConn.value = first
+  for (const id of consoleIds) {
+    const n = queryStore.tabsForConn(id).filter((tab: { kind: string }) => tab.kind === 'query').length + 1
+    queryStore.addTab(id, { kind: 'query', title: `Query ${n}` })
+  }
+}
 
 // Run/Run-Selection/Explain need to reach the active tab's component. We use a
 // tiny event bus on the queryStore: per-tab key = command. QueryTab listens.

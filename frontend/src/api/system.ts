@@ -1,9 +1,13 @@
 // api/system — facade over SystemService bindings.
 import { SystemService } from '../../bindings/catdb/internal/services'
-import type { FileFilterDescriptor as BoundFileFilter } from '../../bindings/catdb/internal/services/models'
+import type {
+  FileFilterDescriptor as BoundFileFilter,
+  LaunchOutcome as BoundLaunchOutcome,
+} from '../../bindings/catdb/internal/services/models'
 import { on } from './events'
 
 export type FileFilter = BoundFileFilter
+export type LaunchOutcome = BoundLaunchOutcome
 
 export function pickSaveFile(title: string, defaultName: string, filters: FileFilter[] = []): Promise<string> {
   return SystemService.PickSaveFile(title, defaultName, filters) as unknown as Promise<string>
@@ -71,6 +75,25 @@ export function onThemeChanged(cb: (p: ThemeChangedPayload) => void): () => void
 export type ConnectionSavedPayload = { id: string }
 export function onConnectionSaved(cb: (p: ConnectionSavedPayload) => void): () => void {
   return on<ConnectionSavedPayload>('connection:saved', cb)
+}
+
+/**
+ * Drain the `-con` command line this process was started with. Call once after
+ * the main window mounts: events emitted before a window is ready are dropped,
+ * so the cold-start path pulls instead of being pushed. Resolves to an empty
+ * outcome (no ids, no errors) when nothing is pending, which is the norm.
+ */
+export function consumePendingLaunch(): Promise<LaunchOutcome> {
+  return SystemService.ConsumePendingLaunch() as unknown as Promise<LaunchOutcome>
+}
+
+/**
+ * A second instance forwarded its `-con` command line to this one; the backend
+ * has already located/created/opened the connections and reports the result.
+ * Same payload shape as consumePendingLaunch's return value.
+ */
+export function onOpenConnection(cb: (p: LaunchOutcome) => void): () => void {
+  return on<LaunchOutcome>('connection:open-request', cb)
 }
 
 export type DatabaseSavedPayload = { connId: string; db: string }
