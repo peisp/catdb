@@ -19,6 +19,7 @@ function configure() {
         "agent:tx-pending": $$createType0,
         "agent:usage": $$createType0,
         "connection:open-request": $$createType0,
+        "connection:password-request": $$createType0,
         "connection:saved": $$createType0,
         "custom:switch-english-input": $$createType0,
         "transfer:progress": $$createType0,

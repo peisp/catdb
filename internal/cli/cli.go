@@ -21,6 +21,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"catdb/internal/services"
@@ -33,6 +34,17 @@ type LaunchRequest struct {
 	Specs []ConSpec
 	// VarsFile is the -vars file path, as given (for logging).
 	VarsFile string
+	// WorkDir is the directory relative paths on this command line resolve
+	// against: the process working directory on a cold start, the SECOND
+	// instance's working directory when the command line was forwarded
+	// (SecondInstanceData.WorkingDir) — the first instance's cwd would be
+	// meaningless to the user who typed the path.
+	WorkDir string
+	// Locale is the -nl value ("zh", "zh_CN", "en", …), empty when absent.
+	// It only picks the language of the launch-time authentication prompt
+	// (docs/CLI_CON_DESIGN.md §6.3) — the application's own UI locale is a
+	// user setting and is never touched by the command line.
+	Locale string
 	// Warnings are argument-level diagnostics (recognized-but-unimplemented
 	// flags, unknown flags). Technical log text, deliberately English:
 	// CLAUDE.md's i18n rule covers user-visible copy, not launch logs.
@@ -104,6 +116,7 @@ type flagKind int
 const (
 	flagCon flagKind = iota // takes a value, repeatable
 	flagVars
+	flagLocale       // -nl, takes a value: the authentication prompt's language
 	flagIgnoredBare  // recognized, no value, not implemented
 	flagIgnoredValue // recognized, consumes a value, not implemented
 )
@@ -130,9 +143,10 @@ var knownFlags = map[string]flagKind{
 	"reuseworkspace": flagIgnoredBare,
 	"nosplash":       flagIgnoredBare,
 
+	"nl": flagLocale,
+
 	"f":    flagIgnoredValue,
 	"file": flagIgnoredValue,
-	"nl":   flagIgnoredValue,
 	"data": flagIgnoredValue,
 }
 
@@ -143,11 +157,14 @@ var knownFlags = map[string]flagKind{
 // layers the -vars file and finally the process environment on top, which is
 // DBeaver's resolution order (built-ins → vars file → environment).
 //
+// workDir is where relative paths on this command line resolve — see
+// LaunchRequest.WorkDir; "" means the process working directory.
+//
 // An error means the command line itself is unreadable (a value-taking flag
 // with no value). Everything softer is a Warning: the caller logs those and
 // starts normally.
-func ParseArgs(args []string, builtin VarResolver) (LaunchRequest, error) {
-	var req LaunchRequest
+func ParseArgs(args []string, builtin VarResolver, workDir string) (LaunchRequest, error) {
+	req := LaunchRequest{WorkDir: workDir}
 	var rawSpecs []string
 
 	warn := func(format string, a ...any) {
@@ -173,12 +190,18 @@ func ParseArgs(args []string, builtin VarResolver) (LaunchRequest, error) {
 
 		// Value-taking flags accept both `-con value` and `-con=value`;
 		// DBeaver's picocli command line uses the former.
-		takesValue := kind == flagCon || kind == flagVars || kind == flagIgnoredValue
+		takesValue := kind == flagCon || kind == flagVars || kind == flagLocale || kind == flagIgnoredValue
 		value := inlineValue
 		if takesValue && !hasInline {
 			if i+1 >= len(args) {
 				if kind == flagIgnoredValue {
 					warn("flag %q is recognized but not implemented; ignored", arg)
+					continue
+				}
+				if kind == flagLocale {
+					// Wide open: a dangling -nl only costs the prompt its
+					// language, it must not abort the launch.
+					warn("flag %q has no value; ignored", arg)
 					continue
 				}
 				return LaunchRequest{}, fmt.Errorf("cli: flag %q requires a value", arg)
@@ -196,6 +219,8 @@ func ParseArgs(args []string, builtin VarResolver) (LaunchRequest, error) {
 			rawSpecs = append(rawSpecs, value)
 		case flagVars:
 			req.VarsFile = value
+		case flagLocale:
+			req.Locale = value
 		case flagIgnoredBare, flagIgnoredValue:
 			warn("flag %q is recognized but not implemented; ignored", arg)
 		}
@@ -203,7 +228,7 @@ func ParseArgs(args []string, builtin VarResolver) (LaunchRequest, error) {
 
 	vars := map[string]string{}
 	if req.VarsFile != "" {
-		data, err := os.ReadFile(req.VarsFile)
+		data, err := os.ReadFile(AbsAgainst(workDir, req.VarsFile))
 		if err != nil {
 			// Wide open: a missing variables file must not abort the launch,
 			// the unresolved ${…} stay literal and the failure is visible.
@@ -218,4 +243,13 @@ func ParseArgs(args []string, builtin VarResolver) (LaunchRequest, error) {
 		req.Specs = append(req.Specs, parseSpec(expandVars(raw, resolve)))
 	}
 	return req, nil
+}
+
+// AbsAgainst resolves a relative path against base ("" = the process working
+// directory, i.e. the path is returned as is). Absolute paths pass through.
+func AbsAgainst(base, path string) string {
+	if base == "" || path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(base, path)
 }

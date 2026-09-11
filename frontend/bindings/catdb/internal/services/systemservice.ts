@@ -171,5 +171,19 @@ export function ShowInfo(title: string, message: string): $CancellablePromise<vo
     return $Call.ByName("catdb/internal/services.SystemService.ShowInfo", title, message);
 }
 
+/**
+ * SubmitLaunchPassword answers a pending `connection:password-request`. The
+ * front-end calls it for every outcome of its modal — confirm, cancel, close —
+ * so a dismissed dialog releases the blocked launch instead of leaking it
+ * until the five-minute timeout.
+ * 
+ * ok=false means "no password, cancelled". An unknown requestId is an error
+ * with a stable slug; the front-end has nothing useful to do with it beyond
+ * logging, since the prompt it answers is already gone.
+ */
+export function SubmitLaunchPassword(requestID: string, password: string, ok: boolean): $CancellablePromise<void> {
+    return $Call.ByName("catdb/internal/services.SystemService.SubmitLaunchPassword", requestID, password, ok);
+}
+
 // Private type creation functions
 const $$createType0 = $models.LaunchOutcome.createFrom;

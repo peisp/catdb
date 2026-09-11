@@ -27,6 +27,7 @@ import (
 
 	"catdb/internal/cli"
 	"catdb/internal/dbdriver"
+	"catdb/internal/registry"
 	"catdb/internal/services"
 	"catdb/internal/storage"
 )
@@ -38,8 +39,9 @@ type Launcher struct {
 	store   *storage.Store
 	secrets *storage.Secrets
 
-	mu      sync.Mutex
-	pending *cli.LaunchRequest
+	mu       sync.Mutex
+	pending  *cli.LaunchRequest
+	prompter CredentialPrompter
 }
 
 // New wires the launcher. All three dependencies are required.
@@ -83,7 +85,7 @@ func (l *Launcher) ExecuteLaunch(ctx context.Context, req cli.LaunchRequest) ser
 	logWarnings("cli", req.Warnings)
 	var out services.LaunchOutcome
 	for _, spec := range req.Specs {
-		l.runSpec(ctx, spec, &out)
+		l.runSpec(ctx, spec, req.WorkDir, req.Locale, &out)
 	}
 	return out
 }
@@ -99,12 +101,13 @@ func (l *Launcher) CleanupEphemeral(ctx context.Context) {
 
 // --- one specification ------------------------------------------------------
 
-func (l *Launcher) runSpec(ctx context.Context, spec cli.ConSpec, out *services.LaunchOutcome) {
+func (l *Launcher) runSpec(ctx context.Context, spec cli.ConSpec, workDir, locale string, out *services.LaunchOutcome) {
 	// Never log spec.Raw: it can carry password=… verbatim. DBeaver removed
 	// exactly this log line for the same reason (dbeaver#3788).
 	logWarnings("cli: -con "+specLabel(spec), spec.Warnings)
 
-	l.loadFileRefs(&spec, out)
+	l.loadFileRefs(&spec, workDir, out)
+	resolveFileDatabase(&spec, workDir)
 
 	prof, found, err := l.lookup(ctx, spec)
 	if err != nil {
@@ -119,7 +122,7 @@ func (l *Launcher) runSpec(ctx context.Context, spec cli.ConSpec, out *services.
 		dropSecrets bool
 	)
 	if found {
-		id, err = l.patch(ctx, prof, spec)
+		id, err = l.patch(ctx, prof, spec, l.willPrompt(spec, prof.ID))
 		if err != nil {
 			out.Errors = append(out.Errors, services.LaunchError{
 				Slug: "save-failed", Name: prof.Name, Detail: err.Error(),
@@ -153,6 +156,18 @@ func (l *Launcher) runSpec(ctx context.Context, spec cli.ConSpec, out *services.
 	// openConsole implies a connection — DBeaver opens the console on a live
 	// datasource (docs/CLI_CON_DESIGN.md §2.4.4).
 	if spec.Connect || spec.OpenConsole {
+		// No password anywhere and one is needed → ask (§6.2). The answer goes
+		// to the keyring because that is where the session manager reads it.
+		promptDrop, proceed := l.ensurePassword(ctx, spec, id, locale, out)
+		if promptDrop && !dropSecrets {
+			// Field-precise: dropSecrets above wipes the whole entry, which is
+			// right for a profile this command line just created but would eat
+			// the SSH credentials of one the user configured by hand.
+			defer l.clearStoredPassword(id)
+		}
+		if !proceed {
+			return
+		}
 		if err := l.conns.Connect(ctx, id); err != nil {
 			out.Errors = append(out.Errors, services.LaunchError{
 				Slug: "connect-failed", Name: specLabel(spec), Detail: err.Error(),
@@ -166,9 +181,9 @@ func (l *Launcher) runSpec(ctx context.Context, spec cli.ConSpec, out *services.
 // certificate files, catdb keeps PEM text. A file it cannot read leaves the
 // field empty (an unreadable path would fail far more confusingly later) and
 // surfaces one error.
-func (l *Launcher) loadFileRefs(spec *cli.ConSpec, out *services.LaunchOutcome) {
+func (l *Launcher) loadFileRefs(spec *cli.ConSpec, workDir string, out *services.LaunchOutcome) {
 	for key, path := range spec.FileRefs {
-		data, err := os.ReadFile(expandHome(path))
+		data, err := os.ReadFile(cli.AbsAgainst(workDir, expandHome(path)))
 		if err != nil {
 			setDraftPEM(&spec.Draft, key, "")
 			out.Errors = append(out.Errors, services.LaunchError{
@@ -241,7 +256,10 @@ func (l *Launcher) byName(ctx context.Context, name string) (storage.ConnectionP
 // patch applies DBeaver's overwrite semantics (§2.4.2) to an existing profile:
 // exactly the keys the specification mentioned are replaced, everything else
 // is carried over untouched.
-func (l *Launcher) patch(ctx context.Context, prof storage.ConnectionProfile, spec cli.ConSpec) (string, error) {
+//
+// willPrompt tells it that an authentication prompt is coming for this
+// connection, which changes what savePassword=false means — see below.
+func (l *Launcher) patch(ctx context.Context, prof storage.ConnectionProfile, spec cli.ConSpec, willPrompt bool) (string, error) {
 	groupID := prof.GroupID
 	if spec.SetKeys["folder"] && spec.FolderName != "" {
 		id, err := l.resolveGroup(ctx, spec.FolderName)
@@ -255,7 +273,10 @@ func (l *Launcher) patch(ctx context.Context, prof storage.ConnectionProfile, sp
 		log.Printf("launch: connection %q is a %s connection; ignoring driver=%s from the command line",
 			prof.Name, prof.Driver, d)
 	}
-	if spec.SetKeys["savePassword"] && !spec.SavePassword {
+	// savePassword=false is a no-op on stored credentials — EXCEPT when we are
+	// about to prompt for a password, which is exactly the flow it governs:
+	// what the user types then is dropped again once this spec is done.
+	if spec.SetKeys["savePassword"] && !spec.SavePassword && !willPrompt {
 		log.Printf("launch: savePassword=false has no effect on the existing connection %q; "+
 			"its stored credentials are left alone", prof.Name)
 	}
@@ -495,6 +516,24 @@ func setDraftPEM(d *services.ConnectionDraft, dotKey, content string) {
 		}
 		d.SSHTunnel.PrivateKey = content
 	}
+}
+
+// resolveFileDatabase absolutizes a relative `database=` value against the
+// command line's working directory — but only for drivers that declare the
+// value IS a filesystem path (Capabilities.FileBackedDatabase, i.e. SQLite;
+// rule #12: the generic layer asks the driver, it never name-checks it). For a
+// forwarded second-instance command line workDir is the second instance's cwd;
+// the first instance's would be meaningless to whoever typed the path.
+func resolveFileDatabase(spec *cli.ConSpec, workDir string) {
+	db := spec.Draft.Database
+	if !spec.SetKeys["database"] || db == "" || strings.HasPrefix(db, ":") {
+		return // unset, or a special form like ":memory:"
+	}
+	d, err := registry.Get(spec.Draft.Driver)
+	if err != nil || !d.Capabilities().FileBackedDatabase {
+		return
+	}
+	spec.Draft.Database = cli.AbsAgainst(workDir, expandHome(db))
 }
 
 // expandHome resolves a leading "~" — shells expand it, but a path that

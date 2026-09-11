@@ -96,6 +96,25 @@ export function onOpenConnection(cb: (p: LaunchOutcome) => void): () => void {
   return on<LaunchOutcome>('connection:open-request', cb)
 }
 
+export type PasswordRequestPayload = { requestId: string; name: string; user: string }
+/**
+ * A `-con` command line wants to connect but has no password anywhere, so the
+ * backend is blocked waiting for one (docs/CLI_CON_DESIGN.md §6.2). Windows
+ * shows a native dialog instead and never emits this.
+ */
+export function onPasswordRequest(cb: (p: PasswordRequestPayload) => void): () => void {
+  return on<PasswordRequestPayload>('connection:password-request', cb)
+}
+
+/**
+ * Answer a pending password request. Call it for EVERY way the modal ends —
+ * confirm, cancel, close — because the backend is parked on it; ok=false means
+ * "cancelled, no password".
+ */
+export function submitLaunchPassword(requestId: string, password: string, ok: boolean): Promise<void> {
+  return SystemService.SubmitLaunchPassword(requestId, password, ok) as unknown as Promise<void>
+}
+
 export type DatabaseSavedPayload = { connId: string; db: string }
 export function onDatabaseSaved(cb: (p: DatabaseSavedPayload) => void): () => void {
   return on<DatabaseSavedPayload>('database:saved', cb)

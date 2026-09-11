@@ -615,7 +615,14 @@ export default {
       'save-failed': '保存「{name}」失败：{error}',
       'connect-failed': '连接「{name}」失败：{error}',
       'file-unreadable': '无法读取文件「{name}」：{error}',
+      'auth-cancelled': '「{name}」的身份验证已取消',
     },
+  },
+  // 启动时身份验证弹窗（docs/CLI_CON_DESIGN.md §6.2）。
+  launchAuth: {
+    title: '「{name}」的身份验证',
+    user: '用户',
+    password: '密码',
   },
   // 结果网格右键模块（api/gridContextMenu.ts）。
   grid: {

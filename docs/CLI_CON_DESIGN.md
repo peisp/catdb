@@ -154,7 +154,40 @@ type ExternalCompat interface {
 - **二期**：`openConsole` 完整体验、`folder` 建组交互打磨、`-stop`、ephemeral UI 徽标。
 - **三期（可选）**：`catdb://` deep link（复用同一解析器）、`-f` 绑定 SQL 文件、`-disconnectAll`/`-closeTabs`。
 
-## 6. 测试策略
+## 6. UI 自动化认证兼容（Windows）
+
+> 目标：兼容通过 UI 自动化给 DBeaver 喂密码的外部启动器（堡垒机类工具，如 bhmultauth：
+> `-con` 不带密码 + `savePassword=false` 启动 → 等认证对话框 → `WM_SETTEXT` 塞密码 → 模拟点 OK）。
+> 对方零改动，只需把 ClientPath 指向 catdb.exe。
+
+### 6.1 对方依赖的 4 个可观察契约
+
+1. **主窗口探测**：`FindWindow('SWT_Window0', None)` + 标题含 `"DBeaver "`（≤10s）。
+   → Windows 上按需创建**隐藏原生顶层 marker 窗口**（class `SWT_Window0`、标题 `DBeaver Compatibility (catdb)`）。
+   `FindWindow` 能找到隐藏顶层窗口；跨进程 `GetWindowText` 读缓存标题，无需消息泵配合。
+   仅在存在 `-con` 启动请求时创建（冷启动 pending 非空 / 二次实例转发时，幂等）。
+   已知局限：同机同时运行真 DBeaver 时对方可能找错实例——这是其按 class 全局找窗口的固有缺陷。
+2. **认证对话框探测**：顶层窗口、标题**逐字节**等于 `'{连接名}' 身份验证`（zh；≤100s）。
+   → 原生 Win32 对话框（WebView 弹窗不可行：FindWindow 找不到、WM_SETTEXT 塞不进 HTML input）。
+   标题语言随 `-nl`（见 6.3），zh 格式必须精确含单引号与空格。
+3. **子控件识别**：`EnumChildWindows` 找「class 含 Edit 且文本=账号」（账号框）、「class 含 Edit 且文本≠账号」（密码框）、「文本字面量= `OK` 的控件」。
+   → 三个原生控件：只读 Edit 预填 user（逐字符等于 spec 的 `user=`）、`ES_PASSWORD` Edit（初始空）、BUTTON 文本 **`OK`**（任何语言下都不译成「确定」）。
+4. **注入动作**：`WM_SETTEXT` 写密码、`WM_LBUTTONDOWN/UP` 点 OK。原生控件天然响应。
+
+### 6.2 catdb 侧流程
+
+- **触发条件**（与 DBeaver 一致）：`connect=true`、spec 的 `SetKeys` 无 `password`、keyring 亦无该连接密码 → Connect 前弹认证对话框阻塞等待（超时 5 分钟，ctx 可取消）。
+- **拿到密码后**：暂存 keyring → `Connect(id)`；`savePassword=false` → 该 spec 处理完即删凭据（复用现有 dropSecrets 语义）；`savePassword=true` → 保留。密码全程不落盘、不进日志（铁律 #8）。
+- **接口分层**：`launch.CredentialPrompter` 接口（`PromptPassword(ctx, PromptRequest{Name, User, Locale}) (pwd string, ok bool)`）由 `main.go` 组装注入：
+  Windows → `wailsbridge` 平台文件里的原生对话框（独立 locked OS 线程 + 自身消息泵，不阻塞主 UI；wailsbridge 只暴露纯函数，不 import launch/services，防环）；
+  macOS/Linux → 前端模态弹窗（`connection:password-request` 事件 + `SystemService.SubmitLaunchPassword` 回传，等待表按 requestId 配对）——顺手成为手动 CLI 用户的通用能力。
+- **marker 窗口**：`wailsbridge.EnsureDBeaverMarker()`（非 Windows no-op），由 main.go 在冷启动（pending 非空）与二次实例回调两处调用。
+
+### 6.3 `-nl` 参数
+
+从「识别但忽略」改为消费：`LaunchRequest.Locale`。只影响原生认证对话框标题语言（`zh*` → `'{name}' 身份验证`，其余 → `Authentication for '{name}'`），**不**改 catdb 应用 UI locale（那是用户设置）。
+
+## 7. 测试策略
 
 - `internal/cli` 单测：转义/速记/默认值/打补丁/变量展开顺序/properties 文件解析，fixture 直接取 DBeaver 文档示例与 `DataSourceUtilsTest` 用例。
 - 各插件 `ExternalCompat` 表驱动测试（别名、URL 解析、prop 换算含单位转换）。

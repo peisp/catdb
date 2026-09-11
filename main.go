@@ -39,6 +39,7 @@ func init() {
 	application.RegisterEvent[map[string]any]("custom:switch-english-input")
 	application.RegisterEvent[map[string]any]("connection:saved")
 	application.RegisterEvent[map[string]any]("connection:open-request")
+	application.RegisterEvent[map[string]any]("connection:password-request")
 	application.RegisterEvent[map[string]any]("update:progress")
 	application.RegisterEvent[map[string]any]("agent:delta")
 	application.RegisterEvent[map[string]any]("agent:thinking")
@@ -82,14 +83,32 @@ func main() {
 	// (SystemService.ConsumePendingLaunch).
 	connSvc := services.NewConnectionService(store, secrets, mgr)
 	launcher := launch.New(connSvc, store, secrets)
+	// A `-con` that wants to connect without a password asks for one
+	// (docs/CLI_CON_DESIGN.md §6.2). Windows gets the native dialog external
+	// launchers drive through the Win32 API; everywhere else — and whenever
+	// that dialog is not available — the front-end modal answers through the
+	// broker. This is the only place that knows both halves exist.
+	passwordBroker := services.NewLaunchPasswordBroker()
+	launcher.SetPrompter(launch.PrompterFunc(func(ctx context.Context, r launch.PromptRequest) (string, bool) {
+		if pwd, ok, handled := wailsbridge.PromptPasswordNative(r.ConnectionName, r.User, r.Locale, ctx.Done()); handled {
+			return pwd, ok
+		}
+		return passwordBroker.Prompt(ctx, r.ConnectionName, r.User)
+	}))
 	// Sweep throwaway connections left behind by an abnormal exit before
 	// anything reads the profile list.
 	launcher.CleanupEphemeral(context.Background())
-	if req, err := cli.ParseArgs(os.Args[1:], builtinVars(store)); err != nil {
+	workDir, _ := os.Getwd()
+	if req, err := cli.ParseArgs(os.Args[1:], builtinVars(store), workDir); err != nil {
 		// A command line we cannot read must not stop a double-click launch.
 		fmt.Fprintf(os.Stderr, "catdb: %v\n%s", err, cliUsage)
 	} else {
 		launcher.SetPending(req)
+		if !req.IsEmpty() {
+			// An external launcher probes for DBeaver's SWT_Window0 before it
+			// starts feeding the authentication dialog (§6.1).
+			wailsbridge.EnsureDBeaverMarker()
+		}
 	}
 
 	app := application.New(application.Options{
@@ -102,7 +121,7 @@ func main() {
 			application.NewService(services.NewEditService(mgr)),
 			application.NewService(services.NewTransferService(mgr)),
 			application.NewService(services.NewSyncService(mgr)),
-			application.NewService(services.NewSystemService(launcher)),
+			application.NewService(services.NewSystemService(launcher, passwordBroker)),
 			application.NewService(services.NewSavedQueryService(store)),
 			application.NewService(services.NewUpdateService(store, "")),
 			application.NewService(settingsSvc),
@@ -201,7 +220,9 @@ func builtinVars(store *storage.Store) cli.VarResolver {
 // and the result is pushed to the front-end — the opposite of the cold-start
 // path, which parks the request for the front-end to pull.
 func onSecondInstance(launcher *launch.Launcher, vars cli.VarResolver, data application.SecondInstanceData) {
-	req, err := cli.ParseArgs(stripProgramName(data.Args), vars)
+	// Relative paths (-vars, sslrootcert, a SQLite database=…) mean "relative
+	// to where the USER ran the command" — the second instance's cwd, not ours.
+	req, err := cli.ParseArgs(stripProgramName(data.Args), vars, data.WorkingDir)
 	if err != nil {
 		log.Printf("catdb: second instance: %v", err)
 		wailsbridge.FocusMainWindow()
@@ -212,6 +233,9 @@ func onSecondInstance(launcher *launch.Launcher, vars cli.VarResolver, data appl
 		wailsbridge.FocusMainWindow()
 		return
 	}
+	// Same reason as the cold-start call: the marker window must exist before
+	// the launcher can block on an authentication prompt (§6.1).
+	wailsbridge.EnsureDBeaverMarker()
 	outcome := launcher.ExecuteLaunch(context.Background(), req)
 	wailsbridge.Emit("connection:open-request", map[string]any{
 		"connectionIds": outcome.ConnectionIDs,

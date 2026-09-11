@@ -16,6 +16,7 @@ import QueryWorkspace from '../workspace/QueryWorkspace.vue'
 import StatusBar from './StatusBar.vue'
 import UpdateDialog from '../update/UpdateDialog.vue'
 import PromptOverlay from '../common/PromptOverlay.vue'
+import LaunchAuthDialog from '../connection/LaunchAuthDialog.vue'
 import AppToolbar from './AppToolbar.vue'
 import AgentPanel from '../agent/AgentPanel.vue'
 import type { ConnectionProfile } from '../../api/connections'
@@ -269,6 +270,7 @@ function onOpenTablesOverview(payload: { db: string; schema?: string }) {
     </div>
     <UpdateDialog />
     <PromptOverlay />
+    <LaunchAuthDialog />
   </div>
 </template>
 

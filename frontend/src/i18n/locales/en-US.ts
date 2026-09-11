@@ -624,7 +624,14 @@ export default {
       'save-failed': 'Could not save “{name}”: {error}',
       'connect-failed': 'Could not connect to “{name}”: {error}',
       'file-unreadable': 'Could not read the file “{name}”: {error}',
+      'auth-cancelled': 'Authentication for “{name}” was cancelled',
     },
+  },
+  // Launch-time authentication prompt (docs/CLI_CON_DESIGN.md §6.2).
+  launchAuth: {
+    title: 'Authentication for “{name}”',
+    user: 'User',
+    password: 'Password',
   },
   // Result-grid right-click module (api/gridContextMenu.ts).
   grid: {

@@ -13,7 +13,7 @@ import (
 
 func parseOne(t *testing.T, spec string) ConSpec {
 	t.Helper()
-	req, err := ParseArgs([]string{"-con", spec}, nil)
+	req, err := ParseArgs([]string{"-con", spec}, nil, "")
 	if err != nil {
 		t.Fatalf("ParseArgs: %v", err)
 	}
@@ -33,7 +33,7 @@ func hasWarning(s []string, substr string) bool {
 }
 
 func TestParseArgsNoConIsEmpty(t *testing.T) {
-	req, err := ParseArgs([]string{"-nosplash", "somefile.sql"}, nil)
+	req, err := ParseArgs([]string{"-nosplash", "somefile.sql"}, nil, "")
 	if err != nil {
 		t.Fatalf("ParseArgs: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestParseArgsFlagForms(t *testing.T) {
 		"-connect=driver=mysql|host=h2",
 		"--datasource-specification", "driver=mysql|host=h3",
 		"-ds-spec", "driver=mysql|host=h4",
-	}, nil)
+	}, nil, "")
 	if err != nil {
 		t.Fatalf("ParseArgs: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestParseArgsIgnoredAndUnknownFlags(t *testing.T) {
 		"-disconnectAll", "-reuseWorkspace", "-nl", "en_US", "-data", "/tmp/ws",
 		"-f", "script.sql", "-madeUpFlag",
 		"-con", "driver=mysql|host=h1",
-	}, nil)
+	}, nil, "")
 	if err != nil {
 		t.Fatalf("ParseArgs: %v", err)
 	}
@@ -89,11 +89,49 @@ func TestParseArgsIgnoredAndUnknownFlags(t *testing.T) {
 	}
 }
 
+// -nl is consumed, not ignored: it picks the language of the launch-time
+// authentication prompt (docs/CLI_CON_DESIGN.md §6.3).
+func TestParseArgsLocale(t *testing.T) {
+	for _, args := range [][]string{
+		{"-nl", "zh_CN", "-con", "driver=mysql|host=h1"},
+		{"-nl=zh_CN", "-con", "driver=mysql|host=h1"},
+	} {
+		req, err := ParseArgs(args, nil, "")
+		if err != nil {
+			t.Fatalf("ParseArgs(%v): %v", args, err)
+		}
+		if req.Locale != "zh_CN" {
+			t.Errorf("ParseArgs(%v) locale = %q, want zh_CN", args, req.Locale)
+		}
+		if hasWarning(req.Warnings, "-nl") {
+			t.Errorf("ParseArgs(%v) still warns about -nl: %v", args, req.Warnings)
+		}
+	}
+
+	// No -nl at all: empty, and still no warning.
+	req, err := ParseArgs([]string{"-con", "driver=mysql|host=h1"}, nil, "")
+	if err != nil {
+		t.Fatalf("ParseArgs: %v", err)
+	}
+	if req.Locale != "" {
+		t.Errorf("locale without -nl = %q, want empty", req.Locale)
+	}
+
+	// A dangling -nl warns but must not fail the command line.
+	req, err = ParseArgs([]string{"-con", "driver=mysql|host=h1", "-nl"}, nil, "")
+	if err != nil {
+		t.Fatalf("dangling -nl must not be an error: %v", err)
+	}
+	if req.Locale != "" || len(req.Specs) != 1 || !hasWarning(req.Warnings, "-nl") {
+		t.Errorf("dangling -nl: locale=%q specs=%d warnings=%v", req.Locale, len(req.Specs), req.Warnings)
+	}
+}
+
 func TestParseArgsMissingValueIsAnError(t *testing.T) {
-	if _, err := ParseArgs([]string{"-con"}, nil); err == nil {
+	if _, err := ParseArgs([]string{"-con"}, nil, ""); err == nil {
 		t.Fatal("expected an error for -con without a value")
 	}
-	if _, err := ParseArgs([]string{"-vars"}, nil); err == nil {
+	if _, err := ParseArgs([]string{"-vars"}, nil, ""); err == nil {
 		t.Fatal("expected an error for -vars without a value")
 	}
 }
@@ -418,7 +456,7 @@ func TestParseArgsVariableExpansion(t *testing.T) {
 		"-vars", varsPath,
 		"-con", "driver=mysql|host=${db.host}|database=${CATDB_TEST_DB}|password=${db.pass:word}|user=${nope}",
 		"-con", "driver=sqlite|database=${workspace}/local.db|name=${application.name} ${application.version}",
-	}, builtin)
+	}, builtin, "")
 	if err != nil {
 		t.Fatalf("ParseArgs: %v", err)
 	}
@@ -465,7 +503,7 @@ func TestParseArgsBuiltinsWinOverVarsFile(t *testing.T) {
 	req, err := ParseArgs([]string{
 		"-variablesFile", varsPath,
 		"-con", "driver=mysql|host=h1|name=${application.name}|database=${only.here}",
-	}, builtin)
+	}, builtin, "")
 	if err != nil {
 		t.Fatalf("ParseArgs: %v", err)
 	}
@@ -479,7 +517,7 @@ func TestParseArgsBuiltinsWinOverVarsFile(t *testing.T) {
 }
 
 func TestParseArgsMissingVarsFileWarnsOnly(t *testing.T) {
-	req, err := ParseArgs([]string{"-vars", filepath.Join(t.TempDir(), "nope.properties"), "-con", "driver=mysql|host=h1"}, nil)
+	req, err := ParseArgs([]string{"-vars", filepath.Join(t.TempDir(), "nope.properties"), "-con", "driver=mysql|host=h1"}, nil, "")
 	if err != nil {
 		t.Fatalf("a missing variables file must not fail the launch: %v", err)
 	}
@@ -488,5 +526,37 @@ func TestParseArgsMissingVarsFileWarnsOnly(t *testing.T) {
 	}
 	if !hasWarning(req.Warnings, "cannot read variables file") {
 		t.Errorf("warnings: %v", req.Warnings)
+	}
+}
+
+func TestParseArgsRelativeVarsFileResolvesAgainstWorkDir(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "rel.properties"), []byte("relhost=h9\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	req, err := ParseArgs([]string{"-vars", "rel.properties", "-con", "driver=mysql|host=${relhost}"}, nil, dir)
+	if err != nil {
+		t.Fatalf("ParseArgs: %v", err)
+	}
+	if got := req.Specs[0].Draft.Host; got != "h9" {
+		t.Errorf("a relative -vars path must resolve against WorkDir, host = %q", got)
+	}
+	if req.WorkDir != dir {
+		t.Errorf("WorkDir must be carried on the request, got %q", req.WorkDir)
+	}
+}
+
+func TestAbsAgainst(t *testing.T) {
+	abs := filepath.Join(string(filepath.Separator), "etc", "x.pem")
+	tests := []struct{ base, path, want string }{
+		{"", "rel.db", "rel.db"}, // no base: leave as is
+		{"/work", "", ""},        // empty path passes through
+		{"/work", abs, abs},      // absolute passes through
+		{"/work", "rel.db", filepath.Join("/work", "rel.db")},
+	}
+	for _, tc := range tests {
+		if got := AbsAgainst(tc.base, tc.path); got != tc.want {
+			t.Errorf("AbsAgainst(%q, %q) = %q, want %q", tc.base, tc.path, got, tc.want)
+		}
 	}
 }

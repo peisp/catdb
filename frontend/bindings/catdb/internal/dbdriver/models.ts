@@ -24,6 +24,15 @@ export class Capabilities {
      */
     "databaseEditor": boolean;
 
+    /**
+     * FileBackedDatabase reports that the "database" connection value is a
+     * LOCAL FILESYSTEM PATH rather than a server-side database name (SQLite).
+     * Generic layers use it to resolve a relative path against the caller's
+     * working directory (e.g. a `-con database=./x.db` forwarded by a second
+     * instance) without knowing which driver they are talking to.
+     */
+    "fileBackedDatabase": boolean;
+
     /** Creates a new Capabilities instance. */
     constructor($$source: Partial<Capabilities> = {}) {
         if (!("schemas" in $$source)) {
@@ -46,6 +55,9 @@ export class Capabilities {
         }
         if (!("databaseEditor" in $$source)) {
             this["databaseEditor"] = false;
+        }
+        if (!("fileBackedDatabase" in $$source)) {
+            this["fileBackedDatabase"] = false;
         }
 
         Object.assign(this, $$source);

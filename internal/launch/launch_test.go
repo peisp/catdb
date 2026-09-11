@@ -1,12 +1,16 @@
 package launch
 
 import (
+	"path/filepath"
 	"testing"
 
 	"catdb/internal/cli"
 	"catdb/internal/dbdriver"
 	"catdb/internal/services"
 	"catdb/internal/storage"
+
+	// resolveFileDatabase consults the live registry for driver capabilities.
+	_ "catdb/plugins"
 )
 
 func TestGenerateName(t *testing.T) {
@@ -226,5 +230,48 @@ func TestSpecLabelPrefersTheMostRecognizableHandle(t *testing.T) {
 		if got := specLabel(tc.spec); got != tc.want {
 			t.Errorf("specLabel(%+v) = %q, want %q", tc.spec, got, tc.want)
 		}
+	}
+}
+
+func TestResolveFileDatabase(t *testing.T) {
+	work := "/second/instance/cwd"
+	mk := func(driver, db string) cli.ConSpec {
+		return cli.ConSpec{
+			Draft:   services.ConnectionDraft{Driver: driver, Database: db},
+			SetKeys: map[string]bool{"database": true},
+		}
+	}
+
+	// File-backed driver (sqlite): a relative path resolves against WorkDir.
+	s := mk("sqlite", "data/app.db")
+	resolveFileDatabase(&s, work)
+	if want := filepath.Join(work, "data", "app.db"); s.Draft.Database != want {
+		t.Errorf("sqlite relative path: got %q, want %q", s.Draft.Database, want)
+	}
+
+	// Absolute paths and special forms pass through.
+	s = mk("sqlite", "/tmp/x.db")
+	resolveFileDatabase(&s, work)
+	if s.Draft.Database != "/tmp/x.db" {
+		t.Errorf("absolute path must pass through, got %q", s.Draft.Database)
+	}
+	s = mk("sqlite", ":memory:")
+	resolveFileDatabase(&s, work)
+	if s.Draft.Database != ":memory:" {
+		t.Errorf(":memory: must pass through, got %q", s.Draft.Database)
+	}
+
+	// A server database name is NOT a path — mysql must never be rewritten.
+	s = mk("mysql", "shop")
+	resolveFileDatabase(&s, work)
+	if s.Draft.Database != "shop" {
+		t.Errorf("server database name must pass through, got %q", s.Draft.Database)
+	}
+
+	// database not mentioned by the spec → untouched even for sqlite.
+	s = cli.ConSpec{Draft: services.ConnectionDraft{Driver: "sqlite", Database: "leftover.db"}, SetKeys: map[string]bool{}}
+	resolveFileDatabase(&s, work)
+	if s.Draft.Database != "leftover.db" {
+		t.Errorf("unset database must stay untouched, got %q", s.Draft.Database)
 	}
 }

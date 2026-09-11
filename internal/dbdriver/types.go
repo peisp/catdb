@@ -38,6 +38,12 @@ type Capabilities struct {
 	// the 「新建/编辑数据库」 actions when false (e.g. SQLite, which has no such
 	// statement — a database is a file).
 	DatabaseEditor bool `json:"databaseEditor"`
+	// FileBackedDatabase reports that the "database" connection value is a
+	// LOCAL FILESYSTEM PATH rather than a server-side database name (SQLite).
+	// Generic layers use it to resolve a relative path against the caller's
+	// working directory (e.g. a `-con database=./x.db` forwarded by a second
+	// instance) without knowing which driver they are talking to.
+	FileBackedDatabase bool `json:"fileBackedDatabase"`
 }
 
 // SSLConfig is the framework-agnostic SSL/TLS profile passed to drivers.

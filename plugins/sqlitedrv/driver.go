@@ -34,13 +34,14 @@ func (driver) Version() string { return "0.1.0" }
 
 func (driver) Capabilities() dbdriver.Capabilities {
 	return dbdriver.Capabilities{
-		Schemas:          false, // main/attached databases only, no schema level
-		StoredProcedures: false,
-		Triggers:         true,
-		Views:            true,
-		Transactions:     true,
-		ExplainPlan:      true,  // EXPLAIN QUERY PLAN
-		DatabaseEditor:   false, // no CREATE/ALTER DATABASE — a database is a file
+		Schemas:            false, // main/attached databases only, no schema level
+		StoredProcedures:   false,
+		Triggers:           true,
+		Views:              true,
+		Transactions:       true,
+		ExplainPlan:        true,  // EXPLAIN QUERY PLAN
+		DatabaseEditor:     false, // no CREATE/ALTER DATABASE — a database is a file
+		FileBackedDatabase: true,  // "database" is that file's path
 	}
 }
 

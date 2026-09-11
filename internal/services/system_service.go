@@ -16,12 +16,16 @@ type SystemService struct {
 	// pending is the cold-start command-line hand-off; nil when the build has
 	// no launcher wired (tests).
 	pending PendingLaunch
+	// passwords answers the launch-time authentication modal; nil when no
+	// broker is wired (tests).
+	passwords *LaunchPasswordBroker
 }
 
 // NewSystemService wires the service. pending may be nil — ConsumePendingLaunch
-// then always reports "nothing to do".
-func NewSystemService(pending PendingLaunch) *SystemService {
-	return &SystemService{pending: pending}
+// then always reports "nothing to do"; passwords may be nil — the launch
+// password modal then has nothing to answer.
+func NewSystemService(pending PendingLaunch, passwords *LaunchPasswordBroker) *SystemService {
+	return &SystemService{pending: pending, passwords: passwords}
 }
 func (s *SystemService) ServiceName() string { return "SystemService" }
 
