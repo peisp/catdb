@@ -91,6 +91,8 @@ export interface TxPendingEvent {
 export interface ResultEvent {
   sessId: string
   seq?: number
+  /** Tool-call ID that produced this result — pairs the table with its run_sql tool card. */
+  callId?: string
   columns: string[]
   rows: unknown[][]
   truncated: boolean

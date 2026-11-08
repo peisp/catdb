@@ -11,7 +11,7 @@
 // We never auto-close on success because the app is about to quit — the panel
 // rendering "应用即将退出以完成更新" is the last thing the user sees.
 import { computed, watch } from 'vue'
-import { NModal, NButton, NProgress, NSpace, NAlert, NTag } from 'naive-ui'
+import { CAlert, CButton, CModal, CProgress, CSpin, CTag } from '../ui'
 import MarkdownIt from 'markdown-it'
 import { useUpdatesStore } from '../../stores/updates'
 import { system as systemApi } from '../../api'
@@ -119,19 +119,17 @@ function onNotesClick(e: MouseEvent) {
 </script>
 
 <template>
-  <n-modal
+  <CModal
     v-model:show="visible"
-    preset="card"
-    :mask-closable="!isInstalling"
-    :close-on-esc="!isInstalling"
+    :width="560"
     :closable="!isInstalling"
-    :style="{ width: '560px' }"
-    :title="$t('update.title')"
   >
+    <div class="modal-title">{{ $t('update.title') }}</div>
+
     <div class="meta">
       <div class="version-row">
         <span class="ver new">v{{ updates.latestVersion }}</span>
-        <n-tag v-if="updates.prerelease" size="tiny" :bordered="false" round type="warning">Beta</n-tag>
+        <CTag v-if="updates.prerelease" kind="warning">Beta</CTag>
         <span class="ver from">{{ $t('update.currentVersion', { version: updates.currentVersion }) }}</span>
       </div>
       <div v-if="publishedAtPretty" class="published">{{ $t('update.publishedAt', { date: publishedAtPretty }) }}</div>
@@ -139,93 +137,89 @@ function onNotesClick(e: MouseEvent) {
 
     <div class="notes" v-html="renderedNotes" @click="onNotesClick" />
 
-    <n-alert
+    <CAlert
       v-if="!updates.hasAsset && !isInstalling"
-      type="warning"
-      :show-icon="false"
+      kind="warning"
       class="no-asset"
     >
       {{ $t('update.noAsset') }}
-    </n-alert>
+    </CAlert>
 
     <div v-if="isInstalling || updates.phase === 'downloaded' || updates.phase === 'ready' || updates.phase === 'error'" class="install-status">
       <div v-if="updates.phase === 'downloading'" class="status-row">
         <div class="status-text">
           {{ $t('update.downloading', { name: updates.assetName, downloaded: downloadedMB, total: totalMB }) }}
         </div>
-        <n-progress
-          type="line"
-          :percentage="progressPercent"
-          :show-indicator="true"
-          :height="6"
-        />
+        <CProgress :percentage="progressPercent" />
       </div>
       <div v-else-if="updates.phase === 'downloaded'" class="status-row">
         <div class="status-text ready">{{ $t('update.downloadedReady') }}</div>
       </div>
       <div v-else-if="updates.phase === 'installing'" class="status-row">
         <div class="status-text">{{ $t('update.preparingInstall') }}</div>
-        <n-progress type="line" :percentage="100" :show-indicator="false" :height="6" status="info" />
+        <CProgress indeterminate />
       </div>
       <div v-else-if="updates.phase === 'ready'" class="status-row">
         <div class="status-text ready">{{ $t('update.exitingToUpdate') }}</div>
       </div>
       <div v-else-if="updates.phase === 'error'" class="status-row">
-        <n-alert type="error" :show-icon="false">{{ errorText }}</n-alert>
+        <CAlert kind="error">{{ errorText }}</CAlert>
       </div>
     </div>
 
-    <template #footer>
-      <n-space justify="space-between" align="center">
-        <a
-          v-if="updates.releaseUrl"
-          class="open-link"
-          :href="updates.releaseUrl"
-          @click="openReleasePage"
+    <div class="footer">
+      <a
+        v-if="updates.releaseUrl"
+        class="open-link"
+        :href="updates.releaseUrl"
+        @click="openReleasePage"
+      >
+        {{ $t('update.viewOnGitHub') }} ↗
+      </a>
+      <span v-else />
+      <div class="footer-actions">
+        <CButton
+          v-if="updates.phase !== 'ready'"
+          :disabled="isInstalling"
+          @click="onCancel"
         >
-          {{ $t('update.viewOnGitHub') }} ↗
-        </a>
-        <span v-else />
-        <n-space>
-          <n-button
-            v-if="updates.phase !== 'ready'"
-            quaternary
-            :disabled="isInstalling"
-            @click="onCancel"
-          >
-            {{ updates.phase === 'downloaded' ? $t('update.later') : $t('common.cancel') }}
-          </n-button>
-          <n-button
-            v-if="updates.phase !== 'ready' && updates.phase !== 'downloaded'"
-            quaternary
-            :disabled="isInstalling"
-            @click="onSkip"
-          >
-            {{ $t('update.skipVersion') }}
-          </n-button>
-          <n-button
-            v-if="updates.phase === 'downloaded'"
-            type="primary"
-            @click="onRestart"
-          >
-            {{ $t('update.restartAndInstall') }}
-          </n-button>
-          <n-button
-            v-else-if="updates.phase !== 'ready'"
-            type="primary"
-            :disabled="!updates.hasAsset || isInstalling"
-            :loading="isInstalling"
-            @click="onInstall"
-          >
-            {{ $t('update.installNow') }}
-          </n-button>
-        </n-space>
-      </n-space>
-    </template>
-  </n-modal>
+          {{ updates.phase === 'downloaded' ? $t('update.later') : $t('common.cancel') }}
+        </CButton>
+        <CButton
+          v-if="updates.phase !== 'ready' && updates.phase !== 'downloaded'"
+          :disabled="isInstalling"
+          @click="onSkip"
+        >
+          {{ $t('update.skipVersion') }}
+        </CButton>
+        <CButton
+          v-if="updates.phase === 'downloaded'"
+          variant="primary"
+          @click="onRestart"
+        >
+          {{ $t('update.restartAndInstall') }}
+        </CButton>
+        <CButton
+          v-else-if="updates.phase !== 'ready'"
+          variant="primary"
+          :disabled="!updates.hasAsset || isInstalling"
+          @click="onInstall"
+        >
+          <CSpin v-if="isInstalling" :size="12" />
+          {{ $t('update.installNow') }}
+        </CButton>
+      </div>
+    </div>
+  </CModal>
 </template>
 
 <style scoped>
+.modal-title {
+  font-size: var(--catdb-fs-title);
+  font-weight: 600;
+  color: var(--catdb-text-primary);
+  margin-bottom: 12px;
+}
 .meta {
   display: flex;
   align-items: center;
@@ -297,6 +291,15 @@ function onNotesClick(e: MouseEvent) {
   color: var(--catdb-success);
   font-weight: 600;
 }
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+}
+.footer-actions { display: flex; align-items: center; gap: 8px; }
 
 .open-link {
   font-size: var(--catdb-fs-small);

@@ -8,7 +8,7 @@
 // closes, buttons right-aligned. Windows convention puts the primary button on
 // the left, so buttons render in reverse of the (cancel-first) input order.
 import { computed, nextTick, ref, watch } from 'vue'
-import { NButton } from 'naive-ui'
+import { CButton } from '../ui'
 import { currentConfirm, resolveCurrentConfirm } from '../../api/confirms'
 
 const panelRef = ref<HTMLElement | null>(null)
@@ -24,11 +24,12 @@ const cancelButton = computed(() => opts.value?.buttons.find((b) => b.isCancel) 
 // trigger a destructive action (discard/delete) that wasn't marked default.
 const defaultButton = computed(() => opts.value?.buttons.find((b) => b.isDefault) ?? null)
 
-function buttonType(b: { isCancel?: boolean; isDefault?: boolean }) {
-  if (b.isCancel) return 'default' as const
+function buttonVariant(b: { isCancel?: boolean; isDefault?: boolean }) {
+  if (b.isCancel) return 'standard' as const
   if (b.isDefault) return 'primary' as const
-  if (opts.value?.kind === 'error') return 'error' as const
-  return 'default' as const
+  // 确认对话框中的破坏性动作:error 实底(DESIGN.md button-danger)
+  if (opts.value?.kind === 'error') return 'danger-solid' as const
+  return 'standard' as const
 }
 
 watch(currentConfirm, (c) => {
@@ -67,15 +68,15 @@ function onBackdropClick(e: MouseEvent) {
       <div class="title">{{ opts?.title }}</div>
       <div class="message">{{ opts?.message }}</div>
       <div class="actions">
-        <n-button
+        <CButton
           v-for="b in displayButtons"
           :key="b.value"
           size="small"
-          :type="buttonType(b)"
+          :variant="buttonVariant(b)"
           @click="pick(b.value)"
         >
           {{ b.label }}
-        </n-button>
+        </CButton>
       </div>
     </div>
   </div>
@@ -98,7 +99,7 @@ function onBackdropClick(e: MouseEvent) {
   width: 380px;
   max-width: calc(100vw - 32px);
   background: var(--catdb-surface-raised);
-  border: 1px solid var(--catdb-separator);
+  /* shadow token 第一段自带 0.5px 描边环,不再叠 separator 描边(DESIGN.md) */
   border-radius: var(--catdb-rounded-lg);
   box-shadow: var(--catdb-shadow-modal);
   padding: 14px 16px 12px;

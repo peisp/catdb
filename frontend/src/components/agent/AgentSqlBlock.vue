@@ -7,7 +7,7 @@
 // block never needs to know the session's connection — the panel wires them to
 // the query store.
 import { computed, inject } from 'vue'
-import { useMessage } from 'naive-ui'
+import { useMessage } from '../ui'
 import { highlightSql } from './markdown'
 import { AGENT_SQL_ACTIONS, type AgentSqlActions } from './sqlActions'
 import { t } from '../../i18n'

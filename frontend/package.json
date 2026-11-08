@@ -18,7 +18,6 @@
     "@wailsio/runtime": "^3.0.0-beta.1",
     "codemirror": "^6.0.2",
     "markdown-it": "^14.2.0",
-    "naive-ui": "^2.40.4",
     "pinia": "^2.3.0",
     "sql-formatter": "^15.8.1",
     "vfonts": "^0.0.3",

@@ -12,11 +12,7 @@
 // group's body region (including the row list); dropping into 未分组 detaches
 // the connection (group_id NULL).
 import { computed, nextTick, onMounted, ref } from 'vue'
-import {
-  NScrollbar,
-  NSpin,
-  useMessage,
-} from 'naive-ui'
+import { CSpin, useMessage } from '../ui'
 import type { ConnectionProfile } from '../../api/connections'
 import { useConnectionsStore } from '../../stores/connections'
 import { setActiveConnectionContext } from '../../api/connectionContextMenu'
@@ -257,8 +253,8 @@ onMounted(() => {
     <div class="header">
       <span class="title">{{ $t('connectionSidebar.title') }}</span>
     </div>
-    <n-scrollbar class="list">
-      <n-spin :show="store.loading">
+    <div class="list">
+      <CSpin :show="store.loading">
         <div
           v-for="g in grouped"
           :key="g.id"
@@ -310,8 +306,8 @@ onMounted(() => {
             />
           </div>
         </div>
-      </n-spin>
-    </n-scrollbar>
+      </CSpin>
+    </div>
   </div>
 </template>
 
@@ -328,7 +324,7 @@ onMounted(() => {
   opacity: 0.7;
 }
 .title { font-size: var(--catdb-fs-mini); }
-.list { flex: 1 1 auto; }
+.list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .group {
   padding: 4px 0;
   position: relative;
@@ -380,7 +376,7 @@ onMounted(() => {
   height: 24px;
   cursor: default;
 }
-.row:hover { background: var(--n-color-target); }
+.row:hover { background: var(--catdb-hover-fill); }
 .row.dragging { opacity: 0.4; }
 .row-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-driver { font-size: var(--catdb-fs-micro); opacity: 0.5; }

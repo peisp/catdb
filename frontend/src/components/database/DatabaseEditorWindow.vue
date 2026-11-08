@@ -13,7 +13,7 @@
 //      so the main shell refreshes its ObjectTree, then close the window.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Window } from '@wailsio/runtime'
-import { NButton, NInput, NSelect, NSpin, useMessage } from 'naive-ui'
+import { CButton, CInput, CSelect, CSpin, useMessage } from '../ui'
 import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { sql } from '@codemirror/lang-sql'
@@ -360,7 +360,7 @@ async function onConfirm() {
 
     <main class="body">
       <div v-if="loading" class="loading">
-        <n-spin size="small" />
+        <CSpin :size="14" />
         <span>{{ $t('databaseEditor.loading') }}</span>
       </div>
       <div v-else-if="loadError" class="error">{{ loadError }}</div>
@@ -368,8 +368,8 @@ async function onConfirm() {
         <div class="form">
           <div class="row">
             <label class="lbl">{{ $t('databaseEditor.dbName') }}</label>
-            <n-input
-              v-model:value="name"
+            <CInput
+              v-model="name"
               size="small"
               :disabled="mode === 'edit'"
               :placeholder="$t('databaseEditor.dbNamePlaceholder')"
@@ -377,7 +377,7 @@ async function onConfirm() {
           </div>
           <div v-for="f in fields" :key="f.key" class="row">
             <label class="lbl">{{ fieldLabel(f) }}</label>
-            <n-select
+            <CSelect
               :value="values[f.key] || null"
               size="small"
               filterable
@@ -385,7 +385,7 @@ async function onConfirm() {
               :options="optionsFor(f)"
               :disabled="fieldDisabled(f)"
               :placeholder="$t('databaseEditor.optionPlaceholder')"
-              @update:value="values[f.key] = $event ?? ''"
+              @update:value="values[f.key] = String($event ?? '')"
             />
           </div>
         </div>
@@ -399,14 +399,16 @@ async function onConfirm() {
       </div>
 
       <footer class="actions">
-        <n-button size="small" :disabled="submitting" @click="onCancel">{{ $t('common.cancel') }}</n-button>
-        <n-button
+        <CButton size="small" :disabled="submitting" @click="onCancel">{{ $t('common.cancel') }}</CButton>
+        <CButton
           size="small"
-          type="primary"
-          :loading="submitting"
+          variant="primary"
           :disabled="!canSubmit"
           @click="onConfirm"
-        >{{ okText }}</n-button>
+        >
+          <CSpin v-if="submitting" :size="12" />
+          {{ okText }}
+        </CButton>
       </footer>
     </main>
   </div>
@@ -421,7 +423,7 @@ async function onConfirm() {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--n-color);
+  background: var(--catdb-surface-content);
 }
 
 .titlebar {
@@ -561,6 +563,6 @@ async function onConfirm() {
   gap: 8px;
   padding: 10px 22px 14px;
   border-top: 1px solid var(--catdb-separator);
-  background: var(--n-color);
+  background: var(--catdb-surface-content);
 }
 </style>

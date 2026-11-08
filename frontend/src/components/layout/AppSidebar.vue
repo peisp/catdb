@@ -11,8 +11,8 @@
 //     entirely. The gap between min (150) and the collapse threshold (50)
 //     is intentional: it lets you snap to min without accidentally
 //     collapsing — you have to clearly intend to drag further.
-import { NSplit } from 'naive-ui'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { CSplit } from '../ui'
 import ConnectionSidebar from '../connection/ConnectionSidebar.vue'
 import ObjectTree from './ObjectTree.vue'
 import ResizeHandle from '../shared/ResizeHandle.vue'
@@ -117,13 +117,12 @@ onBeforeUnmount(() => {
     }"
   >
     <div class="sider-body" :class="{ hidden: collapsed }">
-      <n-split
+      <CSplit
         v-if="activeConn"
         direction="vertical"
         :max="0.7"
         :min="0.2"
         :default-size="0.4"
-        :resize-trigger-size="4"
         class="sider-split"
       >
         <template #1>
@@ -143,7 +142,7 @@ onBeforeUnmount(() => {
         <template #resize-trigger>
           <ResizeHandle orientation="horizontal" />
         </template>
-      </n-split>
+      </CSplit>
       <ConnectionSidebar
         v-else
         @select="(c) => emit('select', c)"
@@ -224,12 +223,10 @@ onBeforeUnmount(() => {
 .sider-body > * { flex: 1 1 0; min-width: 0; min-height: 0; }
 
 .sider-split { height: 100%; min-height: 0; }
-.sider-split :deep(.n-split-pane) { overflow: hidden; min-width: 0; min-height: 0; }
+.sider-split :deep(.pane) { overflow: hidden; min-width: 0; min-height: 0; }
 
-/* n-split's resize-trigger slot positions our ResizeHandle inside the
-   trigger wrapper. The wrapper is a flex item (position: static by
-   default); promote it to a positioning context so the handle's
-   absolute layout doesn't escape. Wrapper height already matches the
-   handle (set via :resize-trigger-size). */
-.sider-split :deep(.n-split__resize-trigger-wrapper) { position: relative; }
+/* CSplit's resize-trigger slot positions our ResizeHandle inside the
+   trigger element. The trigger is a flex item; promote it to a positioning
+   context so the handle's absolute layout doesn't escape. */
+.sider-split :deep(.trigger) { position: relative; }
 </style>

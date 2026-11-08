@@ -15,13 +15,7 @@
 // the whole tab out of the viewport. CSS grid with explicit tracks
 // sidesteps the entire flex circularity problem.
 import { computed, onMounted, ref, watch } from 'vue'
-import {
-  NAlert,
-  NButton,
-  NSpace,
-  NTag,
-  useMessage,
-} from 'naive-ui'
+import { CAlert, CButton, CTag, useMessage } from '../ui'
 import SqlEditor from './SqlEditor.vue'
 import ResultTable from './ResultTable.vue'
 import AppIcon from '../shared/AppIcon.vue'
@@ -302,18 +296,18 @@ async function saveQuery() {
   }
 }
 
-// Returns an i18n key (resolved with $t in the template) + tag type. Returning
+// Returns an i18n key (resolved with $t in the template) + CTag kind. Returning
 // a key rather than text keeps the i18n `t` import out of this computed, whose
 // local `t` is the tab.
 const statusBadge = computed(() => {
   const t = tab.value
   switch (t.status) {
-    case 'running': return { key: 'queryTab.status.running', type: 'info' as const }
+    case 'running': return { key: 'queryTab.status.running', kind: 'accent' as const }
     case 'done':
-      return { key: 'queryTab.status.done', type: 'success' as const }
-    case 'error': return { key: 'queryTab.status.error', type: 'error' as const }
-    case 'canceled': return { key: 'queryTab.status.canceled', type: 'warning' as const }
-    default: return { key: 'queryTab.status.idle', type: 'default' as const }
+      return { key: 'queryTab.status.done', kind: 'success' as const }
+    case 'error': return { key: 'queryTab.status.error', kind: 'error' as const }
+    case 'canceled': return { key: 'queryTab.status.canceled', kind: 'warning' as const }
+    default: return { key: 'queryTab.status.idle', kind: 'default' as const }
   }
 })
 
@@ -433,58 +427,53 @@ function onSplitDown(e: PointerEvent) {
 <template>
   <div class="qt">
     <div class="toolbar">
-      <n-space :size="8" align="center" :wrap="false">
-        <n-button size="tiny" type="primary" :disabled="tab.status === 'running'" @click="runFull">
+      <div class="tb-group">
+        <CButton size="small" variant="primary" :disabled="tab.status === 'running'" @click="runFull">
           {{ $t('queryTab.run') }}
-        </n-button>
-        <n-button size="tiny" :disabled="tab.status === 'running'" @click="run">
+        </CButton>
+        <CButton size="small" :disabled="tab.status === 'running'" @click="run">
           {{ $t('queryTab.runSelection') }}
-        </n-button>
-        <n-button size="tiny" :disabled="tab.status === 'running'" @click="formatSql">
+        </CButton>
+        <CButton size="small" :disabled="tab.status === 'running'" @click="formatSql">
           {{ $t('queryTab.format') }}
-        </n-button>
-        <n-button size="tiny" :disabled="tab.status === 'running'" @click="saveQuery">
+        </CButton>
+        <CButton size="small" :disabled="tab.status === 'running'" @click="saveQuery">
           {{ $t('common.save') }}
-        </n-button>
-        <n-button v-if="caps?.explainPlan" size="tiny" :disabled="tab.status === 'running'" @click="explain">
+        </CButton>
+        <CButton v-if="caps?.explainPlan" size="small" :disabled="tab.status === 'running'" @click="explain">
           EXPLAIN
-        </n-button>
+        </CButton>
         <!-- Transaction controls -->
         <template v-if="supportsTxn">
           <span class="sep" />
           <span class="txn-group">
-            <n-button
-              size="tiny"
-              quaternary
-              :type="hasTxn ? 'warning' : 'default'"
+            <CButton
+              size="mini"
+              :variant="hasTxn ? 'danger' : 'standard'"
               :disabled="tab.status === 'running'"
               @click="onToggleAutoCommit"
-              class="txn-btn"
             >
               {{ $t(isAutoCommit ? 'queryTab.autoCommit' : 'queryTab.manualCommit') }}
-            </n-button>
-            <n-button
+            </CButton>
+            <CButton
               v-if="!isAutoCommit"
-              size="tiny"
-              quaternary
-              type="success"
+              size="mini"
               :disabled="!hasTxn || tab.status === 'running'"
               @click="onCommit"
               class="txn-icon-btn"
             >
-              <template #icon><AppIcon :src="checkIcon" :size="13" /></template>
-            </n-button>
-            <n-button
+              <AppIcon :src="checkIcon" :size="13" />
+            </CButton>
+            <CButton
               v-if="!isAutoCommit"
-              size="tiny"
-              quaternary
-              type="error"
+              size="mini"
+              variant="danger"
               :disabled="!hasTxn || tab.status === 'running'"
               @click="onRollback"
               class="txn-icon-btn"
             >
-              <template #icon><AppIcon :src="rotateCcwIcon" :size="13" /></template>
-            </n-button>
+              <AppIcon :src="rotateCcwIcon" :size="13" />
+            </CButton>
           </span>
         </template>
         <span class="sep" />
@@ -498,13 +487,13 @@ function onSplitDown(e: PointerEvent) {
             {{ opt.label }}
           </option>
         </select>
-      </n-space>
-      <n-space :size="6" align="center" :wrap="false" class="hint mono">
-        <n-button v-if="tab.status === 'running'" size="tiny" type="warning" @click="cancel">
+      </div>
+      <div class="tb-group hint mono">
+        <CButton v-if="tab.status === 'running'" size="small" variant="danger" @click="cancel">
           {{ $t('common.cancel') }}
-        </n-button>
+        </CButton>
         <span>{{ modifierKey }}+Enter</span>
-      </n-space>
+      </div>
     </div>
 
     <!-- 始终只有一个 SqlEditor 实例，防止执行查询时 CodeMirror 被销毁重建。
@@ -554,7 +543,7 @@ function onSplitDown(e: PointerEvent) {
               </button>
             </template>
             <span class="result-status">
-              <n-tag size="small" :type="statusBadge.type">{{ $t(statusBadge.key) }}</n-tag>
+              <CTag :kind="statusBadge.kind">{{ $t(statusBadge.key) }}</CTag>
               <span v-if="tab.elapsedMs > 0" class="mono mute">{{ tab.elapsedMs }} ms</span>
               <span v-if="rowsLabel" class="mono mute">{{ $t(rowsLabel.key, { n: rowsLabel.n, total: rowsLabel.total }) }}</span>
               <span v-if="!tab.isResultSet && tab.execAffected !== null" class="mono mute">
@@ -564,31 +553,28 @@ function onSplitDown(e: PointerEvent) {
           </div>
 
           <!-- Error alerts always visible -->
-          <n-alert
+          <CAlert
             v-if="errorKind === 'canceled'"
-            type="warning"
-            :show-icon="false"
+            kind="warning"
             class="alert"
           >
             {{ tab.errorMessage || $t('queryTab.queryCanceled') }}
-          </n-alert>
-          <n-alert
+          </CAlert>
+          <CAlert
             v-else-if="errorKind === 'timeout'"
-            type="error"
-            :show-icon="false"
+            kind="error"
             class="alert"
           >
             {{ $t('queryTab.queryTimedOut') }}<br />
             <span class="mono">{{ tab.errorMessage }}</span>
-          </n-alert>
-          <n-alert
+          </CAlert>
+          <CAlert
             v-else-if="errorKind === 'sql'"
-            type="error"
-            :show-icon="false"
+            kind="error"
             class="alert"
           >
             <span class="mono">{{ tab.errorMessage }}</span>
-          </n-alert>
+          </CAlert>
 
           <!-- Result view -->
           <template v-if="showResultView && !errorKind">
@@ -668,7 +654,10 @@ function onSplitDown(e: PointerEvent) {
 }
 /* 窄宽场景（如 Agent 面板打开）：控件保持原始宽度，溢出被 .qt 裁切而非挤变形。 */
 .toolbar > * { flex-shrink: 0; }
-.toolbar :deep(.n-space > *) { flex-shrink: 0; }
+/* 原 n-space 的替代：水平排布 + 固定间距，子项不压缩。 */
+.tb-group { display: flex; align-items: center; gap: 8px; }
+.tb-group > * { flex-shrink: 0; }
+.toolbar > .tb-group + .tb-group { gap: 6px; }
 .sep { display: inline-block; width: 1px; height: 12px; background: currentColor; opacity: 0.15; }
 .mute { opacity: 0.6; font-size: var(--catdb-fs-small); }
 .hint { opacity: 0.4; font-size: var(--catdb-fs-mini); }
@@ -680,14 +669,14 @@ function onSplitDown(e: PointerEvent) {
   border: 1px solid var(--catdb-separator);
   border-radius: var(--catdb-rounded-sm);
   background: var(--catdb-surface-content);
-  color: var(--n-text-color);
+  color: var(--catdb-text-primary);
   height: 24px;
   outline: none;
   cursor: pointer;
   font-family: inherit;
 }
 .schema-select:focus {
-  border-color: var(--n-primary-color);
+  border-color: var(--catdb-accent);
 }
 .schema-select:disabled {
   opacity: 0.5;
@@ -785,10 +774,8 @@ function onSplitDown(e: PointerEvent) {
 }
 
 /* ---- Transaction controls ---- */
-.txn-group { display: inline-flex; align-items: center; gap: 1px; }
-.txn-btn { font-size: var(--catdb-fs-mini) !important; }
-.txn-icon-btn { padding: 0 2px !important; }
-.txn-icon-btn .app-icon { display: flex; }
+.txn-group { display: inline-flex; align-items: center; gap: 2px; }
+.txn-icon-btn :deep(.app-icon) { display: flex; }
 
 /* ---- Result / Summary tab bar ---- */
 .result-tabs {
@@ -797,14 +784,14 @@ function onSplitDown(e: PointerEvent) {
   gap: 0;
   flex: 0 0 auto;
   border-bottom: 1px solid var(--catdb-separator);
-  background: var(--n-color);
+  background: var(--catdb-surface-content);
 }
 .result-tab {
   font-size: var(--catdb-fs-small);
   padding: 4px 14px;
   border: none;
   background: transparent;
-  color: var(--n-text-color);
+  color: var(--catdb-text-primary);
   opacity: 0.5;
   cursor: pointer;
   border-bottom: 2px solid transparent;
@@ -849,7 +836,7 @@ function onSplitDown(e: PointerEvent) {
   flex-direction: column;
   gap: 2px;
   padding: 10px 12px;
-  background: var(--n-color);
+  background: var(--catdb-surface-content);
   border: 1px solid var(--catdb-separator);
   border-radius: var(--catdb-rounded-md);
 }
@@ -862,7 +849,7 @@ function onSplitDown(e: PointerEvent) {
 .summary-value {
   font-size: 18px;
   font-weight: 600;
-  color: var(--n-text-color);
+  color: var(--catdb-text-primary);
 }
 .summary-sql {
   margin-top: 4px;
@@ -873,7 +860,7 @@ function onSplitDown(e: PointerEvent) {
   -webkit-user-select: text;
   cursor: text;
   font-size: var(--catdb-fs-mono);
-  background: var(--n-color);
+  background: var(--catdb-surface-content);
   border: 1px solid var(--catdb-separator);
   border-radius: var(--catdb-rounded-xs);
   padding: 10px 12px;
@@ -882,6 +869,6 @@ function onSplitDown(e: PointerEvent) {
   white-space: pre-wrap;
   word-break: break-all;
   margin: 0;
-  color: var(--n-text-color);
+  color: var(--catdb-text-primary);
 }
 </style>

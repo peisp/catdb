@@ -16,7 +16,7 @@
 // promoted to a regular edit-mode structure tab anchored to the just-created
 // table.
 import { computed, onMounted, ref, watch } from 'vue'
-import { NInput, NSpin, NTabPane, NTabs, useMessage } from 'naive-ui'
+import { CInput, CSpin, CTabPane, CTabs, useMessage } from '../ui'
 import { metadata as metaApi, query as queryApi } from '../../api'
 import { genericUIDialect, uiDialectForConnection, type UIDialect } from '../../api/dialect'
 import { t } from '../../i18n'
@@ -328,28 +328,23 @@ const newApplyDisabled = computed(() => {
 </script>
 
 <template>
-  <n-spin :show="loading" class="ts">
+  <CSpin :show="loading" class="ts">
     <!-- Header bar: in 'new' mode show a table-name input so the user can
          pick what they're creating. In edit mode this is omitted (the tab
          title already shows db.table). -->
     <div v-if="mode === 'new'" class="new-table-header">
       <span class="ntb-label">{{ $t('tableStructure.newTableLabel', { db }) }}</span>
-      <n-input
-        v-model:value="newTableName"
+      <CInput
+        v-model="newTableName"
         size="small"
         :placeholder="$t('tableStructure.tableNamePlaceholder')"
         class="ntb-name"
         :disabled="busy"
       />
     </div>
-    <n-tabs
-      v-model:value="activeTab"
-      type="segment"
-      size="small"
-      class="group-tabs"
-    >
+    <CTabs v-model:value="activeTab" class="group-tabs">
       <!-- Columns -->
-      <n-tab-pane name="cols" tab="Columns" display-directive="show:lazy">
+      <CTabPane name="cols" tab="Columns">
         <div class="tab-body">
           <ColumnsTab v-model="draft.columns" :dialect="dialect" :busy="busy" />
           <AlterSqlPanel
@@ -362,10 +357,10 @@ const newApplyDisabled = computed(() => {
             @reset="resetDraft"
           />
         </div>
-      </n-tab-pane>
+      </CTabPane>
 
       <!-- Indexes -->
-      <n-tab-pane name="ix" tab="Indexes" display-directive="show:lazy">
+      <CTabPane name="ix" tab="Indexes">
         <div class="tab-body">
           <IndexesTab
             v-model="draft.indexes"
@@ -382,10 +377,10 @@ const newApplyDisabled = computed(() => {
             @reset="resetDraft"
           />
         </div>
-      </n-tab-pane>
+      </CTabPane>
 
       <!-- Foreign Keys -->
-      <n-tab-pane name="fk" tab="Foreign Keys" display-directive="show:lazy">
+      <CTabPane name="fk" tab="Foreign Keys">
         <div class="tab-body">
           <ForeignKeysTab
             v-model="draft.foreignKeys"
@@ -403,10 +398,10 @@ const newApplyDisabled = computed(() => {
             @reset="resetDraft"
           />
         </div>
-      </n-tab-pane>
+      </CTabPane>
 
       <!-- Options (table-level: comment etc.) -->
-      <n-tab-pane name="opts" tab="Options" display-directive="show:lazy">
+      <CTabPane name="opts" tab="Options">
         <div class="tab-body">
           <OptionsTab v-model="draft.options" :busy="busy" />
           <AlterSqlPanel
@@ -419,25 +414,23 @@ const newApplyDisabled = computed(() => {
             @reset="resetDraft"
           />
         </div>
-      </n-tab-pane>
+      </CTabPane>
 
       <!-- DDL (read-only). Hidden in 'new' mode — the AlterSqlPanel already
            shows the CREATE TABLE statement for every tab. -->
-      <n-tab-pane v-if="mode !== 'new'" name="ddl" tab="DDL" display-directive="show:lazy">
+      <CTabPane v-if="mode !== 'new'" name="ddl" tab="DDL">
         <div class="tab-body-ddl">
           <DdlPanel variant="tab" :ddl="ddl" :dialect="dialect" />
         </div>
 
-      </n-tab-pane>
-    </n-tabs>
-  </n-spin>
+      </CTabPane>
+    </CTabs>
+  </CSpin>
 </template>
 
 <style scoped>
 /* ---- root flex container ---- */
 .ts { height: 100%; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--catdb-surface-chrome); }
-.ts :deep(.n-spin-container),
-.ts :deep(.n-spin-content) { height: 100%; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 
 /* ---- new-table header (only shown in mode="new") ---- */
 .new-table-header {
@@ -467,85 +460,26 @@ const newApplyDisabled = computed(() => {
   min-width: 0;
   min-height: 0;
 }
-/* view bar：nav 行统一高 viewbar-height，玻璃轨在其中垂直居中。 */
-.group-tabs :deep(.n-tabs-nav) {
-  display: flex;
-  justify-content: center;
-  align-items: center;
+/* 分段轨（CTabs 自带 DESIGN.md segmented control 外观）。railbar 覆写成
+   36px view bar 带：chrome 底 + 底边 hairline（DESIGN.md「view bar」，各
+   tab 类型高度统一）；窄宽场景轨道不低于分段内容宽度，防止标签挤变形。 */
+.group-tabs :deep(.railbar) {
   height: var(--catdb-viewbar-height);
-  flex: 0 0 auto;
+  align-items: center;
+  background: var(--catdb-surface-chrome);
   border-bottom: 1px solid var(--catdb-separator);
+  margin-bottom: 0;
+  overflow-x: auto;
 }
-.group-tabs :deep(.n-tabs-rail) {
-  /* 窄宽场景（如 Agent 面板打开）：轨道不低于分段内容宽度，防止标签挤变形。 */
+.group-tabs :deep(.rail) {
   min-width: max-content;
-  margin: 0 6px;
-  width: 50%;
-  height: 80%;
-  padding: 3px;
-  border-radius: 8px;
-  backdrop-filter: blur(18px) saturate(180%);
-  -webkit-backdrop-filter: blur(18px) saturate(180%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.75),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.04),
-    0 0 0 0.5px rgba(0, 0, 0, 0.1),
-    0 1px 2px rgba(0, 0, 0, 0.08);
 }
-.group-tabs :deep(.n-tabs-tab) {
-  padding: 2px 14px;
-  font-size: 12px;
-  white-space: nowrap;
-  border-radius: 8px;
-  font-weight: 500;
-  color: inherit;
-  opacity: 0.7;
-  transition: opacity 120ms ease, background 120ms ease;
-}
-.group-tabs :deep(.n-tabs-tab:hover) {
-  opacity: 0.95;
-  background: rgba(255, 255, 255, 0.35);
-}
-.group-tabs :deep(.n-tabs-tab--active) {
-  opacity: 1;
-  font-weight: 600;
-  color: inherit;
-  /* 选中段白色填充,与暗化轨道拉开对比 */
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.04),
-    0 0.5px 1px rgba(0, 0, 0, 0.12),
-    0 0 0 0.5px rgba(0, 0, 0, 0.06);
-}
-
-@media (prefers-color-scheme: dark) {
-  .group-tabs :deep(.n-tabs-rail) {
-    background: rgba(0, 0, 0, 0.22);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.18),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.3),
-      0 0 0 0.5px rgba(255, 255, 255, 0.06),
-      0 1px 2px rgba(0, 0, 0, 0.3);
-  }
-  .group-tabs :deep(.n-tabs-tab:hover) {
-    background: rgba(255, 255, 255, 0.1);
-  }
-  .group-tabs :deep(.n-tabs-tab--active) {
-    background: rgba(255, 255, 255, 0.14);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.25),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.25),
-      0 0.5px 1px rgba(0, 0, 0, 0.25);
-  }
-}
-
-.group-tabs :deep(.n-tabs-pane-wrapper) {
+.group-tabs :deep(.body) {
   flex: 1;
   overflow: hidden;
   min-height: 0;
 }
-.group-tabs :deep(.n-tab-pane) {
+.group-tabs :deep(.c-tab-pane) {
   height: 100%;
   overflow: hidden;
   padding: 0;

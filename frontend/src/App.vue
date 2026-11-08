@@ -4,11 +4,8 @@
 //     window. Spawned from the main window via SystemService.OpenConnectionEditor.
 //   * anything else — the main app shell (sidebar + workspace + status bar).
 // Both windows share this entry; the route picks which root component mounts.
-import { computed, onMounted, ref } from 'vue'
-import { NConfigProvider, NMessageProvider, darkTheme, enUS, dateEnUS, zhCN, dateZhCN } from 'naive-ui'
-import { i18n } from './i18n'
-import { useThemeStore } from './stores/theme'
-import { themeOverrides, darkThemeOverrides } from './styles/theme'
+import { onMounted, ref } from 'vue'
+import { CToastHost } from './components/ui'
 import AppShell from './components/layout/AppShell.vue'
 import ConnectionEditorWindow from './components/connection/ConnectionEditorWindow.vue'
 import DatabaseEditorWindow from './components/database/DatabaseEditorWindow.vue'
@@ -18,15 +15,6 @@ import DataSyncWindow from './components/sync/DataSyncWindow.vue'
 import SettingsWindow from './components/settings/SettingsWindow.vue'
 import AgentTraceWindow from './components/agent/AgentTraceWindow.vue'
 import ConfirmOverlay from './components/common/ConfirmOverlay.vue'
-
-const theme = useThemeStore()
-const naiveTheme = computed(() => (theme.mode === 'dark' ? darkTheme : null))
-const naiveOverrides = computed(() => (theme.mode === 'dark' ? darkThemeOverrides : themeOverrides))
-
-// Drive Naive UI's built-in component locale (date picker, pagination, etc.)
-// off the app locale owned by src/i18n.
-const naiveLocale = computed(() => (i18n.global.locale.value === 'zh-CN' ? zhCN : enUS))
-const naiveDateLocale = computed(() => (i18n.global.locale.value === 'zh-CN' ? dateZhCN : dateEnUS))
 
 const route = ref<string>(currentRoute())
 
@@ -53,7 +41,6 @@ onMounted(() => {
   // appears from saved keychain entries / Contacts. autocomplete="off" alone is
   // ignored by WebKit on password-looking fields, so password inputs get
   // "new-password" (tells WebKit this is a registration form → no autofill).
-  // Force-overwrite even if Naive UI set its own value.
   document.addEventListener('focusin', (e) => {
     const el = e.target as HTMLElement | null
     if (!(el instanceof HTMLInputElement) && !(el instanceof HTMLTextAreaElement)) return
@@ -69,18 +56,16 @@ onMounted(() => {
 </script>
 
 <template>
-  <n-config-provider :theme="naiveTheme" :theme-overrides="naiveOverrides" :locale="naiveLocale" :date-locale="naiveDateLocale">
-    <n-message-provider>
-      <ConnectionEditorWindow v-if="route === 'connection-editor'" />
-      <DatabaseEditorWindow v-else-if="route === 'database-editor'" />
-      <TransferEditorWindow v-else-if="route === 'transfer-editor'" />
-      <StructureSyncWindow v-else-if="route === 'structure-sync'" />
-      <DataSyncWindow v-else-if="route === 'data-sync'" />
-      <SettingsWindow v-else-if="route === 'settings'" />
-      <AgentTraceWindow v-else-if="route === 'agent-trace'" />
-      <AppShell v-else />
-      <!-- Windows-only in-app confirm modal; mounted at root so it covers every window. -->
-      <ConfirmOverlay />
-    </n-message-provider>
-  </n-config-provider>
+  <ConnectionEditorWindow v-if="route === 'connection-editor'" />
+  <DatabaseEditorWindow v-else-if="route === 'database-editor'" />
+  <TransferEditorWindow v-else-if="route === 'transfer-editor'" />
+  <StructureSyncWindow v-else-if="route === 'structure-sync'" />
+  <DataSyncWindow v-else-if="route === 'data-sync'" />
+  <SettingsWindow v-else-if="route === 'settings'" />
+  <AgentTraceWindow v-else-if="route === 'agent-trace'" />
+  <AppShell v-else />
+  <!-- Windows-only in-app confirm modal; mounted at root so it covers every window. -->
+  <ConfirmOverlay />
+  <!-- 自研 toast 宿主(替代 NMessageProvider);每个窗口是独立 SPA 路由,各自一个。 -->
+  <CToastHost />
 </template>

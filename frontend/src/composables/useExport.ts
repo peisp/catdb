@@ -1,7 +1,7 @@
 // useExport — native-export flow: caller picks format → SaveFile → stream
 // export via TransferService. No Naive UI NModal or format dialog needed.
-import { createDiscreteApi } from 'naive-ui'
 import { Dialogs } from '@wailsio/runtime'
+import { message } from '../components/ui'
 import { t } from '../i18n'
 import { TransferFormat } from '../api/transfer'
 import { exportQuery, exportTable, onProgress } from '../api/transfer'
@@ -24,8 +24,6 @@ export const exportFormats: FormatOption[] = [
   { label: 'JSON', format: TransferFormat.FormatJSON, ext: 'json' },
   { label: 'SQL', format: TransferFormat.FormatSQL, ext: 'sql' },
 ]
-
-const { message } = createDiscreteApi(['message'])
 
 /**
  * Show SaveFile with the correct extension, then start exporting.

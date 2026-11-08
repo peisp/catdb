@@ -4,7 +4,7 @@
 // The list renders with the shared canvas DataGrid (the app-wide table
 // component), read-only, with synthetic column metadata.
 import { computed, onMounted, ref } from 'vue'
-import { NButton, NInputNumber, NSelect, useMessage } from 'naive-ui'
+import { CButton, CInputNumber, CSelect, useMessage } from '../ui'
 import { agentSettings, connections, system, dialogs } from '../../api'
 import type { AuditEntry } from '../../api/agentSettings'
 import DataGrid from '../data-grid/DataGrid.vue'
@@ -178,16 +178,16 @@ onMounted(() => {
 <template>
   <section class="section">
     <div class="audit-filters">
-      <n-select
+      <CSelect
         v-model:value="auditConnId"
         size="small"
         class="audit-filter-field"
         :options="auditConnOptions"
         @update:value="onAuditFilterChange"
       />
-      <n-button size="small" @click="loadAudit(auditPage)">{{ $t('agent.settings.audit.refresh') }}</n-button>
-      <n-button size="small" @click="exportAudit('json')">{{ $t('agent.settings.audit.exportJson') }}</n-button>
-      <n-button size="small" @click="exportAudit('csv')">{{ $t('agent.settings.audit.exportCsv') }}</n-button>
+      <CButton size="small" @click="loadAudit(auditPage)">{{ $t('agent.settings.audit.refresh') }}</CButton>
+      <CButton size="small" @click="exportAudit('json')">{{ $t('agent.settings.audit.exportJson') }}</CButton>
+      <CButton size="small" @click="exportAudit('csv')">{{ $t('agent.settings.audit.exportCsv') }}</CButton>
     </div>
 
     <div class="audit-grid">
@@ -210,18 +210,18 @@ onMounted(() => {
 
     <div class="audit-footer">
       <div class="audit-paging">
-        <n-button size="tiny" :disabled="auditPage === 0" @click="loadAudit(auditPage - 1)">
+        <CButton size="mini" :disabled="auditPage === 0" @click="loadAudit(auditPage - 1)">
           {{ $t('agent.settings.audit.prev') }}
-        </n-button>
+        </CButton>
         <span class="page-label">{{ $t('agent.settings.audit.page', { n: auditPage + 1 }) }}</span>
-        <n-button size="tiny" :disabled="!auditHasMore" @click="loadAudit(auditPage + 1)">
+        <CButton size="mini" :disabled="!auditHasMore" @click="loadAudit(auditPage + 1)">
           {{ $t('agent.settings.audit.next') }}
-        </n-button>
+        </CButton>
       </div>
       <div class="audit-clear">
         <label class="form-label">{{ $t('agent.settings.audit.clearDaysLabel') }}</label>
-        <n-input-number v-model:value="settings.auditRetentionDays" size="small" class="limit-input" :min="1" :max="30" />
-        <n-button size="small" @click="clearAudit">{{ $t('agent.settings.audit.clear') }}</n-button>
+        <CInputNumber v-model:value="settings.auditRetentionDays" size="small" class="limit-input" :min="1" :max="30" />
+        <CButton size="small" @click="clearAudit">{{ $t('agent.settings.audit.clear') }}</CButton>
       </div>
     </div>
   </section>

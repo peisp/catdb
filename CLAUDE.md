@@ -11,7 +11,7 @@
 - **后端**：Go 1.22+，Wails v3 **锁定 `v3.0.0-beta.4`**（go.mod 与 CLI 都钉死，禁止 `@latest`；前端 `@wailsio/runtime` 钉 `^3.0.0-beta.1`）
 - **前端**：Vue 3（Composition API + `<script setup>`）+ TypeScript + Vite，状态用 Pinia
 - **多语言**：`vue-i18n` v9（前端）+ `internal/i18n` 消息目录（Go 原生菜单/对话框）—— 规约见下方「多语言（i18n）」
-- **UI 框架**：Naive UI（TS-first、JS 主题系统、自带 `n-tree` 虚拟化树与表单）—— 同类对标 Tiny RDM（Wails+Vue3 数据库 GUI）即用此栈
+- **UI 框架**：全部 UI 用自研 catdb 控件库 `frontend/src/components/ui/`（形态由 DESIGN.md 定义，token 驱动），含叶子控件（CButton/CInput/CCheckbox/CSwitch…）和机械结构（CTree 虚拟化树、CModal、CPopover 浮层、CSpin、CVirtualList、toast）。**Naive UI 已完全移除，禁止重新引入**；也不引入任何其他第三方 UI 组件库，缺控件就在 `ui/` 里补
 - **SQL 编辑器**：CodeMirror 6（`@codemirror/lang-sql`，Vue 下用 `vue-codemirror` 薄封装）—— **不用 Monaco**
 - **表格渲染**：自研 canvas 网格 `frontend/src/components/data-grid/DataGrid.vue` —— **所有表格展示（查询结果、列表、审计、Agent 结果等）统一用它**，不引入 AG Grid / TanStack 等第三方表格，也不手写 `<table>`；只读列表用合成 `ColumnMeta`（参考 `TablesOverview.vue`）
 - **MySQL 驱动**：`github.com/go-sql-driver/mysql`

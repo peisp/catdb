@@ -6,7 +6,7 @@
 // Agent-mode grants / approvals / transaction bar are a later milestone; the
 // structure (mode toggle, tool cards) is left open for them.
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref } from 'vue'
-import { useMessage } from 'naive-ui'
+import { useMessage } from '../ui'
 import AgentSessionHeader from './AgentSessionHeader.vue'
 import AgentHistoryView from './AgentHistoryView.vue'
 import AgentMessage from './AgentMessage.vue'
@@ -23,7 +23,7 @@ import botIcon from '../../assets/icons/bot.svg?raw'
 import lockIcon from '../../assets/icons/lock.svg?raw'
 import { driverLogo } from '../../assets/logo'
 import { AGENT_SQL_ACTIONS, type AgentSqlActions } from './sqlActions'
-import { entryId, type ApprovalEntry, type AssistantEntry, type Entry, type PlanEntry, type ToolEntry, type UserEntry } from './types'
+import { entryId, type ApprovalEntry, type AssistantEntry, type Entry, type PlanEntry, type ResultEntry, type ToolEntry, type UserEntry } from './types'
 import * as agentApi from '../../api/agent'
 import type { AgentSession } from '../../api/agent'
 import { getAgentSettings, getDefaults, listProviders, onProvidersChanged, type ModelPricing, type ProviderConfig } from '../../api/agentSettings'
@@ -343,10 +343,25 @@ function attachEvents(sessId: string) {
     onTxPending: (e) => { txPending.value = e.statements ?? []; scrollToBottom() },
     onResult: (e) => {
       sealStreamingAssistant()
-      entries.value.push({
-        kind: 'result', id: entryId(),
+      const entry: ResultEntry = {
+        kind: 'result', id: entryId(), callId: e.callId || undefined,
         columns: e.columns ?? [], rows: e.rows ?? [], truncated: !!e.truncated,
-      })
+      }
+      // Dock the table under its run_sql card instead of at the tail. One call
+      // may yield several results (multi-statement script) — keep them in order
+      // right after the card.
+      const at = e.callId ? entries.value.findIndex((x) => x.kind === 'tool' && x.callId === e.callId) : -1
+      if (at >= 0) {
+        let i = at + 1
+        while (i < entries.value.length) {
+          const x = entries.value[i]
+          if (x.kind !== 'result' || x.callId !== e.callId) break
+          i += 1
+        }
+        entries.value.splice(i, 0, entry)
+      } else {
+        entries.value.push(entry)
+      }
       scrollToBottom()
     },
   })

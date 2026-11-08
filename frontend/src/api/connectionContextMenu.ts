@@ -9,7 +9,7 @@
 //      `setActiveConnectionContext(ctx)`.
 //   3. `installConnectionContextMenuListener()` subscribes at app boot to
 //      the `ctx:conn-*` events emitted by Go and acts on the singleton.
-import { createDiscreteApi } from 'naive-ui'
+import { message } from '../components/ui'
 import { confirm } from './dialogs'
 import { t } from '../i18n'
 import { useConnectionsStore } from '../stores/connections'
@@ -33,8 +33,6 @@ let installed = false
 export function installConnectionContextMenuListener(): void {
   if (installed) return
   installed = true
-
-  const { message } = createDiscreteApi(['message'])
 
   on('ctx:conn-connect', async () => {
     if (!active) return

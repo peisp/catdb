@@ -88,6 +88,18 @@ func (l *eventLog) names() []string {
 	return out
 }
 
+// first returns the payload of the first event with name (nil if none).
+func (l *eventLog) first(name string) map[string]any {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, e := range l.events {
+		if e.Name == name {
+			return e.Data
+		}
+	}
+	return nil
+}
+
 func (l *eventLog) count(name string) int {
 	n := 0
 	for _, e := range l.names() {

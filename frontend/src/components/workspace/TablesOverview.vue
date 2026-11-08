@@ -5,7 +5,7 @@
 // 用 DataGrid 列出该数据库下的所有表及其元信息（Name / Engine / Rows / Comment）。
 // 双击表所在的行跳转到该表的数据浏览 tab。
 import { computed, ref, watch } from 'vue'
-import { NButton, NInput, NSpin, useMessage } from 'naive-ui'
+import { CButton, CInput, CSpin, useMessage } from '../ui'
 import { metadata as metaApi } from '../../api'
 import { genericUIDialect, uiDialectForConnection, type UIDialect } from '../../api/dialect'
 import { useQueryStore } from '../../stores/query'
@@ -248,29 +248,28 @@ watch(selectedTable, () => { if (ddlPanelOpen.value) void loadDdl() })
       <span v-if="db" class="mute">· {{ $t('tablesOverview.tableCount', { n: filteredTables.length }) }}</span>
       <template v-if="db">
         <span class="sep" />
-        <n-button size="tiny" :disabled="!selectedTable" @click="openSelected">{{ $t('tablesOverview.action.open') }}</n-button>
-        <n-button size="tiny" :disabled="!db" @click="createTable">{{ $t('tablesOverview.action.newTable') }}</n-button>
-        <n-button size="tiny" :disabled="!selectedTable" @click="editSelected">{{ $t('tablesOverview.action.edit') }}</n-button>
-        <n-button size="tiny" :disabled="!selectedTable" @click="renameSelected">{{ $t('tablesOverview.action.rename') }}</n-button>
-        <n-button size="tiny" :type="ddlPanelOpen ? 'primary' : 'default'" @click="toggleDdlPanel">{{ $t('tablesOverview.action.ddl') }}</n-button>
+        <CButton size="small" :disabled="!selectedTable" @click="openSelected">{{ $t('tablesOverview.action.open') }}</CButton>
+        <CButton size="small" :disabled="!db" @click="createTable">{{ $t('tablesOverview.action.newTable') }}</CButton>
+        <CButton size="small" :disabled="!selectedTable" @click="editSelected">{{ $t('tablesOverview.action.edit') }}</CButton>
+        <CButton size="small" :disabled="!selectedTable" @click="renameSelected">{{ $t('tablesOverview.action.rename') }}</CButton>
+        <CButton size="small" :variant="ddlPanelOpen ? 'primary' : 'standard'" @click="toggleDdlPanel">{{ $t('tablesOverview.action.ddl') }}</CButton>
       </template>
       <span class="grow" />
-      <n-input
+      <CInput
         v-if="db"
-        v-model:value="filterText"
+        v-model="filterText"
         :placeholder="$t('tablesOverview.filterPlaceholder')"
-        size="tiny"
-        clearable
+        size="small"
         class="filter-input"
       />
-      <n-button size="tiny" :disabled="loading || !db" @click="load">{{ $t('common.refresh') }}</n-button>
+      <CButton size="small" :disabled="loading || !db" @click="load">{{ $t('common.refresh') }}</CButton>
     </div>
 
     <div v-if="!db" class="empty">
       <span class="mute">{{ $t('tablesOverview.empty') }}</span>
     </div>
     <div v-else class="data-area">
-      <n-spin :show="loading" class="data-spin">
+      <CSpin :show="loading" class="data-spin">
         <DataGrid
           :columns="columns"
           :rows="rows"
@@ -283,7 +282,7 @@ watch(selectedTable, () => { if (ddlPanelOpen.value) void loadDdl() })
           @cell-context-menu="onCellContextMenu"
           @selection-change="onSelectionChange"
         />
-      </n-spin>
+      </CSpin>
 
       <DdlPanel
         variant="panel"
@@ -321,12 +320,7 @@ watch(selectedTable, () => { if (ddlPanelOpen.value) void loadDdl() })
 .sep { width: 1px; align-self: stretch; margin: 2px 2px; background: var(--catdb-separator); }
 .filter-input { width: 160px; }
 .data-spin { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; }
-.data-spin :deep(.n-spin-container),
-.data-spin :deep(.n-spin-content) {
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-}
+.data-spin > :first-child { height: 100%; min-width: 0; min-height: 0; }
 .empty {
   flex: 1 1 auto;
   display: flex;

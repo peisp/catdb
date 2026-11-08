@@ -508,7 +508,7 @@ func (e *Engine) execTools(ctx context.Context, em *emitter, sessID string, byNa
 			return
 		}
 		start := time.Now()
-		out, err := tool.Run(ctx, c.Args)
+		out, err := tool.Run(withToolCallID(ctx, c.ID), c.Args)
 		if err != nil {
 			results[i] = storedResult{CallID: c.ID, Content: err.Error(), IsError: true}
 		} else {

@@ -9,7 +9,7 @@
 // rendered view + raw JSON + one-click copy of the full request.
 import { computed, onMounted, ref } from 'vue'
 import { Window } from '@wailsio/runtime'
-import { useMessage } from 'naive-ui'
+import { useMessage } from '../ui'
 import * as traceApi from '../../api/agentTrace'
 import { copyText } from '../../api/system'
 import { confirm } from '../../api/dialogs'

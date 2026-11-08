@@ -2,7 +2,7 @@
 // ResultFooter —— TableBrowser 与 ResultTable 共用的表格底部条。
 // 布局：‹ 页码 › [总行数/点击加载] [slot] [SQL 展示+复制] [每页条数] [导出?]
 import { computed, ref, watch } from 'vue'
-import { useMessage } from 'naive-ui'
+import { useMessage } from '../ui'
 import { t } from '../../i18n'
 import { copyText } from '../../api/system'
 

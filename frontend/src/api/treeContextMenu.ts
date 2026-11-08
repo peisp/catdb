@@ -15,7 +15,7 @@
 // 「新建表」不经过组件树 emit —— 直接进 queryStore，符合「同一 connection 一个固定
 // overview tab」的总体设计。其余 refresh 动作需要 ObjectTree 自身的 n-tree
 // 状态（找到节点、重置 children、重新 onLoad），所以通过 callback 反弹回去。
-import { createDiscreteApi } from 'naive-ui'
+import { message } from '../components/ui'
 import { confirm } from './dialogs'
 import { t } from '../i18n'
 import { useQueryStore } from '../stores/query'
@@ -54,8 +54,6 @@ let installed = false
 export function installTreeContextMenuListener(): void {
   if (installed) return
   installed = true
-
-  const { message } = createDiscreteApi(['message'])
 
   // 「查询」 group: 新建查询 → open a blank query tab anchored to the
   // db (and schema for schema-ful drivers).

@@ -9,7 +9,7 @@
 // dirty-tab counter in the Go side current.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Window } from '@wailsio/runtime'
-import { useMessage } from 'naive-ui'
+import { useMessage } from '../ui'
 import AppSidebar from './AppSidebar.vue'
 import ConnectionWelcome from '../connection/ConnectionWelcome.vue'
 import QueryWorkspace from '../workspace/QueryWorkspace.vue'
@@ -483,6 +483,6 @@ function onOpenTablesOverview(payload: { db: string; schema?: string }) {
   flex: 0 0 var(--catdb-statusbar-height);
   height: var(--catdb-statusbar-height);
   border-top: 1px solid var(--catdb-separator);
-  background: var(--n-color, transparent);
+  background: transparent;
 }
 </style>
