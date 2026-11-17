@@ -199,10 +199,90 @@ jobs:
           path: bin/catdb-${{ env.VERSION }}-windows-${{ matrix.arch }}-installer.exe
           if-no-files-found: error
 
+  # ── Linux ──────────────────────────────────────────────────────────────
+  build-linux:
+    name: Build Linux (deb)
+    runs-on: ubuntu-24.04
+    # GOARCH feeds nfpm.yaml's `arch: ${GOARCH}` template for the .deb
+    env:
+      GOARCH: amd64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          # 不开 npm 缓存：恢复回来的 ~/.npm 会触发 npm 可选依赖 bug
+          # (npm/cli#4828)，把当前平台的 rolldown/lightningcss 原生 binding 标记为
+          # skipped，导致回退到半装好的 wasm-runtime 子树而构建崩溃。
+
+      - name: Install GTK4 / WebKitGTK dev libraries (CGO build deps)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev libwebkitgtk-6.0-dev pkg-config
+
+      - name: Install build tools
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.4
+          go install github.com/go-task/task/v3/cmd/task@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Inject version from git tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # nfpm wants a numeric X.Y.Z deb version — strip any prerelease
+          # suffix. The full semver lives in the asset filename and
+          # VITE_APP_VERSION (what the in-app updater compares against).
+          NUMERIC_VERSION="${VERSION%%-*}"
+          echo "Version: $VERSION (numeric: $NUMERIC_VERSION)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "VITE_APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          sed -i "s/^version: \".*\"/version: \"$NUMERIC_VERSION\"/" build/linux/nfpm/nfpm.yaml
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: |
+          npm ci
+          # npm/cli#4828 守卫：npm 偶发漏装当前平台的 rolldown 原生 binding，留下
+          # 半装好的 node_modules（悬空的 @emnapi/* wasm-runtime 文件），让 Task 的
+          # 文件指纹或 vite 报 `open ...: no such file or directory` 直接挂掉。
+          # 只要没有任何非 wasm 的原生 binding，就从干净状态（清掉 lockfile + npm 缓存）
+          # 重装，强制按本机平台重新解析。
+          if ! ls node_modules/@rolldown/binding-* 2>/dev/null | grep -qv wasm; then
+            echo "::warning::native rolldown binding missing, clean reinstall (npm/cli#4828)"
+            rm -rf node_modules package-lock.json ~/.npm/_cacache
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Build and create .deb package
+        # nfpm.yaml's maintainer field expands ${GIT_COMMITTER_*} env vars;
+        # checkout doesn't set them, so provide stable values here.
+        env:
+          GIT_COMMITTER_NAME: catdb-release
+          GIT_COMMITTER_EMAIL: noreply@github.com
+        run: task linux:create:deb
+
+      - name: Rename deb with version
+        run: |
+          DEB=$(ls bin/*.deb)
+          mv "$DEB" "catdb-${VERSION}-linux-amd64.deb"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: catdb-linux-amd64
+          path: catdb-${{ env.VERSION }}-linux-amd64.deb
+          if-no-files-found: error
+
   # ── Release ────────────────────────────────────────────────────────────
   release:
     name: Create Release
-    needs: [build-macos, build-windows]
+    needs: [build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
 
     steps:
@@ -239,6 +319,7 @@ jobs:
           mkdir -p assets
           cp catdb-darwin-*/*.dmg assets/ 2>/dev/null || true
           cp catdb-windows-*/*-installer.exe assets/ 2>/dev/null || true
+          cp catdb-linux-*/*.deb assets/ 2>/dev/null || true
           echo "=== Collected assets ==="
           ls -lh assets/
 
